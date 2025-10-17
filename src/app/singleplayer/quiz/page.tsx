@@ -4,8 +4,15 @@ import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Clock, Target, Trophy, Zap } from "lucide-react"
+import { ArrowLeft, Clock, Target, Trophy, Zap, AlertTriangle, EyeOff, X, Star, TrendingUp } from "lucide-react"
 import Link from "next/link"
+import { useAntiCheat, CheatEvent } from "@/hooks/use-anti-cheat"
+import { calculateXP, getXPExplanation, checkLevelUp } from "@/lib/xp-calculator"
+import { getRankFromXP, getRankIcon, formatXP } from "@/lib/rank-system"
+import { XPProgressBar } from "@/components/ui/xp-progress-bar"
+import { LevelUpModal } from "@/components/ui/level-up-modal"
+import { QuizProgressBar } from "@/components/ui/quiz-progress-bar"
+import { getCurrentUserId } from "@/lib/auth/session"
 
 // Default empty questions - will be loaded from sessionStorage
 const defaultQuestions: any[] = []
@@ -23,6 +30,39 @@ export default function QuizPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [hasError, setHasError] = useState(false)
   const [userAnswers, setUserAnswers] = useState<(number | string)[]>([])
+  const [cheatViolations, setCheatViolations] = useState<CheatEvent[]>([])
+  const [showCheatWarning, setShowCheatWarning] = useState(false)
+  const [quizResults, setQuizResults] = useState<{
+    xpEarned: number
+    oldXP: number
+    newXP: number
+    xpBreakdown: string[]
+    leveledUp: boolean
+  } | null>(null)
+  const [showLevelUpModal, setShowLevelUpModal] = useState(false)
+  const [isSubmittingResults, setIsSubmittingResults] = useState(false)
+
+  // Track if quiz is actively running (not in loading, error, or complete state)
+  const isQuizActive = !isLoading && !hasError && !quizComplete && questions.length > 0
+
+  // Anti-cheat functionality for singleplayer
+  const handleCheatDetected = (event: CheatEvent) => {
+    console.log('🚨 [SINGLEPLAYER] Cheat detected:', event)
+    setCheatViolations(prev => [...prev, event])
+    setShowCheatWarning(true)
+    
+    // Auto-hide warning after 5 seconds
+    setTimeout(() => {
+      setShowCheatWarning(false)
+    }, 5000)
+  }
+
+  // Initialize anti-cheat hook
+  const { isAway } = useAntiCheat({
+    isGameActive: isQuizActive,
+    thresholdMs: 2500,
+    onCheatDetected: handleCheatDetected
+  })
 
   // Load questions from sessionStorage on component mount
   useEffect(() => {
@@ -124,6 +164,87 @@ export default function QuizPage() {
       const nextQuestion = questions[currentQuestion + 1]
       setTimeLeft(nextQuestion?.type === "open_ended" ? 60 : 30)
     } else {
+      handleQuizComplete()
+    }
+  }
+
+  const handleQuizComplete = async () => {
+    setIsSubmittingResults(true)
+    
+    try {
+      // Calculate quiz statistics
+      const correctAnswers = score
+      const totalQuestions = questions.length
+      const totalTime = questions.length * 30 - timeLeft // Rough estimate
+      const averageTimePerQuestion = totalTime / totalQuestions
+      
+      // Calculate XP
+      const xpResult = calculateXP({
+        correctAnswers,
+        totalQuestions,
+        averageTimePerQuestion,
+        difficulty: 'medium', // Default for singleplayer
+        winStreak: 0, // Would need to fetch from user stats
+        isPerfectScore: correctAnswers === totalQuestions,
+        isMultiplayer: false
+      })
+
+      // Submit results to API
+      const userId = getCurrentUserId()
+      if (userId) {
+        const response = await fetch('/api/quiz-results', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId,
+            questions: questions,
+            answers: userAnswers,
+            score: score,
+            totalQuestions: totalQuestions,
+            correctAnswers: correctAnswers,
+            duration: totalTime,
+            topic: topic
+          })
+        })
+
+        if (response.ok) {
+          const result = await response.json()
+          console.log('✅ Quiz results submitted:', result)
+          
+          // Check if user leveled up
+          const leveledUp = checkLevelUp(result.oldXP || 0, result.newXP || 0)
+          
+          // Set results state
+          setQuizResults({
+            xpEarned: xpResult.totalXP,
+            oldXP: result.oldXP || 0,
+            newXP: result.newXP || 0,
+            xpBreakdown: getXPExplanation(xpResult, {
+              correctAnswers,
+              totalQuestions,
+              averageTimePerQuestion,
+              difficulty: 'medium',
+              winStreak: 0,
+              isPerfectScore: correctAnswers === totalQuestions,
+              isMultiplayer: false
+            }),
+            leveledUp
+          })
+
+          // Show level up modal if applicable
+          if (leveledUp) {
+            setShowLevelUpModal(true)
+          }
+        } else {
+          console.error('❌ Failed to submit quiz results')
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error submitting quiz results:', error)
+    } finally {
+      setIsSubmittingResults(false)
       setQuizComplete(true)
     }
   }
@@ -191,63 +312,52 @@ export default function QuizPage() {
 
   if (quizComplete) {
     return (
-      <div className="min-h-screen bg-background p-6">
-        <div className="max-w-2xl mx-auto">
-          <Card className="p-8 bg-card cartoon-border cartoon-shadow text-center">
-            <div className="w-20 h-20 rounded-xl bg-primary flex items-center justify-center mx-auto mb-6 cartoon-border cartoon-shadow">
-              <Trophy className="w-10 h-10 text-primary-foreground" strokeWidth={3} />
-            </div>
-            
-            <h1 className="text-4xl font-black text-foreground mb-4" style={{ fontFamily: "var(--font-display)" }}>
-              Quiz Complete!
-            </h1>
-            
-            <div className="mb-8">
-              <p className="text-6xl font-black mb-2" style={{ color: "var(--primary)" }}>
-                {score}/{questions.length}
-              </p>
-              <p className="text-2xl font-black text-foreground mb-2">
-                {Math.round((score / questions.length) * 100)}% Correct
-              </p>
-              <p className="text-lg text-muted-foreground font-bold mb-4">Topic: {topic}</p>
-              <Badge className={`cartoon-border font-black text-lg px-4 py-2 ${
-                score >= questions.length * 0.8
-                  ? "bg-chart-3 text-foreground"
-                  : score >= questions.length * 0.6
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-destructive text-destructive-foreground"
-              }`}>
-                {score >= questions.length * 0.8
-                  ? "Excellent!"
-                  : score >= questions.length * 0.6
-                  ? "Good Job!"
-                  : "Keep Studying!"}
-              </Badge>
-            </div>
-
-            <div className="space-y-4">
-              <Link href="/singleplayer">
-                <Button className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg cartoon-border cartoon-shadow cartoon-hover">
-                  <Zap className="h-5 w-5 mr-2" strokeWidth={3} />
-                  Take Another Quiz
-                </Button>
-              </Link>
-              <Link href="/dashboard">
-                <Button variant="outline" className="w-full h-12 font-black cartoon-border cartoon-shadow">
-                  <ArrowLeft className="h-5 w-5 mr-2" strokeWidth={3} />
-                  Back to Dashboard
-                </Button>
-              </Link>
-            </div>
-          </Card>
-        </div>
-      </div>
+      <QuizResultsScreen 
+        score={score}
+        totalQuestions={questions.length}
+        topic={topic}
+        userAnswers={userAnswers}
+        questions={questions}
+        onRetakeQuiz={() => window.location.href = '/singleplayer'}
+        onBackToDashboard={() => window.location.href = '/dashboard'}
+      />
     )
   }
 
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-4xl mx-auto">
+        {/* Cheat Warning Banner */}
+        {showCheatWarning && (
+          <div className="mb-6 p-4 bg-yellow-50 border-2 border-yellow-200 rounded-xl shadow-lg animate-in slide-in-from-top-2 duration-300">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex-shrink-0 w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
+                  <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <EyeOff className="h-5 w-5 text-yellow-600" />
+                    <span className="font-semibold text-yellow-800 text-sm">
+                      Focus Warning
+                    </span>
+                  </div>
+                  <p className="text-yellow-700 text-sm mt-1">
+                    You switched away from the quiz for {cheatViolations[cheatViolations.length - 1]?.duration ? Math.round(cheatViolations[cheatViolations.length - 1].duration / 1000) : 'some'} seconds{cheatViolations[cheatViolations.length - 1]?.type === 'visibility_change' ? ' (tab switched)' : ' (window lost focus)'}. Please stay focused!
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCheatWarning(false)}
+                className="flex-shrink-0 p-1 hover:bg-yellow-100 rounded-full transition-colors"
+                aria-label="Dismiss warning"
+              >
+                <X className="h-4 w-4 text-yellow-600" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <Link href="/singleplayer">
@@ -267,22 +377,25 @@ export default function QuizPage() {
               <Clock className="h-5 w-5 text-secondary" strokeWidth={3} />
               <span className="font-black text-secondary">{timeLeft}s</span>
             </div>
+            {isAway && (
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-yellow-100 border-2 border-yellow-300 cartoon-border">
+                <EyeOff className="h-5 w-5 text-yellow-600" strokeWidth={3} />
+                <span className="font-black text-yellow-700">Away</span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Progress Bar */}
-        <div className="mb-8">
-          <div className="flex justify-between text-sm font-bold text-muted-foreground mb-2">
-            <span>Question {currentQuestion + 1} of {questions.length}</span>
-            <span>{Math.round(((currentQuestion + 1) / questions.length) * 100)}%</span>
-          </div>
-          <div className="w-full h-3 bg-muted rounded-full cartoon-border">
-            <div 
-              className="h-full bg-primary rounded-full transition-all duration-300"
-              style={{ width: `${((currentQuestion + 1) / questions.length) * 100}%` }}
-            ></div>
-          </div>
-        </div>
+        {/* Enhanced Progress Bar */}
+        <QuizProgressBar
+          currentQuestion={currentQuestion}
+          totalQuestions={questions.length}
+          score={score}
+          timeLeft={timeLeft}
+          topic={topic}
+          isAway={isAway}
+          streak={0} // Singleplayer doesn't track streaks yet
+        />
 
         {/* Question Card */}
         <Card className="p-8 bg-card cartoon-border cartoon-shadow">
@@ -445,6 +558,202 @@ export default function QuizPage() {
             </div>
           )}
         </Card>
+      </div>
+    </div>
+  )
+}
+
+interface QuizResultsScreenProps {
+  score: number
+  totalQuestions: number
+  topic: string
+  userAnswers: (number | string)[]
+  questions: any[]
+  onRetakeQuiz: () => void
+  onBackToDashboard: () => void
+}
+
+function QuizResultsScreen({ 
+  score, 
+  totalQuestions, 
+  topic, 
+  userAnswers, 
+  questions,
+  onRetakeQuiz,
+  onBackToDashboard
+}: QuizResultsScreenProps) {
+  const [userProfile, setUserProfile] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      try {
+        const userId = getCurrentUserId()
+        if (userId) {
+          const response = await fetch(`/api/user-stats?userId=${userId}`)
+          if (response.ok) {
+            const data = await response.json()
+            setUserProfile(data)
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching user profile:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchUserProfile()
+  }, [])
+
+  const accuracy = totalQuestions > 0 ? (score / totalQuestions) * 100 : 0
+  const rank = userProfile ? getRankFromXP(userProfile.stats?.xp || 0) : null
+
+  return (
+    <div className="min-h-screen bg-background p-6">
+      <div className="max-w-4xl mx-auto">
+        {/* Level Up Modal */}
+        {userProfile && (
+          <LevelUpModal
+            isOpen={false} // Would be controlled by parent component
+            onClose={() => {}}
+            oldXP={0}
+            newXP={0}
+            xpEarned={0}
+          />
+        )}
+
+        {/* Results Header */}
+        <div className="text-center mb-8">
+          <div className="w-20 h-20 rounded-xl bg-primary flex items-center justify-center mx-auto mb-6 cartoon-border cartoon-shadow">
+            <Trophy className="w-10 h-10 text-primary-foreground" strokeWidth={3} />
+          </div>
+          
+          <h1 className="text-4xl font-black text-foreground mb-4" style={{ fontFamily: "var(--font-display)" }}>
+            Quiz Complete!
+          </h1>
+          
+          <div className="mb-6">
+            <p className="text-6xl font-black mb-2" style={{ color: "var(--primary)" }}>
+              {score}/{totalQuestions}
+            </p>
+            <p className="text-2xl font-black text-foreground mb-2">
+              {accuracy.toFixed(1)}% Correct
+            </p>
+            <p className="text-lg text-muted-foreground font-bold mb-4">Topic: {topic}</p>
+            <Badge className={`cartoon-border font-black text-lg px-4 py-2 ${
+              accuracy >= 80
+                ? "bg-chart-3 text-foreground"
+                : accuracy >= 60
+                ? "bg-primary text-primary-foreground"
+                : "bg-destructive text-destructive-foreground"
+            }`}>
+              {accuracy >= 80
+                ? "Excellent!"
+                : accuracy >= 60
+                ? "Good Job!"
+                : "Keep Studying!"}
+            </Badge>
+          </div>
+        </div>
+
+        {/* User Stats and XP Progress */}
+        {userProfile && (
+          <Card className="p-6 bg-card cartoon-border cartoon-shadow mb-8">
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* Current Stats */}
+              <div>
+                <h3 className="text-lg font-black text-foreground mb-4 flex items-center gap-2">
+                  {rank && getRankIcon(rank, "h-5 w-5")}
+                  Your Progress
+                </h3>
+                <div className="space-y-3">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground font-bold">Current Level:</span>
+                    <span className="font-black text-foreground">Level {userProfile.stats?.level || 1}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground font-bold">Total XP:</span>
+                    <span className="font-black text-foreground">{formatXP(userProfile.stats?.xp || 0)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground font-bold">Total Wins:</span>
+                    <span className="font-black text-foreground">{userProfile.stats?.total_wins || 0}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* XP Progress */}
+              <div>
+                <h3 className="text-lg font-black text-foreground mb-4">XP Progress</h3>
+                <XPProgressBar xp={userProfile.stats?.xp || 0} />
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Question Review */}
+        <Card className="p-6 bg-card cartoon-border cartoon-shadow mb-8">
+          <h3 className="text-lg font-black text-foreground mb-4">Question Review</h3>
+          <div className="space-y-4">
+            {questions.map((question, index) => {
+              const userAnswer = userAnswers[index]
+              const isCorrect = question.type === "multiple_choice" 
+                ? userAnswer === (question.correct !== undefined ? question.correct : 0)
+                : question.expected_answers?.some((ans: string) => 
+                    ans.toLowerCase().trim() === (userAnswer as string)?.toLowerCase().trim()
+                  )
+              
+              return (
+                <div key={index} className={`p-4 rounded-xl border-2 ${
+                  isCorrect 
+                    ? "bg-chart-3/10 border-chart-3" 
+                    : "bg-destructive/10 border-destructive"
+                }`}>
+                  <div className="flex items-start gap-3">
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      isCorrect ? "bg-chart-3 text-foreground" : "bg-destructive text-destructive-foreground"
+                    }`}>
+                      {isCorrect ? "✓" : "✗"}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-bold text-foreground mb-2">
+                        {question.question || question.q}
+                      </p>
+                      <div className="text-sm text-muted-foreground">
+                        <p><strong>Your answer:</strong> {userAnswer}</p>
+                        <p><strong>Correct answer:</strong> {
+                          question.type === "multiple_choice" 
+                            ? question.options?.[question.correct !== undefined ? question.correct : 0] || question.a
+                            : question.expected_answers?.join(", ") || question.a
+                        }</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </Card>
+
+        {/* Action Buttons */}
+        <div className="space-y-4">
+          <Button 
+            onClick={onRetakeQuiz}
+            className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg cartoon-border cartoon-shadow cartoon-hover"
+          >
+            <Zap className="h-5 w-5 mr-2" strokeWidth={3} />
+            Take Another Quiz
+          </Button>
+          <Button 
+            onClick={onBackToDashboard}
+            variant="outline" 
+            className="w-full h-12 font-black cartoon-border cartoon-shadow"
+          >
+            <ArrowLeft className="h-5 w-5 mr-2" strokeWidth={3} />
+            Back to Dashboard
+          </Button>
+        </div>
       </div>
     </div>
   )

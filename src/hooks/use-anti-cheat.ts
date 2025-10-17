@@ -20,6 +20,7 @@ export function useAntiCheat({
   const awayStartTime = useRef<number | null>(null)
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const isAway = useRef(false)
+  const awayType = useRef<CheatEvent['type'] | null>(null)
 
   const reportViolation = useCallback((type: CheatEvent['type'], duration: number) => {
     const event: CheatEvent = {
@@ -31,11 +32,12 @@ export function useAntiCheat({
     onCheatDetected?.(event)
   }, [onCheatDetected])
 
-  const startAwayTimer = useCallback(() => {
+  const startAwayTimer = useCallback((type: CheatEvent['type']) => {
     if (!isGameActive || isAway.current) return
     
     awayStartTime.current = Date.now()
     isAway.current = true
+    awayType.current = type
     
     // Clear any existing timer
     if (timerRef.current) {
@@ -44,26 +46,27 @@ export function useAntiCheat({
     
     // Set timer to check if away for threshold duration
     timerRef.current = setTimeout(() => {
-      if (isAway.current && awayStartTime.current) {
+      if (isAway.current && awayStartTime.current && awayType.current) {
         const duration = Date.now() - awayStartTime.current
-        reportViolation('tab_switch', duration)
+        reportViolation(awayType.current, duration)
       }
     }, thresholdMs)
   }, [isGameActive, thresholdMs, reportViolation])
 
   const endAwayTimer = useCallback(() => {
-    if (!isAway.current || !awayStartTime.current) return
+    if (!isAway.current || !awayStartTime.current || !awayType.current) return
     
     const duration = Date.now() - awayStartTime.current
     
     // Only report if away for longer than threshold
     if (duration >= thresholdMs) {
-      reportViolation('tab_switch', duration)
+      reportViolation(awayType.current, duration)
     }
     
     // Reset state
     isAway.current = false
     awayStartTime.current = null
+    awayType.current = null
     
     if (timerRef.current) {
       clearTimeout(timerRef.current)
@@ -75,7 +78,7 @@ export function useAntiCheat({
     if (!isGameActive) return
     
     if (document.hidden) {
-      startAwayTimer()
+      startAwayTimer('visibility_change')
     } else {
       endAwayTimer()
     }
@@ -83,7 +86,7 @@ export function useAntiCheat({
 
   const handleWindowBlur = useCallback(() => {
     if (!isGameActive) return
-    startAwayTimer()
+    startAwayTimer('window_blur')
   }, [isGameActive, startAwayTimer])
 
   const handleWindowFocus = useCallback(() => {
@@ -101,6 +104,7 @@ export function useAntiCheat({
       }
       isAway.current = false
       awayStartTime.current = null
+      awayType.current = null
       return
     }
 

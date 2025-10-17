@@ -7,6 +7,7 @@ import { Brain, Users, Upload, Settings, ArrowLeft, Copy, Check, Crown, Lock, Re
 import Link from 'next/link'
 import { useAntiCheat, CheatEvent } from '@/hooks/use-anti-cheat'
 import { CheatAlertContainer, CheatAlertData } from '@/components/multiplayer/cheat-alert'
+import { QuizProgressBar } from '@/components/ui/quiz-progress-bar'
 import { getCurrentUserId } from '@/lib/auth/session'
 
 interface Room {
@@ -69,6 +70,14 @@ export default function RoomPage() {
   })
   const [isStartingQuiz, setIsStartingQuiz] = useState(false)
   const [playerProgress, setPlayerProgress] = useState<{[key: string]: {currentQuestion: number, score: number, isActive: boolean}}>({})
+  
+  // Current user's quiz progress
+  const [currentUserProgress, setCurrentUserProgress] = useState({
+    currentQuestion: 0,
+    score: 0,
+    timeLeft: 30,
+    streak: 0
+  })
   const [studySession, setStudySession] = useState<{
     isActive: boolean
     timeRemaining: number
@@ -93,7 +102,17 @@ export default function RoomPage() {
 
   // Anti-cheat functionality
   const handleCheatDetected = async (event: CheatEvent) => {
-    if (!quizSession) return
+    if (!quizSession) {
+      console.warn('🚨 [ROOM] Cheat detected but no active quiz session')
+      return
+    }
+
+    console.log('🚨 [ROOM] Reporting cheat event:', {
+      sessionId: quizSession.id,
+      violationType: event.type,
+      duration: event.duration,
+      timestamp: event.timestamp
+    })
 
     try {
       const response = await fetch('/api/cheat-events', {
@@ -109,10 +128,14 @@ export default function RoomPage() {
       })
 
       if (!response.ok) {
-        console.error('Failed to log cheat event:', await response.text())
+        const errorText = await response.text()
+        console.error('❌ [ROOM] Failed to log cheat event:', response.status, errorText)
+      } else {
+        const result = await response.json()
+        console.log('✅ [ROOM] Cheat event logged successfully:', result)
       }
     } catch (error) {
-      console.error('Error logging cheat event:', error)
+      console.error('❌ [ROOM] Error logging cheat event:', error)
     }
   }
 
@@ -205,6 +228,7 @@ export default function RoomPage() {
 
         if (sessionData) {
           setQuizSession(sessionData)
+          console.log('✅ [ROOM] Quiz session loaded:', sessionData.id, 'Status:', sessionData.status)
         }
       } catch (err) {
         setError('An unexpected error occurred')
@@ -275,6 +299,8 @@ export default function RoomPage() {
   useEffect(() => {
     if (!quizSession) return
 
+    console.log('🔄 [ROOM] Setting up cheat events subscription for session:', quizSession.id)
+
     // Create separate channel for session events
     const sessionChannel = supabase.channel(`session:${quizSession.id}`)
       .on('postgres_changes', {
@@ -283,17 +309,35 @@ export default function RoomPage() {
         table: 'session_events',
         filter: `session_id=eq.${quizSession.id}`
       }, (payload) => {
+        console.log('📢 [ROOM] Received session event:', payload.new)
+        
         if (payload.new.type === 'cheat_detected') {
-          const alertData: CheatAlertData = payload.new.payload
-          setCheatAlerts(prev => [...prev, alertData])
+          try {
+            // Parse the payload - it should be a JSON object with the cheat alert data
+            const alertData: CheatAlertData = typeof payload.new.payload === 'string' 
+              ? JSON.parse(payload.new.payload) 
+              : payload.new.payload
+              
+            console.log('🚨 [ROOM] Cheat detected for user:', alertData.display_name, 'Duration:', alertData.duration_seconds)
+            
+            // Only show alerts for other users, not yourself
+            if (alertData.user_id !== currentUserId) {
+              setCheatAlerts(prev => [...prev, alertData])
+            }
+          } catch (error) {
+            console.error('❌ [ROOM] Error parsing cheat event payload:', error, payload.new)
+          }
         }
       })
-      .subscribe()
+      .subscribe((status) => {
+        console.log('📡 [ROOM] Session channel subscription status:', status)
+      })
 
     return () => {
+      console.log('🧹 [ROOM] Cleaning up session channel subscription')
       supabase.removeChannel(sessionChannel)
     }
-  }, [quizSession, supabase])
+  }, [quizSession, supabase, currentUserId])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -422,8 +466,8 @@ export default function RoomPage() {
           total_questions: quizSettings.totalQuestions,
           current_question: 0,
           time_limit: quizSettings.timeLimit,
-          started_at: new Date().toISOString(),
-          is_active: true
+          status: 'active',
+          started_at: new Date().toISOString()
         })
         .select()
         .single()
@@ -435,6 +479,9 @@ export default function RoomPage() {
       }
 
       console.log('✅ [ROOM] Quiz session created:', sessionData.id)
+      
+      // Set the quiz session state
+      setQuizSession(sessionData)
 
       // Update room status
       const { error: roomError } = await supabase
@@ -589,7 +636,7 @@ export default function RoomPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+    <div className="min-h-screen bg-background">
       {/* Cheat Alert Container */}
       <CheatAlertContainer 
         alerts={cheatAlerts}
@@ -600,46 +647,61 @@ export default function RoomPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center">
-            <Link href="/" className="text-indigo-600 hover:text-indigo-700 mr-4">
-              <ArrowLeft className="h-6 w-6" />
+            <Link href="/" className="text-primary hover:text-primary/80 mr-4 cartoon-hover">
+              <ArrowLeft className="h-6 w-6" strokeWidth={3} />
             </Link>
             <div>
               <div className="flex items-center gap-3 mb-1">
-                <h1 className="text-3xl font-bold text-gray-900">{room.name}</h1>
+                <h1 className="text-4xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
+                  {room.name}
+                </h1>
                 {isHost && (
-                  <div className="flex items-center gap-1 px-2 py-1 bg-yellow-100 rounded-full">
-                    <Crown className="h-4 w-4 text-yellow-600" />
-                    <span className="text-xs font-bold text-yellow-700">HOST</span>
+                  <div className="flex items-center gap-1 px-3 py-1 bg-chart-3 text-foreground rounded-full cartoon-border">
+                    <Crown className="h-4 w-4" strokeWidth={3} />
+                    <span className="text-xs font-black">HOST</span>
                   </div>
                 )}
               </div>
-              <p className="text-gray-600">Room Code: {room.room_code}</p>
+              <p className="text-muted-foreground font-bold">Room Code: <span className="font-black text-primary">{room.room_code}</span></p>
             </div>
           </div>
           <button
             onClick={copyRoomCode}
-            className="flex items-center px-4 py-2 bg-white rounded-lg shadow hover:shadow-md transition-shadow"
+            className="flex items-center px-4 py-3 bg-card rounded-xl cartoon-border cartoon-shadow cartoon-hover font-bold"
           >
             {copied ? (
               <>
-                <Check className="h-4 w-4 text-green-600 mr-2" />
+                <Check className="h-4 w-4 text-chart-3 mr-2" strokeWidth={3} />
                 Copied!
               </>
             ) : (
               <>
-                <Copy className="h-4 w-4 text-gray-600 mr-2" />
+                <Copy className="h-4 w-4 text-primary mr-2" strokeWidth={3} />
                 Copy Code
               </>
             )}
           </button>
         </div>
 
+        {/* Quiz Progress Bar - Show when quiz is active */}
+        {quizSession?.status === 'active' && (
+          <QuizProgressBar
+            currentQuestion={currentUserProgress.currentQuestion}
+            totalQuestions={room.total_questions}
+            score={currentUserProgress.score}
+            timeLeft={currentUserProgress.timeLeft}
+            topic={room.subject || 'General Knowledge'}
+            isAway={isAway}
+            streak={currentUserProgress.streak}
+          />
+        )}
+
         {/* Player Progress Indicators */}
         {room.status === 'active' && members.length > 0 && (
           <div className="mb-8">
-            <div className="bg-white rounded-2xl shadow-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <Users className="h-5 w-5 text-indigo-600" />
+            <div className="bg-card rounded-2xl cartoon-border cartoon-shadow p-6">
+              <h3 className="text-2xl font-black text-foreground mb-4 flex items-center gap-2" style={{ fontFamily: "var(--font-display)" }}>
+                <Users className="h-6 w-6 text-primary" strokeWidth={3} />
                 Live Progress
               </h3>
               <div className="flex flex-wrap gap-4">
@@ -649,42 +711,42 @@ export default function RoomPage() {
                   const progressPercent = room.total_questions > 0 ? (progress.currentQuestion / room.total_questions) * 100 : 0
                   
                   return (
-                    <div key={member.user_id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg min-w-[200px]">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        isMemberHost ? 'bg-yellow-100' : 'bg-indigo-100'
+                    <div key={member.user_id} className="flex items-center gap-4 p-4 bg-secondary/30 rounded-xl cartoon-border min-w-[220px] cartoon-hover">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center cartoon-border ${
+                        isMemberHost ? 'bg-chart-3 text-foreground' : 'bg-primary text-primary-foreground'
                       }`}>
                         {isMemberHost ? (
-                          <Crown className="h-5 w-5 text-yellow-600" />
+                          <Crown className="h-6 w-6" strokeWidth={3} />
                         ) : (
-                          <span className="text-indigo-600 font-semibold text-sm">
+                          <span className="font-black text-lg">
                             {member.users.username.charAt(0).toUpperCase()}
                           </span>
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="font-medium text-gray-900 text-sm truncate">{member.users.username}</p>
+                        <div className="flex items-center gap-2 mb-2">
+                          <p className="font-black text-foreground text-sm truncate">{member.users.username}</p>
                           {isMemberHost && (
-                            <span className="text-xs font-bold text-yellow-600 bg-yellow-100 px-1.5 py-0.5 rounded-full">
+                            <span className="text-xs font-black text-foreground bg-chart-3 px-2 py-1 rounded-full cartoon-border">
                               HOST
                             </span>
                           )}
                         </div>
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-xs text-gray-500">
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-xs font-bold text-muted-foreground">
                             <span>Q: {progress.currentQuestion}/{room.total_questions}</span>
                             <span>Score: {progress.score}</span>
                           </div>
-                          <div className="w-full bg-gray-200 rounded-full h-1.5">
+                          <div className="w-full bg-muted rounded-full h-2 cartoon-border">
                             <div 
-                              className="bg-indigo-600 h-1.5 rounded-full transition-all duration-300"
+                              className="bg-primary h-2 rounded-full transition-all duration-300"
                               style={{ width: `${progressPercent}%` }}
                             ></div>
                           </div>
                         </div>
                       </div>
-                      <div className={`w-2 h-2 rounded-full ${
-                        progress.isActive ? 'bg-green-500' : 'bg-gray-400'
+                      <div className={`w-3 h-3 rounded-full cartoon-border ${
+                        progress.isActive ? 'bg-chart-3 animate-pulse' : 'bg-muted-foreground'
                       }`} title={progress.isActive ? 'Active' : 'Inactive'}></div>
                     </div>
                   )
@@ -697,33 +759,35 @@ export default function RoomPage() {
         {/* Study Session */}
         {studySession.isActive && (
           <div className="mb-8">
-            <div className="bg-gradient-to-r from-green-50 to-blue-50 rounded-2xl shadow-lg p-6 border-2 border-green-200">
+            <div className="bg-gradient-to-r from-chart-3/10 to-primary/10 rounded-2xl cartoon-border cartoon-shadow p-6 border-2 border-chart-3">
               <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">
-                    <Brain className="h-6 w-6 text-white" />
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 bg-chart-3 rounded-full flex items-center justify-center cartoon-border cartoon-shadow">
+                    <Brain className="h-7 w-7 text-foreground" strokeWidth={3} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-gray-900">Study Session Active</h3>
-                    <p className="text-sm text-gray-600">Use this time to review materials and prepare for the quiz</p>
+                    <h3 className="text-2xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
+                      Study Session Active
+                    </h3>
+                    <p className="text-sm text-muted-foreground font-bold">Use this time to review materials and prepare for the quiz</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className="text-3xl font-bold text-green-600">{formatTime(studySession.timeRemaining)}</div>
-                  <div className="text-sm text-gray-500">Time Remaining</div>
+                  <div className="text-4xl font-black text-chart-3">{formatTime(studySession.timeRemaining)}</div>
+                  <div className="text-sm text-muted-foreground font-bold">Time Remaining</div>
                 </div>
               </div>
 
               <div className="grid md:grid-cols-3 gap-6">
                 {/* Study Notes */}
-                <div className="bg-white rounded-xl p-4 shadow-sm">
-                  <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                    <FileText className="h-4 w-4 text-blue-600" />
+                <div className="bg-card rounded-xl p-4 cartoon-border cartoon-shadow">
+                  <h4 className="font-black text-foreground mb-3 flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-secondary" strokeWidth={3} />
                     Study Notes
                   </h4>
                   <div className="space-y-2 max-h-40 overflow-y-auto">
                     {studySession.resources.notes.map((note, index) => (
-                      <div key={index} className="text-sm text-gray-700 bg-gray-50 p-2 rounded">
+                      <div key={index} className="text-sm text-foreground bg-secondary/30 p-3 rounded-lg cartoon-border font-bold">
                         {note}
                       </div>
                     ))}
@@ -731,9 +795,9 @@ export default function RoomPage() {
                 </div>
 
                 {/* Study Links */}
-                <div className="bg-white rounded-xl p-4 shadow-sm">
-                  <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                    <Settings className="h-4 w-4 text-purple-600" />
+                <div className="bg-card rounded-xl p-4 cartoon-border cartoon-shadow">
+                  <h4 className="font-black text-foreground mb-3 flex items-center gap-2">
+                    <Settings className="h-5 w-5 text-accent" strokeWidth={3} />
                     Study Links
                   </h4>
                   <div className="space-y-2">
@@ -743,7 +807,7 @@ export default function RoomPage() {
                         href={link.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="block text-sm text-blue-600 hover:text-blue-800 bg-blue-50 p-2 rounded hover:bg-blue-100 transition-colors"
+                        className="block text-sm text-primary hover:text-primary/80 bg-primary/10 p-3 rounded-lg cartoon-border cartoon-hover font-bold transition-all"
                       >
                         {link.title}
                       </a>
@@ -752,9 +816,9 @@ export default function RoomPage() {
                 </div>
 
                 {/* Video Resources */}
-                <div className="bg-white rounded-xl p-4 shadow-sm">
-                  <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                    <Upload className="h-4 w-4 text-red-600" />
+                <div className="bg-card rounded-xl p-4 cartoon-border cartoon-shadow">
+                  <h4 className="font-black text-foreground mb-3 flex items-center gap-2">
+                    <Upload className="h-5 w-5 text-chart-3" strokeWidth={3} />
                     Video Resources
                   </h4>
                   <div className="space-y-2">
@@ -764,7 +828,7 @@ export default function RoomPage() {
                         href={video.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="block text-sm text-red-600 hover:text-red-800 bg-red-50 p-2 rounded hover:bg-red-100 transition-colors"
+                        className="block text-sm text-chart-3 hover:text-chart-3/80 bg-chart-3/10 p-3 rounded-lg cartoon-border cartoon-hover font-bold transition-all"
                       >
                         {video.title}
                       </a>
@@ -777,7 +841,7 @@ export default function RoomPage() {
                 <div className="mt-6 flex justify-center">
                   <button
                     onClick={() => setStudySession(prev => ({ ...prev, isActive: false }))}
-                    className="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors font-semibold"
+                    className="bg-chart-3 text-foreground px-6 py-3 rounded-xl cartoon-border cartoon-shadow cartoon-hover font-black text-lg"
                   >
                     End Study Session & Start Quiz
                   </button>
@@ -791,48 +855,53 @@ export default function RoomPage() {
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
             {/* Members */}
-            <div className="bg-white rounded-2xl shadow-lg p-6">
+            <div className="bg-card rounded-2xl cartoon-border cartoon-shadow p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center">
-                  <Users className="h-6 w-6 text-indigo-600 mr-2" />
-                  <h2 className="text-xl font-semibold text-gray-900">Members ({members.length})</h2>
+                  <Users className="h-6 w-6 text-primary mr-2" strokeWidth={3} />
+                  <h2 className="text-2xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
+                    Members ({members.length})
+                  </h2>
                 </div>
                 <button
                   onClick={() => fetchRoomMembers(true)}
                   disabled={isRefreshingMembers}
-                  className="p-2 text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors disabled:opacity-50"
+                  className="p-3 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-xl cartoon-border cartoon-hover transition-all disabled:opacity-50"
                   title="Refresh members list"
                 >
-                  <RefreshCw className={`h-4 w-4 ${isRefreshingMembers ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`h-5 w-5 ${isRefreshingMembers ? 'animate-spin' : ''}`} strokeWidth={3} />
                 </button>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {members.map((member) => {
                   const isMemberHost = member.user_id === room.host_id
                   return (
-                    <div key={member.user_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center">
-                        <div className={`w-10 h-10 rounded-full flex items-center justify-center mr-3 ${
-                          isMemberHost ? 'bg-yellow-100' : 'bg-indigo-100'
+                    <div key={member.user_id} className="flex items-center justify-between p-4 bg-secondary/30 rounded-xl cartoon-border cartoon-hover">
+                      <div className="flex items-center gap-4">
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center cartoon-border ${
+                          isMemberHost ? 'bg-chart-3 text-foreground' : 'bg-primary text-primary-foreground'
                         }`}>
                           {isMemberHost ? (
-                            <Crown className="h-5 w-5 text-yellow-600" />
+                            <Crown className="h-6 w-6" strokeWidth={3} />
                           ) : (
-                            <span className="text-indigo-600 font-semibold">
+                            <span className="font-black text-lg">
                               {member.users.username.charAt(0).toUpperCase()}
                             </span>
                           )}
                         </div>
                         <div>
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium text-gray-900">{member.users.username}</p>
+                          <div className="flex items-center gap-3">
+                            <p className="font-black text-foreground text-lg">{member.users.username}</p>
                             {isMemberHost && (
-                              <span className="text-xs font-bold text-yellow-600 bg-yellow-100 px-2 py-1 rounded-full">
+                              <span className="text-xs font-black text-foreground bg-chart-3 px-3 py-1 rounded-full cartoon-border">
                                 HOST
                               </span>
                             )}
+                            <div className={`w-3 h-3 rounded-full cartoon-border ${
+                              member.is_ready ? 'bg-chart-3 animate-pulse' : 'bg-muted-foreground'
+                            }`} title={member.is_ready ? 'Ready' : 'Not Ready'}></div>
                           </div>
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-muted-foreground font-bold">
                             {member.is_ready ? 'Ready' : 'Not Ready'} • Joined {new Date(member.joined_at).toLocaleDateString()}
                           </p>
                         </div>
@@ -844,12 +913,14 @@ export default function RoomPage() {
             </div>
 
             {/* Upload Section */}
-            <div className="bg-white rounded-2xl shadow-lg p-6">
+            <div className="bg-card rounded-2xl cartoon-border cartoon-shadow p-6">
               <div className="flex items-center mb-4">
-                <Upload className="h-6 w-6 text-indigo-600 mr-2" />
-                <h2 className="text-xl font-semibold text-gray-900">Study Materials</h2>
+                <Upload className="h-6 w-6 text-primary mr-2" strokeWidth={3} />
+                <h2 className="text-2xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
+                  Study Materials
+                </h2>
                 {!isHost && (
-                  <Lock className="h-4 w-4 text-gray-400 ml-2" />
+                  <Lock className="h-5 w-5 text-muted-foreground ml-2" strokeWidth={3} />
                 )}
               </div>
               
@@ -857,21 +928,21 @@ export default function RoomPage() {
                 <div className="space-y-4">
                   {/* Success message */}
                   {showUploadSuccess && (
-                    <div className="p-3 rounded-lg bg-green-100 border border-green-300 text-center">
-                      <p className="text-green-700 font-bold text-sm">✅ Files uploaded successfully!</p>
+                    <div className="p-4 rounded-xl bg-chart-3/10 border-2 border-chart-3 text-center cartoon-border">
+                      <p className="text-chart-3 font-black text-sm">✅ Files uploaded successfully!</p>
                     </div>
                   )}
 
                   {/* Error messages */}
                   {uploadErrors.length > 0 && (
-                    <div className="p-3 rounded-lg bg-red-100 border border-red-300">
+                    <div className="p-4 rounded-xl bg-destructive/10 border-2 border-destructive cartoon-border">
                       <div className="flex items-center gap-2 mb-2">
-                        <AlertCircle className="h-4 w-4 text-red-600" />
-                        <p className="text-red-700 font-bold text-sm">Upload Errors:</p>
+                        <AlertCircle className="h-5 w-5 text-destructive" strokeWidth={3} />
+                        <p className="text-destructive font-black text-sm">Upload Errors:</p>
                       </div>
                       <ul className="space-y-1">
                         {uploadErrors.map((error, index) => (
-                          <li key={index} className="text-red-600 text-xs">• {error}</li>
+                          <li key={index} className="text-destructive text-xs font-bold">• {error}</li>
                         ))}
                       </ul>
                     </div>
@@ -879,10 +950,10 @@ export default function RoomPage() {
 
                   {/* Upload progress */}
                   {isUploading && (
-                    <div className="p-3 rounded-lg bg-blue-100 border border-blue-300 text-center">
+                    <div className="p-4 rounded-xl bg-primary/10 border-2 border-primary text-center cartoon-border">
                       <div className="flex items-center justify-center gap-2">
-                        <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />
-                        <p className="text-blue-700 font-bold text-sm">Processing files...</p>
+                        <Loader2 className="h-5 w-5 text-primary animate-spin" strokeWidth={3} />
+                        <p className="text-primary font-black text-sm">Processing files...</p>
                       </div>
                     </div>
                   )}
@@ -946,10 +1017,10 @@ export default function RoomPage() {
                   )}
                 </div>
               ) : (
-                <div className="border-2 border-dashed border-gray-200 rounded-lg p-8 text-center bg-gray-50">
-                  <Lock className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500 mb-2">Study materials upload</p>
-                  <p className="text-sm text-gray-400">Only the host can upload study materials</p>
+                <div className="border-2 border-dashed border-muted rounded-xl p-8 text-center bg-secondary/30 cartoon-border">
+                  <Lock className="h-12 w-12 text-muted-foreground mx-auto mb-4" strokeWidth={3} />
+                  <p className="text-muted-foreground mb-2 font-bold">Study materials upload</p>
+                  <p className="text-sm text-muted-foreground">Only the host can upload study materials</p>
                 </div>
               )}
             </div>
@@ -958,19 +1029,24 @@ export default function RoomPage() {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Room Settings */}
-            <div className="bg-white rounded-2xl shadow-lg p-6">
+            <div className="bg-card rounded-2xl cartoon-border cartoon-shadow p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center">
-                  <Settings className="h-6 w-6 text-indigo-600 mr-2" />
-                  <h3 className="text-lg font-semibold text-gray-900">Room Settings</h3>
+                  <Settings className="h-6 w-6 text-primary mr-2" strokeWidth={3} />
+                  <h3 className="text-xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
+                    Room Settings
+                  </h3>
                   {!isHost && (
-                    <Lock className="h-4 w-4 text-gray-400 ml-2" />
+                    <Lock className="h-5 w-5 text-muted-foreground ml-2" strokeWidth={3} />
                   )}
                 </div>
                 {quizSession?.status === 'active' && (
-                  <div className="flex items-center gap-2 px-3 py-1 bg-red-100 rounded-full">
-                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                    <span className="text-xs font-medium text-red-700">Anti-Cheat Active</span>
+                  <div className="flex items-center gap-2 px-3 py-2 bg-destructive/10 border-2 border-destructive rounded-full cartoon-border">
+                    <div className="w-2 h-2 bg-destructive rounded-full animate-pulse"></div>
+                    <span className="text-xs font-black text-destructive">Anti-Cheat Active</span>
+                    {isAway && (
+                      <span className="text-xs font-black text-destructive">(You are away)</span>
+                    )}
                   </div>
                 )}
               </div>
@@ -978,11 +1054,11 @@ export default function RoomPage() {
               {isHost ? (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-bold text-foreground mb-2">
                       Quiz Difficulty
                     </label>
                     <select 
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      className="w-full px-4 py-3 border-2 border-border rounded-xl cartoon-border bg-background text-foreground font-bold focus:border-primary focus:outline-none"
                       value={quizSettings.difficulty}
                       onChange={(e) => updateQuizSettings('difficulty', e.target.value)}
                     >
@@ -992,7 +1068,7 @@ export default function RoomPage() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-bold text-foreground mb-2">
                       Number of Questions
                     </label>
                     <input
@@ -1001,11 +1077,11 @@ export default function RoomPage() {
                       max="50"
                       value={quizSettings.totalQuestions}
                       onChange={(e) => updateQuizSettings('totalQuestions', parseInt(e.target.value))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      className="w-full px-4 py-3 border-2 border-border rounded-xl cartoon-border bg-background text-foreground font-bold focus:border-primary focus:outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-bold text-foreground mb-2">
                       Time per Question (seconds)
                     </label>
                     <input
@@ -1014,32 +1090,32 @@ export default function RoomPage() {
                       max="120"
                       value={quizSettings.timeLimit}
                       onChange={(e) => updateQuizSettings('timeLimit', parseInt(e.target.value))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
+                      className="w-full px-4 py-3 border-2 border-border rounded-xl cartoon-border bg-background text-foreground font-bold focus:border-primary focus:outline-none"
                     />
                   </div>
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     <button 
                       onClick={startStudySession}
                       disabled={uploadedFiles.length === 0 || studySession.isActive}
-                      className="w-full bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      className="w-full bg-chart-3 text-foreground py-3 px-4 rounded-xl cartoon-border cartoon-shadow cartoon-hover font-black text-lg disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
-                      <Brain className="h-4 w-4" />
+                      <Brain className="h-5 w-5" strokeWidth={3} />
                       Start Study Session (5 min)
                     </button>
                     
                     <button 
                       onClick={handleStartQuiz}
                       disabled={isStartingQuiz || uploadedFiles.length === 0}
-                      className="w-full bg-indigo-600 text-white py-2 px-4 rounded-lg hover:bg-indigo-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      className="w-full bg-primary text-primary-foreground py-3 px-4 rounded-xl cartoon-border cartoon-shadow cartoon-hover font-black text-lg disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {isStartingQuiz ? (
                         <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          <div className="w-5 h-5 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin"></div>
                           Starting Quiz...
                         </>
                       ) : (
                         <>
-                          <Zap className="h-4 w-4" />
+                          <Zap className="h-5 w-5" strokeWidth={3} />
                           Start Quiz Directly
                         </>
                       )}
@@ -1047,59 +1123,59 @@ export default function RoomPage() {
                   </div>
                   
                   {uploadedFiles.length === 0 && (
-                    <p className="text-sm text-red-600 text-center">
+                    <p className="text-sm text-destructive text-center font-bold">
                       Please upload study materials before starting
                     </p>
                   )}
                   
                   {studySession.isActive && (
-                    <p className="text-sm text-green-600 text-center">
+                    <p className="text-sm text-chart-3 text-center font-bold">
                       Study session is active! Use the time to review materials.
                     </p>
                   )}
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="p-4 bg-gray-50 rounded-lg">
+                  <div className="p-4 bg-secondary/30 rounded-xl cartoon-border">
                     <div className="flex items-center gap-2 mb-2">
-                      <Lock className="h-4 w-4 text-gray-400" />
-                      <span className="text-sm font-medium text-gray-600">Host Only</span>
+                      <Lock className="h-5 w-5 text-muted-foreground" strokeWidth={3} />
+                      <span className="text-sm font-bold text-muted-foreground">Host Only</span>
                     </div>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-muted-foreground font-bold">
                       Only the room host can change quiz settings and start the game.
                     </p>
                   </div>
                   
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-bold text-foreground mb-2">
                         Quiz Difficulty
                       </label>
-                      <div className="px-3 py-2 bg-gray-100 rounded-lg text-gray-600 capitalize">
+                      <div className="px-4 py-3 bg-muted rounded-xl cartoon-border text-foreground font-bold capitalize">
                         {room.difficulty}
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-bold text-foreground mb-2">
                         Number of Questions
                       </label>
-                      <div className="px-3 py-2 bg-gray-100 rounded-lg text-gray-600">
+                      <div className="px-4 py-3 bg-muted rounded-xl cartoon-border text-foreground font-bold">
                         {room.total_questions}
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                      <label className="block text-sm font-bold text-foreground mb-2">
                         Time per Question
                       </label>
-                      <div className="px-3 py-2 bg-gray-100 rounded-lg text-gray-600">
+                      <div className="px-4 py-3 bg-muted rounded-xl cartoon-border text-foreground font-bold">
                         {room.time_limit} seconds
                       </div>
                     </div>
                   </div>
                   
-                  <div className="p-3 bg-blue-50 rounded-lg">
-                    <p className="text-sm text-blue-700">
-                      <strong>Waiting for host to start the quiz...</strong>
+                  <div className="p-4 bg-primary/10 rounded-xl cartoon-border">
+                    <p className="text-sm text-primary font-black">
+                      Waiting for host to start the quiz...
                     </p>
                   </div>
                 </div>
