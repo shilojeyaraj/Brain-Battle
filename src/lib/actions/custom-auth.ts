@@ -277,25 +277,30 @@ export async function login(formData: FormData) {
     redirect("/login?error=Email and password are required")
   }
 
-  // Authenticate user with custom auth
-  const result = await authenticateUser(email, password)
-  
-  if (!result.success) {
-    // Redirect back to login with error message instead of throwing
-    console.log("❌ [LOGIN] Authentication failed:", result.error)
-    redirect(`/login?error=${encodeURIComponent(result.error || "Login failed")}`)
-  }
+  try {
+    // Authenticate user with custom auth
+    const result = await authenticateUser(email, password)
+    
+    if (!result.success) {
+      // Redirect back to login with error message instead of throwing
+      console.log("❌ [LOGIN] Authentication failed:", result.error)
+      redirect(`/login?error=${encodeURIComponent(result.error || "Login failed")}`)
+    }
 
-  // Store user in session
-  if (result.user) {
-    // We'll set the session on the client side after redirect
-    // For now, we'll pass the user ID as a query parameter
-    console.log("✅ [LOGIN] Authentication successful, redirecting to dashboard")
-    revalidatePath("/")
-    redirect(`/dashboard?userId=${result.user.id}`)
-  } else {
-    revalidatePath("/")
-    redirect("/dashboard")
+    // Store user in session
+    if (result.user) {
+      // We'll set the session on the client side after redirect
+      // For now, we'll pass the user ID as a query parameter
+      console.log("✅ [LOGIN] Authentication successful, redirecting to dashboard")
+      revalidatePath("/")
+      redirect(`/dashboard?userId=${result.user.id}`)
+    } else {
+      revalidatePath("/")
+      redirect("/dashboard")
+    }
+  } catch (error) {
+    console.error("❌ [LOGIN] Server error during authentication:", error)
+    redirect("/login?error=Server error. Please try again.")
   }
 }
 
