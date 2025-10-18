@@ -46,19 +46,40 @@ export default function SignupPage() {
       if (error) {
         setError(error.message)
       } else {
-        // Create profile
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            user_id: (await supabase.auth.getUser()).data.user?.id,
-            display_name: displayName,
-          })
+        // Get the user ID after successful signup
+        const { data: { user } } = await supabase.auth.getUser()
+        
+        if (user) {
+          // Create profile
+          const { error: profileError } = await supabase
+            .from('profiles')
+            .insert({
+              user_id: user.id,
+              display_name: displayName,
+            })
 
-        if (profileError) {
-          console.error('Profile creation error:', profileError)
+          if (profileError) {
+            console.error('Profile creation error:', profileError)
+          }
+
+          // Create initial player stats
+          const { error: statsError } = await supabase
+            .from('player_stats')
+            .insert({
+              user_id: user.id,
+              level: 1,
+              xp: 0,
+              total_games: 0,
+              total_wins: 0,
+              total_losses: 0,
+            })
+
+          if (statsError) {
+            console.error('Stats creation error:', statsError)
+          }
         }
 
-        router.push('/')
+        router.push('/dashboard')
       }
     } catch (err) {
       setError('An unexpected error occurred')
