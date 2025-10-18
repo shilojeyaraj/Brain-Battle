@@ -6,7 +6,7 @@ export async function createClient() {
     const cookieStore = await cookies()
 
     // Debug: Log all environment variables that contain SUPABASE
-    console.log('🔍 [SUPABASE SERVER] Environment check:', {
+    console.log('🔍 [SUPABASE SERVER] Environment check (v2):', {
       NODE_ENV: process.env.NODE_ENV,
       VERCEL: process.env.VERCEL,
       allSupabaseKeys: Object.keys(process.env).filter(key => key.includes('SUPABASE')),
