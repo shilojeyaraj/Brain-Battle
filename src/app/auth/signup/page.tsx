@@ -1,8 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Brain, Mail, Lock, Eye, EyeOff, User } from 'lucide-react'
 
@@ -12,53 +11,66 @@ export const dynamic = 'force-dynamic'
 export default function SignupPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [displayName, setDisplayName] = useState('')
+  const [username, setUsername] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const router = useRouter()
+  const searchParams = useSearchParams()
   
-  // Create Supabase client inside component to avoid SSR issues
-  const supabase = typeof window !== 'undefined' ? createClient() : null
+  // Get error from URL params
+  const urlError = searchParams.get('error')
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
 
-    if (!supabase) {
-      setError('Application is loading, please try again.')
+    // Basic validation
+    if (password !== confirmPassword) {
+      setError('Passwords do not match')
+      setLoading(false)
+      return
+    }
+
+    if (password.length < 6) {
+      setError('Password must be at least 6 characters')
+      setLoading(false)
+      return
+    }
+
+    if (username.length < 3) {
+      setError('Username must be at least 3 characters')
       setLoading(false)
       return
     }
 
     try {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            display_name: displayName,
-          },
-        },
+      const formData = new FormData()
+      formData.append('email', email)
+      formData.append('password', password)
+      formData.append('username', username)
+      formData.append('confirmPassword', confirmPassword)
+
+      const response = await fetch('/api/auth/signup', {
+        method: 'POST',
+        body: formData,
       })
 
-      if (error) {
-        setError(error.message)
-      } else {
-        // Create profile
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert({
-            user_id: (await supabase.auth.getUser()).data.user?.id,
-            display_name: displayName,
-          })
-
-        if (profileError) {
-          console.error('Profile creation error:', profileError)
+      if (response.ok) {
+        const result = await response.json()
+        if (result.success) {
+          // Store user in localStorage for client-side access
+          localStorage.setItem('user', JSON.stringify(result.user))
+          localStorage.setItem('userId', result.user.id)
+          router.push('/dashboard')
+        } else {
+          setError(result.error || 'Signup failed')
         }
-
-        router.push('/')
+      } else {
+        const result = await response.json()
+        setError(result.error || 'Signup failed')
       }
     } catch (err) {
       setError('An unexpected error occurred')
@@ -82,28 +94,30 @@ export default function SignupPage() {
         {/* Signup Form */}
         <div className="bg-white rounded-2xl shadow-lg p-8">
           <form onSubmit={handleSignup} className="space-y-6">
-            {error && (
+            {(error || urlError) && (
               <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg">
-                {error}
+                {error || urlError}
               </div>
             )}
 
             <div>
-              <label htmlFor="displayName" className="block text-sm font-medium text-gray-700 mb-2">
-                Display Name
+              <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
+                Username
               </label>
               <div className="relative">
                 <User className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
                 <input
-                  id="displayName"
+                  id="username"
                   type="text"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  placeholder="Enter your display name"
+                  placeholder="Enter your username"
                   required
+                  minLength={3}
                 />
               </div>
+              <p className="text-sm text-gray-500 mt-1">Username must be at least 3 characters</p>
             </div>
 
             <div>

@@ -71,9 +71,9 @@ export default function LoginPage() {
         {/* Login Form */}
         <div className="bg-white rounded-2xl shadow-lg p-8">
           <form onSubmit={handleLogin} className="space-y-6">
-            {error && (
+            {(error || urlError) && (
               <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg">
-                {error}
+                {error || urlError}
               </div>
             )}
 
