@@ -39,22 +39,23 @@ export function Leaderboard() {
       const supabase = createClient()
       const currentUserId = getCurrentUserId()
 
-      // Fetch top 10 players from leaderboard
-      const { data: leaderboardData, error: leaderboardError } = await supabase
-        .from('leaderboard')
+      // Fetch players with actual game statistics (played at least one game)
+      const { data: playersData, error: playersError } = await supabase
+        .from('player_stats')
         .select(`
           user_id,
-          username,
           level,
           xp,
-          wins,
-          rank
+          total_wins,
+          total_games,
+          users!inner(username, avatar_url)
         `)
+        .gt('total_games', 0) // Only players who have played at least one game
         .order('xp', { ascending: false })
         .limit(10)
 
-      if (leaderboardError) {
-        console.error('Error fetching leaderboard:', leaderboardError)
+      if (playersError) {
+        console.error('Error fetching players with stats:', playersError)
         setError('Failed to load leaderboard')
         return
       }
@@ -62,43 +63,59 @@ export function Leaderboard() {
       // Get current user's rank if they're not in top 10
       let userRank = null
       if (currentUserId) {
-        const { data: userRankData, error: userRankError } = await supabase
-          .from('leaderboard')
-          .select('*')
+        const { data: userStatsData, error: userStatsError } = await supabase
+          .from('player_stats')
+          .select(`
+            user_id,
+            level,
+            xp,
+            total_wins,
+            total_games,
+            users!inner(username, avatar_url)
+          `)
           .eq('user_id', currentUserId)
+          .gt('total_games', 0) // Only if they have played games
           .single()
 
-        if (!userRankError && userRankData) {
+        if (!userStatsError && userStatsData) {
+          // Get their rank by counting players with higher XP
+          const { count: higherXpCount } = await supabase
+            .from('player_stats')
+            .select('*', { count: 'exact', head: true })
+            .gt('xp', userStatsData.xp)
+            .gt('total_games', 0)
+
           userRank = {
-            rank: userRankData.rank,
-            user_id: userRankData.user_id,
-            username: userRankData.username,
-            level: userRankData.level,
-            xp: userRankData.xp,
-            wins: userRankData.wins,
-            avatar_url: undefined
+            rank: (higherXpCount || 0) + 1,
+            user_id: userStatsData.user_id,
+            username: userStatsData.users.username,
+            level: userStatsData.level,
+            xp: userStatsData.xp,
+            wins: userStatsData.total_wins,
+            avatar_url: userStatsData.users.avatar_url
           }
         }
       }
 
-      // Get total player count
+      // Get total count of players who have played games
       const { count: totalCount, error: countError } = await supabase
-        .from('leaderboard')
+        .from('player_stats')
         .select('*', { count: 'exact', head: true })
+        .gt('total_games', 0) // Only count players who have played games
 
       if (countError) {
         console.error('Error fetching total count:', countError)
       }
 
       // Transform data and add rank numbers
-      const playersWithRank = leaderboardData?.map((player, index) => ({
+      const playersWithRank = playersData?.map((player, index) => ({
         rank: index + 1,
         user_id: player.user_id,
-        username: player.username,
+        username: player.users.username,
         level: player.level,
         xp: player.xp,
-        wins: player.wins,
-        avatar_url: undefined
+        wins: player.total_wins,
+        avatar_url: player.users.avatar_url
       })) || []
 
       setTopPlayers(playersWithRank)
@@ -191,7 +208,16 @@ export function Leaderboard() {
       </div>
 
       <div className="space-y-6">
-        {topPlayers.map((player) => {
+        {topPlayers.length === 0 ? (
+          <div className="text-center py-8">
+            <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" strokeWidth={1} />
+            <h3 className="text-lg font-bold text-foreground mb-2">No Players Yet</h3>
+            <p className="text-sm text-muted-foreground">
+              Be the first to complete a battle and appear on the leaderboard!
+            </p>
+          </div>
+        ) : (
+          topPlayers.map((player) => {
           const rank = getRankFromXP(player.xp)
           const isCurrentUser = currentUserRank?.user_id === player.user_id
           
@@ -262,7 +288,8 @@ export function Leaderboard() {
               </div>
             </div>
           )
-        })}
+        })
+        }
       </div>
 
       {/* Show current user's rank if not in top 10 */}
