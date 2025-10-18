@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
     // Get relevant document chunks using semantic search
     let relevantChunks = []
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+    
     try {
       const searchResponse = await fetch(`${baseUrl}/api/semantic-search?q=${encodeURIComponent(topic)}&limit=8&threshold=0.6`)
       if (searchResponse.ok) {
