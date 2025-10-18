@@ -38,28 +38,29 @@ export default function StudyNotesPage() {
     setLoading(false)
   }, [])
 
-  const handleStartQuiz = () => {
-    // Store the quiz questions from notes
-    if (notes?.quiz) {
-      const quizQuestions = notes.quiz.map((qa, index) => ({
+  const handleStartBattle = () => {
+    // Store the battle questions from notes
+    if (notes?.practice_questions && notes.practice_questions.length > 0) {
+      const battleQuestions = notes.practice_questions.map((qa, index) => ({
         id: index + 1,
-        question: qa.q,
-        options: [
-          qa.a, // Correct answer
-          "Incorrect option 1",
-          "Incorrect option 2", 
-          "Incorrect option 3"
-        ],
-        correct: 0,
-        explanation: `This is the correct answer based on the study material.`
+        question: qa.question,
+        type: qa.type,
+        options: qa.options || [qa.answer],
+        correct: qa.type === 'multiple_choice' ? 0 : undefined,
+        expected_answers: qa.type === 'open_ended' ? [qa.answer] : undefined,
+        explanation: qa.explanation,
+        difficulty: qa.difficulty,
+        topic: qa.topic
       }))
       
-      sessionStorage.setItem('quizQuestions', JSON.stringify(quizQuestions))
+      sessionStorage.setItem('quizQuestions', JSON.stringify(battleQuestions))
       sessionStorage.setItem('quizTopic', notes.title)
-      sessionStorage.setItem('quizDifficulty', 'medium')
+      sessionStorage.setItem('quizDifficulty', notes.difficulty_level || 'medium')
       
-      // Redirect to quiz
-      window.location.href = "/singleplayer/quiz"
+      // Redirect to battle
+      window.location.href = "/singleplayer/battle"
+    } else {
+      alert('No practice questions available. Please generate notes first.')
     }
   }
 
@@ -115,7 +116,7 @@ export default function StudyNotesPage() {
           </Link>
         </div>
         
-        <StudyNotesViewer notes={notes} fileNames={fileNames} onStartQuiz={handleStartQuiz} />
+        <StudyNotesViewer notes={notes} fileNames={fileNames} onStartBattle={handleStartBattle} />
       </div>
     </div>
   )

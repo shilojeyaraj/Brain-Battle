@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
         correctAnswers: playerResult.correct_answers,
         totalQuestions: playerResult.questions_answered,
         averageTimePerQuestion: playerResult.average_time_per_question,
-        difficulty: session.rooms.difficulty || 'medium',
+        difficulty: session.rooms[0]?.difficulty || 'medium',
         winStreak: currentStats?.win_streak || 0,
         isPerfectScore: playerResult.correct_answers === playerResult.questions_answered,
         isMultiplayer: true,

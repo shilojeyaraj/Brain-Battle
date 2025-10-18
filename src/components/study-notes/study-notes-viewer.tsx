@@ -21,11 +21,11 @@ import { StudyNotes } from "@/lib/schemas/notes-schema"
 
 interface StudyNotesViewerProps {
   notes: StudyNotes
-  onStartQuiz: () => void
+  onStartBattle: () => void
   fileNames?: string[]
 }
 
-export function StudyNotesViewer({ notes, onStartQuiz, fileNames }: StudyNotesViewerProps) {
+export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotesViewerProps) {
   const [activeSection, setActiveSection] = useState<"outline" | "concepts" | "diagrams" | "quiz">("outline")
   const [currentDiagram, setCurrentDiagram] = useState(0)
   const [expandedOutlineItems, setExpandedOutlineItems] = useState<Set<number>>(new Set())
@@ -380,15 +380,32 @@ export function StudyNotesViewer({ notes, onStartQuiz, fileNames }: StudyNotesVi
                 Quiz Preparation
               </h2>
               <div className="space-y-4">
-                {notes.quiz.map((qa, index) => (
+                {notes.practice_questions.map((qa, index) => (
                   <div key={index} className="p-4 rounded-xl bg-secondary/50 cartoon-border">
-                    <div className="mb-2">
+                    <div className="flex items-center justify-between mb-2">
                       <span className="text-sm font-black text-primary">Q{index + 1}:</span>
-                      <p className="text-foreground font-bold">{qa.q}</p>
+                      <div className="flex gap-2">
+                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${
+                          qa.difficulty === 'easy' ? 'bg-chart-3/20 text-chart-3' :
+                          qa.difficulty === 'medium' ? 'bg-primary/20 text-primary' :
+                          'bg-destructive/20 text-destructive'
+                        }`}>
+                          {qa.difficulty}
+                        </span>
+                        <span className="px-2 py-1 rounded-full text-xs font-bold bg-muted text-muted-foreground">
+                          {qa.type.replace('_', ' ')}
+                        </span>
+                      </div>
                     </div>
-                    <div>
+                    <div className="mb-2">
+                      <p className="text-foreground font-bold">{qa.question}</p>
+                    </div>
+                    <div className="mb-2">
                       <span className="text-sm font-black text-secondary">A:</span>
-                      <p className="text-foreground font-bold">{qa.a}</p>
+                      <p className="text-foreground font-bold">{qa.answer}</p>
+                    </div>
+                    <div className="text-xs text-muted-foreground font-bold">
+                      Topic: {qa.topic}
                     </div>
                   </div>
                 ))}
@@ -407,19 +424,19 @@ export function StudyNotesViewer({ notes, onStartQuiz, fileNames }: StudyNotesVi
                 <div key={index} className="relative inline-block mr-2 mb-2">
                   <Badge 
                     className="cartoon-border bg-accent text-accent-foreground font-black cursor-help hover:bg-accent/80 transition-colors"
-                    onMouseEnter={() => setHoveredTerm(term)}
+                    onMouseEnter={() => setHoveredTerm(term.term)}
                     onMouseLeave={() => setHoveredTerm(null)}
                   >
-                    {term}
+                    {term.term}
                   </Badge>
                   
                   {/* Hover Card */}
-                  {hoveredTerm === term && (
+                  {hoveredTerm === term.term && (
                     <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-50">
                       <div className="bg-card border border-border rounded-xl p-4 shadow-lg max-w-xs cartoon-border">
-                        <div className="text-sm font-black text-foreground mb-2">{term}</div>
+                        <div className="text-sm font-black text-foreground mb-2">{term.term}</div>
                         <div className="text-xs text-muted-foreground font-bold leading-relaxed">
-                          {generateTermDefinition(term)}
+                          {term.definition}
                         </div>
                         {/* Arrow */}
                         <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-border"></div>
@@ -436,11 +453,11 @@ export function StudyNotesViewer({ notes, onStartQuiz, fileNames }: StudyNotesVi
             <h3 className="text-lg font-black text-foreground mb-4">Ready to Test?</h3>
             <div className="space-y-3">
               <Button
-                onClick={onStartQuiz}
+                onClick={onStartBattle}
                 className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-black cartoon-border cartoon-shadow cartoon-hover"
               >
                 <Play className="h-5 w-5 mr-2" strokeWidth={3} />
-                Start Quiz
+                Start Singleplayer
               </Button>
               <Button
                 variant="outline"

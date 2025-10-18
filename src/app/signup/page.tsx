@@ -1,11 +1,21 @@
+"use client"
+
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
-import { Sparkles, Mail, Lock, User, ArrowLeft } from "lucide-react"
+import { Sparkles, Mail, Lock, User, ArrowLeft, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { signup } from "@/lib/actions/custom-auth"
+import { useTransition } from "react"
 
 export default function SignupPage() {
+  const [isPending, startTransition] = useTransition()
+
+  const handleSubmit = (formData: FormData) => {
+    startTransition(() => {
+      signup(formData)
+    })
+  }
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md">
@@ -33,7 +43,7 @@ export default function SignupPage() {
         </div>
 
         <Card className="p-8 bg-card cartoon-border cartoon-shadow">
-          <form action={signup} className="space-y-6">
+          <form action={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <label htmlFor="username" className="text-sm font-black text-foreground">
                 Username
@@ -105,9 +115,17 @@ export default function SignupPage() {
 
             <Button
               type="submit"
-              className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg cartoon-border cartoon-shadow cartoon-hover"
+              disabled={isPending}
+              className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg cartoon-border cartoon-shadow cartoon-hover disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Create Account
+              {isPending ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" strokeWidth={3} />
+                  Creating Account...
+                </>
+              ) : (
+                "Create Account"
+              )}
             </Button>
           </form>
 

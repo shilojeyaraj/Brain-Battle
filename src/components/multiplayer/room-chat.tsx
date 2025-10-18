@@ -132,7 +132,7 @@ export default function RoomChat({
       const formattedMessages: ChatMessage[] = data.map(msg => ({
         id: msg.id,
         user_id: msg.user_id,
-        username: msg.profiles?.username || 'Unknown User',
+        username: (msg.profiles as any)?.username || 'Unknown User',
         is_host: false, // You might want to check this from room data
         message: msg.message,
         message_type: msg.message_type,

@@ -115,8 +115,8 @@ export default function MemberList({ roomId, currentUserId, onMemberCountChange 
 
       const formattedMembers: Member[] = data.map(member => ({
         id: member.id,
-        username: member.profiles?.username || 'Unknown User',
-        avatar: member.profiles?.avatar_url,
+        username: (member.profiles as any)?.username || 'Unknown User',
+        avatar: (member.profiles as any)?.avatar_url,
         is_host: member.is_host,
         joined_at: member.joined_at,
         is_online: true // Will be updated by presence

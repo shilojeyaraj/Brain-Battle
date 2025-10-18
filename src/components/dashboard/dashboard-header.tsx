@@ -1,18 +1,18 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, Suspense, useCallback } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Sparkles, Trophy, Star, Settings, LogOut } from "lucide-react"
+import { Brain, Trophy, Star, Settings, LogOut, User } from "lucide-react"
 import { logout } from "@/lib/actions/custom-auth"
 import { getUserStatsClient, UserProfile } from "@/lib/actions/user-stats-client"
 import { UserProfileModal } from "@/components/ui/user-profile-modal"
 import { getCurrentUserId, setUserSession } from "@/lib/auth/session"
 import Link from "next/link"
 
-export function DashboardHeader() {
+function DashboardHeaderContent() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -47,29 +47,34 @@ export function DashboardHeader() {
     }
   }, [searchParams])
 
-  const handleAvatarClick = async () => {
-    if (!currentUserId) {
-      console.log('No user session found')
-      return
-    }
+  // Memoize user profile fetching to prevent unnecessary API calls
+  const fetchUserProfile = useCallback(async () => {
+    if (!currentUserId || userProfile) return
     
     setIsLoading(true)
     try {
       const result = await getUserStatsClient(currentUserId)
       if (result.success && result.data) {
         setUserProfile(result.data)
-        setIsProfileModalOpen(true)
-      } else {
-        console.error('Failed to load user profile:', result.error)
-        // You could show a toast notification here
       }
     } catch (error) {
-      console.error('Error loading user profile:', error)
-      // You could show a toast notification here
+      console.error('Error fetching user profile:', error)
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [currentUserId, userProfile])
+
+  useEffect(() => {
+    if (currentUserId) {
+      fetchUserProfile()
+    }
+  }, [currentUserId, fetchUserProfile])
+
+  const handleAvatarClick = useCallback(() => {
+    if (userProfile) {
+      setIsProfileModalOpen(true)
+    }
+  }, [userProfile])
   return (
     <header className="cartoon-border border-b bg-card sticky top-0 z-50 cartoon-shadow">
       <div className="container mx-auto px-4 py-4">
@@ -77,7 +82,7 @@ export function DashboardHeader() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
               <div className="w-14 h-14 bg-primary rounded-2xl flex items-center justify-center cartoon-border cartoon-shadow">
-                <Sparkles className="w-8 h-8 text-primary-foreground" strokeWidth={3} />
+                <Brain className="w-8 h-8 text-primary-foreground" strokeWidth={3} />
               </div>
               <h1
                 className="text-4xl font-black tracking-tight text-foreground"
@@ -105,11 +110,6 @@ export function DashboardHeader() {
               </div>
             </div>
 
-            <Link href="/singleplayer">
-              <Button className="bg-primary hover:bg-primary/90 text-primary-foreground font-black px-4 py-2 rounded-xl cartoon-border cartoon-shadow cartoon-hover mr-2">
-                Start Game
-              </Button>
-            </Link>
             <Button className="bg-card hover:bg-muted rounded-xl cartoon-border cartoon-shadow cartoon-hover">
               <Settings className="h-5 w-5" strokeWidth={3} />
             </Button>
@@ -127,7 +127,9 @@ export function DashboardHeader() {
             >
               <Avatar className="h-12 w-12 cartoon-border cartoon-shadow cursor-pointer hover:shadow-lg transition-shadow">
                 <AvatarImage src="/placeholder.svg?height=48&width=48" />
-                <AvatarFallback className="bg-primary text-primary-foreground font-black text-lg">BB</AvatarFallback>
+                <AvatarFallback className="bg-primary text-primary-foreground font-black text-lg">
+                  <User className="h-6 w-6" strokeWidth={3} />
+                </AvatarFallback>
               </Avatar>
               {isLoading && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-full">
@@ -146,5 +148,30 @@ export function DashboardHeader() {
         userProfile={userProfile}
       />
     </header>
+  )
+}
+
+export function DashboardHeader() {
+  return (
+    <Suspense fallback={
+      <header className="bg-card border-b border-border">
+        <div className="container mx-auto px-4 py-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center">
+                <Brain className="w-6 h-6 text-primary-foreground" strokeWidth={3} />
+              </div>
+              <div>
+                <h1 className="text-2xl font-black text-foreground">Brain Battle</h1>
+                <p className="text-sm text-muted-foreground font-bold">Loading...</p>
+              </div>
+            </div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+          </div>
+        </div>
+      </header>
+    }>
+      <DashboardHeaderContent />
+    </Suspense>
   )
 }

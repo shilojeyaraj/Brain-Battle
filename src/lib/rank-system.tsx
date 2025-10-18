@@ -1,3 +1,4 @@
+import React from "react"
 import { Crown, Medal, Award, Gem, Star, Trophy } from "lucide-react"
 
 export interface RankInfo {
@@ -8,7 +9,7 @@ export interface RankInfo {
   color: string
   bgColor: string
   textColor: string
-  icon: any
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>
   description: string
 }
 

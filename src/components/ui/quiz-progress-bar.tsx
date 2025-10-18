@@ -68,10 +68,9 @@ export function QuizProgressBar({
           <span>Quiz Progress</span>
           <span>{Math.round(progress)}%</span>
         </div>
-        <Progress 
-          value={progress} 
-          className="h-3 bg-muted cartoon-border" 
-          indicatorClassName="bg-primary transition-all duration-300"
+        <Progress
+          value={progress}
+          className="h-3 bg-muted cartoon-border"
         />
       </div>
 

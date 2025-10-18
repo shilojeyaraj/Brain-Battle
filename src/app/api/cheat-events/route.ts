@@ -59,8 +59,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if user is a member of the room
-    const isMember = session.rooms.room_members.some(
-      (member: { user_id: string }) => member.user_id === user.id
+    const isMember = session.rooms.some((room: any) => 
+      room.room_members?.some((member: { user_id: string }) => member.user_id === user.id)
     )
 
     if (!isMember) {
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error in cheat events API:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     )
   }

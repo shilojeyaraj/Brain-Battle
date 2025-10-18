@@ -78,89 +78,89 @@ export function StatsGrid() {
   const winRate = stats.total_games > 0 ? (stats.total_wins / stats.total_games * 100) : 0
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* XP Progress Bar */}
-      <Card className="p-6 bg-card cartoon-border cartoon-shadow">
+      <Card className="p-8 bg-card cartoon-border cartoon-shadow">
         <CompactXPBar xp={stats.xp} />
       </Card>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="p-6 bg-card cartoon-border cartoon-shadow">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center cartoon-border cartoon-shadow">
-              <Trophy className="w-6 h-6 text-primary-foreground" strokeWidth={3} />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+        <Card className="p-8 bg-card cartoon-border cartoon-shadow">
+          <div className="flex items-center gap-6">
+            <div className="w-16 h-16 rounded-xl bg-primary flex items-center justify-center cartoon-border cartoon-shadow">
+              <Trophy className="w-8 h-8 text-primary-foreground" strokeWidth={3} />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground font-bold">Total Wins</p>
-              <p className="text-2xl font-black text-foreground">{stats.total_wins}</p>
+              <p className="text-base text-muted-foreground font-bold">Total Wins</p>
+              <p className="text-3xl font-black text-foreground">{stats.total_wins}</p>
             </div>
           </div>
         </Card>
 
-        <Card className="p-6 bg-card cartoon-border cartoon-shadow">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-secondary flex items-center justify-center cartoon-border cartoon-shadow">
-              <Target className="w-6 h-6 text-secondary-foreground" strokeWidth={3} />
+        <Card className="p-8 bg-card cartoon-border cartoon-shadow">
+          <div className="flex items-center gap-6">
+            <div className="w-16 h-16 rounded-xl bg-secondary flex items-center justify-center cartoon-border cartoon-shadow">
+              <Target className="w-8 h-8 text-secondary-foreground" strokeWidth={3} />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground font-bold">Accuracy</p>
-              <p className="text-2xl font-black text-foreground">{stats.accuracy.toFixed(1)}%</p>
+              <p className="text-base text-muted-foreground font-bold">Accuracy</p>
+              <p className="text-3xl font-black text-foreground">{stats.accuracy.toFixed(1)}%</p>
             </div>
           </div>
         </Card>
 
-        <Card className="p-6 bg-card cartoon-border cartoon-shadow">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-chart-3 flex items-center justify-center cartoon-border cartoon-shadow">
-              <Zap className="w-6 h-6 text-foreground" strokeWidth={3} />
+        <Card className="p-8 bg-card cartoon-border cartoon-shadow">
+          <div className="flex items-center gap-6">
+            <div className="w-16 h-16 rounded-xl bg-chart-3 flex items-center justify-center cartoon-border cartoon-shadow">
+              <Zap className="w-8 h-8 text-foreground" strokeWidth={3} />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground font-bold">Win Streak</p>
-              <p className="text-2xl font-black text-foreground">{stats.win_streak}</p>
+              <p className="text-base text-muted-foreground font-bold">Win Streak</p>
+              <p className="text-3xl font-black text-foreground">{stats.win_streak}</p>
             </div>
           </div>
         </Card>
 
-        <Card className="p-6 bg-card cartoon-border cartoon-shadow">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-accent flex items-center justify-center cartoon-border cartoon-shadow">
-              <Users className="w-6 h-6 text-accent-foreground" strokeWidth={3} />
+        <Card className="p-8 bg-card cartoon-border cartoon-shadow">
+          <div className="flex items-center gap-6">
+            <div className="w-16 h-16 rounded-xl bg-accent flex items-center justify-center cartoon-border cartoon-shadow">
+              <Users className="w-8 h-8 text-accent-foreground" strokeWidth={3} />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground font-bold">Total Games</p>
-              <p className="text-2xl font-black text-foreground">{stats.total_games}</p>
+              <p className="text-base text-muted-foreground font-bold">Total Games</p>
+              <p className="text-3xl font-black text-foreground">{stats.total_games}</p>
             </div>
           </div>
         </Card>
       </div>
 
       {/* Additional Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="p-6 bg-card cartoon-border cartoon-shadow">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <Card className="p-8 bg-card cartoon-border cartoon-shadow">
           <div className="text-center">
-            <div className="flex items-center justify-center gap-2 mb-2">
-              {getRankIcon(rank, "h-6 w-6")}
-              <p className="text-sm text-muted-foreground font-bold">Current Rank</p>
+            <div className="flex items-center justify-center gap-3 mb-3">
+              {getRankIcon(rank, "h-8 w-8")}
+              <p className="text-base text-muted-foreground font-bold">Current Rank</p>
             </div>
-            <p className="text-lg font-black text-foreground">{rank.name}</p>
-            <p className="text-xs text-muted-foreground">Level {stats.level}</p>
+            <p className="text-2xl font-black text-foreground">{rank.name}</p>
+            <p className="text-sm text-muted-foreground">Level {stats.level}</p>
           </div>
         </Card>
 
-        <Card className="p-6 bg-card cartoon-border cartoon-shadow">
+        <Card className="p-8 bg-card cartoon-border cartoon-shadow">
           <div className="text-center">
-            <p className="text-sm text-muted-foreground font-bold mb-2">Win Rate</p>
-            <p className="text-lg font-black text-foreground">{winRate.toFixed(1)}%</p>
-            <p className="text-xs text-muted-foreground">{stats.total_wins}/{stats.total_games} games</p>
+            <p className="text-base text-muted-foreground font-bold mb-3">Win Rate</p>
+            <p className="text-2xl font-black text-foreground">{winRate.toFixed(1)}%</p>
+            <p className="text-sm text-muted-foreground">{stats.total_wins}/{stats.total_games} games</p>
           </div>
         </Card>
 
-        <Card className="p-6 bg-card cartoon-border cartoon-shadow">
+        <Card className="p-8 bg-card cartoon-border cartoon-shadow">
           <div className="text-center">
-            <p className="text-sm text-muted-foreground font-bold mb-2">Questions Answered</p>
-            <p className="text-lg font-black text-foreground">{stats.total_questions_answered}</p>
-            <p className="text-xs text-muted-foreground">{stats.correct_answers} correct</p>
+            <p className="text-base text-muted-foreground font-bold mb-3">Questions Answered</p>
+            <p className="text-2xl font-black text-foreground">{stats.total_questions_answered}</p>
+            <p className="text-sm text-muted-foreground">{stats.correct_answers} correct</p>
           </div>
         </Card>
       </div>

@@ -2,28 +2,28 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Trophy, Clock, Users, Target } from "lucide-react"
 
-const recentBattles = [
+const recentBattles: any[] = [
   // Empty array for new users - no battles yet!
 ]
 
 export function RecentBattles() {
   return (
-    <Card className="p-6 bg-card cartoon-border cartoon-shadow">
-      <div className="mb-6">
-        <h2 className="text-3xl font-black text-foreground mb-1" style={{ fontFamily: "var(--font-display)" }}>
+    <Card className="p-8 bg-card cartoon-border cartoon-shadow">
+      <div className="mb-8">
+        <h2 className="text-4xl font-black text-foreground mb-2" style={{ fontFamily: "var(--font-display)" }}>
           Recent Battles
         </h2>
-        <p className="text-sm text-muted-foreground font-bold">Your latest showdowns</p>
+        <p className="text-base text-muted-foreground font-bold">Your latest showdowns</p>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-6">
         {recentBattles.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="w-16 h-16 rounded-xl bg-muted flex items-center justify-center mx-auto mb-4 cartoon-border">
-              <Trophy className="w-8 h-8 text-muted-foreground" strokeWidth={3} />
+          <div className="text-center py-16">
+            <div className="w-20 h-20 rounded-xl bg-muted flex items-center justify-center mx-auto mb-6 cartoon-border">
+              <Trophy className="w-10 h-10 text-muted-foreground" strokeWidth={3} />
             </div>
-            <h3 className="text-lg font-black text-foreground mb-2">No battles yet!</h3>
-            <p className="text-muted-foreground font-bold">Join a lobby to start your first battle and see your results here.</p>
+            <h3 className="text-2xl font-black text-foreground mb-3">No battles yet!</h3>
+            <p className="text-lg text-muted-foreground font-bold">Join a lobby to start your first battle and see your results here.</p>
           </div>
         ) : (
           recentBattles.map((battle) => (

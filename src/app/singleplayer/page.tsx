@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useCallback, useMemo } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,6 +9,8 @@ import { ArrowLeft, Upload, FileText, BookOpen, Brain, Zap, X, Plus, CheckCircle
 import Link from "next/link"
 import { generateQuizQuestions, extractTextFromFile } from "@/lib/actions/quiz-generation"
 import { StudyNotesViewer } from "@/components/study-notes/study-notes-viewer"
+import { StudyContextChatbot } from "@/components/study-assistant/study-context-chatbot"
+import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 
 export default function SingleplayerPage() {
   const [step, setStep] = useState(1)
@@ -23,10 +25,11 @@ export default function SingleplayerPage() {
   const [dragCounter, setDragCounter] = useState(0)
   const [uploadErrors, setUploadErrors] = useState<string[]>([])
   const [isUploading, setIsUploading] = useState(false)
+  const [studyContext, setStudyContext] = useState<any>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // File validation
-  const validateFiles = (files: File[]): { validFiles: File[], errors: string[] } => {
+  // File validation - memoized to prevent unnecessary recalculations
+  const validateFiles = useCallback((files: File[]): { validFiles: File[], errors: string[] } => {
     const validFiles: File[] = []
     const errors: string[] = []
     const maxSize = 10 * 1024 * 1024 // 10MB
@@ -62,16 +65,16 @@ export default function SingleplayerPage() {
     })
 
     return { validFiles, errors }
-  }
+  }, [uploadedFiles])
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
     if (files.length > 0) {
       processFiles(files)
     }
-  }
+  }, [])
 
-  const processFiles = (files: File[]) => {
+  const processFiles = useCallback((files: File[]) => {
     setIsUploading(true)
     setUploadErrors([])
 
@@ -92,7 +95,7 @@ export default function SingleplayerPage() {
       
       setIsUploading(false)
     }, 500)
-  }
+  }, [validateFiles])
 
   const handleDragOver = (event: React.DragEvent) => {
     event.preventDefault()
@@ -166,6 +169,9 @@ export default function SingleplayerPage() {
       }
       formData.append('topic', topic)
       formData.append('difficulty', difficulty)
+      if (studyContext) {
+        formData.append('studyContext', JSON.stringify(studyContext))
+      }
       
       const response = await fetch('/api/notes', {
         method: 'POST',
@@ -191,36 +197,46 @@ export default function SingleplayerPage() {
     }
   }
 
-  const handleStartQuiz = async () => {
+  const handleStartBattle = async () => {
     setIsGenerating(true)
     
     try {
-      let fileContent = ""
+      const formData = new FormData()
       if (uploadedFiles.length > 0) {
-        // Combine content from all files
-        const fileContents = await Promise.all(
-          uploadedFiles.map(file => extractTextFromFile(file))
-        )
-        fileContent = fileContents.join('\n\n---\n\n')
+        uploadedFiles.forEach(file => {
+          formData.append('files', file)
+        })
+      }
+      formData.append('topic', topic)
+      formData.append('difficulty', difficulty)
+      if (studyContext) {
+        formData.append('studyContext', JSON.stringify(studyContext))
+      }
+      if (studyNotes) {
+        formData.append('notes', JSON.stringify(studyNotes))
       }
       
-      // Generate questions using AI
-      const result = await generateQuizQuestions(topic, difficulty, fileContent)
+      const response = await fetch('/api/generate-quiz', {
+        method: 'POST',
+        body: formData
+      })
+      
+      const result = await response.json()
       
       if (result.success) {
-        // Store questions in sessionStorage for the quiz page
+        // Store questions in sessionStorage for the battle page
         sessionStorage.setItem('quizQuestions', JSON.stringify(result.questions))
         sessionStorage.setItem('quizTopic', topic)
         sessionStorage.setItem('quizDifficulty', difficulty)
         
-        // Redirect to quiz page
-        window.location.href = "/singleplayer/quiz"
+        // Redirect to battle page
+        window.location.href = "/singleplayer/battle"
       } else {
         alert(`Error generating questions: ${result.error}`)
       }
     } catch (error) {
-      console.error("Error starting quiz:", error)
-      alert("Failed to generate quiz questions. Please try again.")
+      console.error("Error starting battle:", error)
+      alert("Failed to generate battle questions. Please try again.")
     } finally {
       setIsGenerating(false)
     }
@@ -239,7 +255,7 @@ export default function SingleplayerPage() {
           </Link>
           <div>
             <h1 className="text-4xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
-              Singleplayer Quiz
+              Singleplayer Battle
             </h1>
             <p className="text-muted-foreground font-bold">Test your knowledge with AI-generated questions</p>
           </div>
@@ -273,7 +289,7 @@ export default function SingleplayerPage() {
               step >= 4 ? "bg-primary text-primary-foreground" : "bg-card"
             }`}>
               <Zap className="h-5 w-5" strokeWidth={3} />
-              <span className="font-black">4. Quiz</span>
+              <span className="font-black">4. Battle</span>
             </div>
           </div>
         </div>
@@ -420,6 +436,14 @@ export default function SingleplayerPage() {
               </Button>
             </div>
           </Card>
+        )}
+
+        {/* Study Context Chatbot - appears after upload */}
+        {step === 1 && uploadedFiles.length > 0 && (
+          <StudyContextChatbot 
+            onContextUpdate={setStudyContext}
+            uploadedFiles={uploadedFiles}
+          />
         )}
 
         {/* Step 2: Topic Selection */}
@@ -584,7 +608,7 @@ export default function SingleplayerPage() {
             <StudyNotesViewer 
               notes={studyNotes}
               fileNames={processedFileNames}
-              onStartQuiz={async () => {
+              onStartBattle={async () => {
                 try {
                   // Generate proper quiz questions using AI
                   const response = await fetch('/api/generate-quiz', {

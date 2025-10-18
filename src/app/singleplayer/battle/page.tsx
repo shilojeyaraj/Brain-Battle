@@ -1,10 +1,10 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, useMemo, memo } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Clock, Target, Trophy, Zap, AlertTriangle, EyeOff, X, Star, TrendingUp } from "lucide-react"
+import { ArrowLeft, Clock, Target, Trophy, Zap, AlertTriangle, EyeOff, X, Star, TrendingUp, FileText } from "lucide-react"
 import Link from "next/link"
 import { useAntiCheat, CheatEvent } from "@/hooks/use-anti-cheat"
 import { calculateXP, getXPExplanation, checkLevelUp } from "@/lib/xp-calculator"
@@ -17,14 +17,14 @@ import { getCurrentUserId } from "@/lib/auth/session"
 // Default empty questions - will be loaded from sessionStorage
 const defaultQuestions: any[] = []
 
-export default function QuizPage() {
+export default function BattlePage() {
   const [currentQuestion, setCurrentQuestion] = useState(0)
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
   const [textAnswer, setTextAnswer] = useState("")
   const [showResult, setShowResult] = useState(false)
   const [score, setScore] = useState(0)
   const [timeLeft, setTimeLeft] = useState(30)
-  const [quizComplete, setQuizComplete] = useState(false)
+  const [battleComplete, setBattleComplete] = useState(false)
   const [questions, setQuestions] = useState(defaultQuestions)
   const [topic, setTopic] = useState("General Knowledge")
   const [isLoading, setIsLoading] = useState(true)
@@ -32,7 +32,7 @@ export default function QuizPage() {
   const [userAnswers, setUserAnswers] = useState<(number | string)[]>([])
   const [cheatViolations, setCheatViolations] = useState<CheatEvent[]>([])
   const [showCheatWarning, setShowCheatWarning] = useState(false)
-  const [quizResults, setQuizResults] = useState<{
+  const [battleResults, setBattleResults] = useState<{
     xpEarned: number
     oldXP: number
     newXP: number
@@ -42,8 +42,8 @@ export default function QuizPage() {
   const [showLevelUpModal, setShowLevelUpModal] = useState(false)
   const [isSubmittingResults, setIsSubmittingResults] = useState(false)
 
-  // Track if quiz is actively running (not in loading, error, or complete state)
-  const isQuizActive = !isLoading && !hasError && !quizComplete && questions.length > 0
+  // Track if battle is actively running (not in loading, error, or complete state)
+  const isBattleActive = !isLoading && !hasError && !battleComplete && questions.length > 0
 
   // Anti-cheat functionality for singleplayer
   const handleCheatDetected = (event: CheatEvent) => {
@@ -59,13 +59,16 @@ export default function QuizPage() {
 
   // Initialize anti-cheat hook
   const { isAway } = useAntiCheat({
-    isGameActive: isQuizActive,
+    isGameActive: isBattleActive,
     thresholdMs: 2500,
     onCheatDetected: handleCheatDetected
   })
 
   // Load questions from sessionStorage on component mount
   useEffect(() => {
+    // Check if we're on the client side
+    if (typeof window === 'undefined') return
+    
     const storedQuestions = sessionStorage.getItem('quizQuestions')
     const storedTopic = sessionStorage.getItem('quizTopic')
     
@@ -96,42 +99,50 @@ export default function QuizPage() {
     }
   }, [])
 
-  const question = questions[currentQuestion]
+  const question = useMemo(() => questions[currentQuestion] || null, [questions, currentQuestion])
+
+  // Memoize expensive calculations
+  const scorePercentage = useMemo(() => (score / questions.length) * 100, [score, questions.length])
+  const isLastQuestion = useMemo(() => currentQuestion >= questions.length - 1, [currentQuestion, questions.length])
 
   // Timer effect
   useEffect(() => {
-    if (timeLeft > 0 && !showResult && !quizComplete) {
+    if (timeLeft > 0 && !showResult && !battleComplete) {
       const timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000)
       return () => clearTimeout(timer)
     } else if (timeLeft === 0 && !showResult) {
       // Handle time's up based on question type
-      if (question.type === "open_ended") {
+      if (question?.type === "open_ended") {
         // For open-ended questions, just show result without submitting
         setShowResult(true)
       } else {
         handleAnswer(-1) // Time's up for multiple choice
       }
     }
-  }, [timeLeft, showResult, quizComplete, question.type])
+  }, [timeLeft, showResult, battleComplete, question?.type])
 
-  const handleAnswer = (answerIndex: number) => {
+  const handleAnswer = useCallback((answerIndex: number) => {
+    if (!question) return
+    
     setSelectedAnswer(answerIndex)
     setShowResult(true)
     
     const correctAnswer = question.correct !== undefined ? question.correct : 0
     const isCorrect = answerIndex === correctAnswer
     if (isCorrect) {
-      setScore(score + 1)
+      setScore(prev => prev + 1)
     }
     
     // Store user answer
-    const newAnswers = [...userAnswers]
-    newAnswers[currentQuestion] = answerIndex
-    setUserAnswers(newAnswers)
-  }
+    setUserAnswers(prev => {
+      const newAnswers = [...prev]
+      newAnswers[currentQuestion] = answerIndex
+      return newAnswers
+    })
+  }, [question, currentQuestion])
 
-  const handleTextAnswer = () => {
-    if (!textAnswer.trim()) return
+  const handleTextAnswer = useCallback(() => {
+    if (!question || !textAnswer.trim()) return
     
     setShowResult(true)
     
@@ -145,34 +156,22 @@ export default function QuizPage() {
     )
     
     if (isCorrect) {
-      setScore(score + 1)
+      setScore(prev => prev + 1)
     }
     
     // Store user answer
-    const newAnswers = [...userAnswers]
-    newAnswers[currentQuestion] = textAnswer.trim()
-    setUserAnswers(newAnswers)
-  }
+    setUserAnswers(prev => {
+      const newAnswers = [...prev]
+      newAnswers[currentQuestion] = textAnswer.trim()
+      return newAnswers
+    })
+  }, [question, textAnswer, currentQuestion])
 
-  const handleNext = () => {
-    if (currentQuestion < questions.length - 1) {
-      setCurrentQuestion(currentQuestion + 1)
-      setSelectedAnswer(null)
-      setTextAnswer("")
-      setShowResult(false)
-      // Set different timer based on question type
-      const nextQuestion = questions[currentQuestion + 1]
-      setTimeLeft(nextQuestion?.type === "open_ended" ? 60 : 30)
-    } else {
-      handleQuizComplete()
-    }
-  }
-
-  const handleQuizComplete = async () => {
+  const handleBattleComplete = useCallback(async () => {
     setIsSubmittingResults(true)
     
     try {
-      // Calculate quiz statistics
+      // Calculate battle statistics
       const correctAnswers = score
       const totalQuestions = questions.length
       const totalTime = questions.length * 30 - timeLeft // Rough estimate
@@ -211,13 +210,13 @@ export default function QuizPage() {
 
         if (response.ok) {
           const result = await response.json()
-          console.log('✅ Quiz results submitted:', result)
+          console.log('✅ Battle results submitted:', result)
           
           // Check if user leveled up
           const leveledUp = checkLevelUp(result.oldXP || 0, result.newXP || 0)
           
           // Set results state
-          setQuizResults({
+          setBattleResults({
             xpEarned: xpResult.totalXP,
             oldXP: result.oldXP || 0,
             newXP: result.newXP || 0,
@@ -238,23 +237,36 @@ export default function QuizPage() {
             setShowLevelUpModal(true)
           }
         } else {
-          console.error('❌ Failed to submit quiz results')
+          console.error('❌ Failed to submit battle results')
         }
       }
     } catch (error) {
-      console.error('❌ Error submitting quiz results:', error)
+      console.error('❌ Error submitting battle results:', error)
     } finally {
       setIsSubmittingResults(false)
-      setQuizComplete(true)
+      setBattleComplete(true)
     }
-  }
+  }, [score, questions, userAnswers, topic])
 
-  const getScoreColor = () => {
-    const percentage = (score / questions.length) * 100
-    if (percentage >= 80) return "text-chart-3"
-    if (percentage >= 60) return "text-primary"
+  const handleNext = useCallback(() => {
+    if (currentQuestion < questions.length - 1) {
+      setCurrentQuestion(prev => prev + 1)
+      setSelectedAnswer(null)
+      setTextAnswer("")
+      setShowResult(false)
+      // Set different timer based on question type
+      const nextQuestion = questions[currentQuestion + 1]
+      setTimeLeft(nextQuestion?.type === "open_ended" ? 60 : 30)
+    } else {
+      handleBattleComplete()
+    }
+  }, [currentQuestion, questions, handleBattleComplete])
+
+  const getScoreColor = useMemo(() => {
+    if (scorePercentage >= 80) return "text-chart-3"
+    if (scorePercentage >= 60) return "text-primary"
     return "text-destructive"
-  }
+  }, [scorePercentage])
 
   // Loading state
   if (isLoading) {
@@ -310,17 +322,34 @@ export default function QuizPage() {
     )
   }
 
-  if (quizComplete) {
+  if (battleComplete) {
     return (
-      <QuizResultsScreen 
+      <BattleResultsScreen 
         score={score}
         totalQuestions={questions.length}
         topic={topic}
         userAnswers={userAnswers}
         questions={questions}
-        onRetakeQuiz={() => window.location.href = '/singleplayer'}
+        onRetakeBattle={() => window.location.href = '/singleplayer'}
         onBackToDashboard={() => window.location.href = '/dashboard'}
       />
+    )
+  }
+
+  // Guard clause to prevent rendering when question is not available
+  if (!question) {
+    return (
+      <div className="min-h-screen bg-background p-6">
+        <div className="max-w-2xl mx-auto">
+          <Card className="p-8 bg-card cartoon-border cartoon-shadow text-center">
+            <div className="w-20 h-20 rounded-xl bg-primary flex items-center justify-center mx-auto mb-6 cartoon-border cartoon-shadow">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-foreground"></div>
+            </div>
+            <h2 className="text-2xl font-black text-foreground mb-2">Loading Quiz...</h2>
+            <p className="text-muted-foreground font-bold">Preparing your questions</p>
+          </Card>
+        </div>
+      </div>
     )
   }
 
@@ -343,7 +372,7 @@ export default function QuizPage() {
                     </span>
                   </div>
                   <p className="text-yellow-700 text-sm mt-1">
-                    You switched away from the quiz for {cheatViolations[cheatViolations.length - 1]?.duration ? Math.round(cheatViolations[cheatViolations.length - 1].duration / 1000) : 'some'} seconds{cheatViolations[cheatViolations.length - 1]?.type === 'visibility_change' ? ' (tab switched)' : ' (window lost focus)'}. Please stay focused!
+                    You switched away from the battle for {cheatViolations[cheatViolations.length - 1]?.duration ? Math.round(cheatViolations[cheatViolations.length - 1].duration / 1000) : 'some'} seconds{cheatViolations[cheatViolations.length - 1]?.type === 'visibility_change' ? ' (tab switched)' : ' (window lost focus)'}. Please stay focused!
                   </p>
                 </div>
               </div>
@@ -427,7 +456,7 @@ export default function QuizPage() {
             {/* Multiple Choice Questions */}
             {question.type === "multiple_choice" && (
               <div className="space-y-4">
-                {(question.options || [question.a]).map((option, index) => {
+                {(question.options || [question.a]).map((option: any, index: number) => {
                   let buttonClass = "w-full p-4 text-left font-bold text-lg rounded-xl cartoon-border cartoon-shadow transition-all duration-200 "
                   
                   if (showResult) {
@@ -553,7 +582,7 @@ export default function QuizPage() {
                 onClick={handleNext}
                 className="bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg px-8 py-3 cartoon-border cartoon-shadow cartoon-hover"
               >
-                {currentQuestion < questions.length - 1 ? "Next Question" : "Finish Quiz"}
+                {!isLastQuestion ? "Next Question" : "Finish Quiz"}
               </Button>
             </div>
           )}
@@ -563,25 +592,25 @@ export default function QuizPage() {
   )
 }
 
-interface QuizResultsScreenProps {
+interface BattleResultsScreenProps {
   score: number
   totalQuestions: number
   topic: string
   userAnswers: (number | string)[]
   questions: any[]
-  onRetakeQuiz: () => void
+  onRetakeBattle: () => void
   onBackToDashboard: () => void
 }
 
-function QuizResultsScreen({ 
+function BattleResultsScreen({ 
   score, 
   totalQuestions, 
   topic, 
   userAnswers, 
-  questions,
-  onRetakeQuiz,
+  questions, 
+  onRetakeBattle,
   onBackToDashboard
-}: QuizResultsScreenProps) {
+}: BattleResultsScreenProps) {
   const [userProfile, setUserProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
@@ -739,7 +768,7 @@ function QuizResultsScreen({
         {/* Action Buttons */}
         <div className="space-y-4">
           <Button 
-            onClick={onRetakeQuiz}
+            onClick={onRetakeBattle}
             className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg cartoon-border cartoon-shadow cartoon-hover"
           >
             <Zap className="h-5 w-5 mr-2" strokeWidth={3} />

@@ -51,11 +51,11 @@ export function LevelUpModal({
       rotate: [0, 360],
       transition: {
         duration: 1.5,
-        ease: "easeOut"
+        ease: "easeOut" as any
       }
     },
     exit: { 
-      scale: 0,
+      scale: 0, 
       opacity: 0,
       transition: { duration: 0.3 }
     }

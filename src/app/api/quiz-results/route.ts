@@ -139,19 +139,31 @@ export async function POST(request: NextRequest) {
 
     console.log("✅ [QUIZ RESULTS] Created game result:", gameResult.id)
 
-    // 6. Update player stats (this should trigger automatically via the trigger, but let's do it manually)
+    // 6. Get current player stats
+    const { data: currentStats, error: statsFetchError } = await supabase
+      .from('player_stats')
+      .select('*')
+      .eq('user_id', userId)
+      .single()
+
+    if (statsFetchError || !currentStats) {
+      console.error("❌ [QUIZ RESULTS] Error fetching current stats:", statsFetchError)
+      return NextResponse.json({ error: "Failed to fetch current stats" }, { status: 500 })
+    }
+
+    // 7. Update player stats (this should trigger automatically via the trigger, but let's do it manually)
     const { error: statsError } = await supabase
       .from('player_stats')
       .update({
-        total_games: supabase.sql`total_games + 1`,
-        total_wins: supabase.sql`total_wins + 1`, // Singleplayer completion counts as a win
-        win_streak: supabase.sql`win_streak + 1`,
-        best_streak: supabase.sql`GREATEST(best_streak, win_streak + 1)`,
-        total_questions_answered: supabase.sql`total_questions_answered + ${totalQuestions}`,
-        correct_answers: supabase.sql`correct_answers + ${correctAnswers}`,
-        accuracy: supabase.sql`((correct_answers + ${correctAnswers})::DECIMAL / (total_questions_answered + ${totalQuestions}) * 100)`,
-        xp: supabase.sql`xp + ${xpEarned}`,
-        level: supabase.sql`FLOOR((xp + ${xpEarned}) / 1000) + 1`,
+        total_games: currentStats.total_games + 1,
+        total_wins: currentStats.total_wins + 1, // Singleplayer completion counts as a win
+        win_streak: currentStats.win_streak + 1,
+        best_streak: Math.max(currentStats.best_streak, currentStats.win_streak + 1),
+        total_questions_answered: currentStats.total_questions_answered + totalQuestions,
+        correct_answers: currentStats.correct_answers + correctAnswers,
+        accuracy: ((currentStats.correct_answers + correctAnswers) / (currentStats.total_questions_answered + totalQuestions)) * 100,
+        xp: currentStats.xp + xpEarned,
+        level: Math.floor((currentStats.xp + xpEarned) / 1000) + 1,
         updated_at: new Date().toISOString()
       })
       .eq('user_id', userId)

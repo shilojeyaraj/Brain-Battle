@@ -1,61 +1,16 @@
-import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function updateSession(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
-  })
-
-  // Check if environment variables are available
-  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-    console.warn('Supabase environment variables not found, skipping auth check')
-    return supabaseResponse
-  }
-
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          supabaseResponse = NextResponse.next({
-            request,
-          })
-          cookiesToSet.forEach(({ name, value, options }) =>
-            supabaseResponse.cookies.set(name, value, options)
-          )
-        },
-      },
-    }
-  )
-
-  // IMPORTANT: Avoid writing any logic between createServerClient and
-  // supabase.auth.getUser(). A simple mistake could make it very hard to debug
-  // issues with users being randomly logged out.
-
-  // Temporarily disable auth check since we're using custom authentication
-  // TODO: Implement proper session management for custom auth
-  console.log('🔓 [MIDDLEWARE] Auth check disabled - using custom authentication')
+  // Since we're using custom authentication, we can skip the heavy Supabase client creation
+  // This significantly reduces middleware overhead and improves performance
   
   // Define public routes that don't require authentication
   const publicRoutes = ['/', '/login', '/signup', '/demo', '/about', '/features', '/pricing', '/help', '/contact', '/privacy', '/terms']
   const isPublicRoute = publicRoutes.includes(request.nextUrl.pathname)
 
-  // For now, allow access to all routes
-  // Later we'll implement proper session checking
-  console.log(`🔓 [MIDDLEWARE] Allowing access to: ${request.nextUrl.pathname}`)
-
-  // IMPORTANT: You *must* return the supabaseResponse object as it is. If you're
-  // creating a new response object with NextResponse.next() make sure to:
-  // 1. Pass the request in it, like so:
-  //    const myNewResponse = NextResponse.next({ request })
-  // 2. Copy over the cookies, like so:
-  //    myNewResponse.cookies.setAll(supabaseResponse.cookies.getAll())
-  // 3. Change the myNewResponse object instead of the supabaseResponse object
-
-  return supabaseResponse
+  // For custom auth, we just need to pass through the request
+  // Session validation happens on the client side and in API routes
+  return NextResponse.next({
+    request,
+  })
 }

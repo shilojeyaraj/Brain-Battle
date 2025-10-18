@@ -272,7 +272,7 @@ export default function StudySessionControls({
               <div className="space-y-2">
                 <Slider
                   value={[duration]}
-                  onValueChange={(value) => setDuration(value[0])}
+                  onValueChange={(value: number[]) => setDuration(value[0])}
                   min={5}
                   max={120}
                   step={5}

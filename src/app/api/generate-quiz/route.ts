@@ -8,7 +8,32 @@ const openai = new OpenAI({
 
 export async function POST(request: NextRequest) {
   try {
-    const { topic, difficulty, studyNotes, userId } = await request.json()
+    const form = await request.formData()
+    const files = form.getAll("files") as File[]
+    const topic = form.get("topic") as string
+    const difficulty = form.get("difficulty") as string
+    const instructions = form.get("instructions") as string
+    const notes = form.get("notes") as string
+    const studyContextStr = form.get("studyContext") as string
+    let studyContext = null
+    if (studyContextStr) {
+      try {
+        studyContext = JSON.parse(studyContextStr)
+      } catch (e) {
+        console.log("⚠️ [QUIZ API] Failed to parse study context:", e)
+      }
+    }
+    
+    let complexityAnalysis = null
+    if (notes) {
+      try {
+        const parsedNotes = JSON.parse(notes)
+        complexityAnalysis = parsedNotes.complexity_analysis
+        console.log("📊 [QUIZ API] Using complexity analysis from notes:", complexityAnalysis)
+      } catch (e) {
+        console.log("⚠️ [QUIZ API] Failed to parse notes for complexity analysis:", e)
+      }
+    }
 
     if (!topic || !difficulty) {
       return NextResponse.json(
@@ -19,30 +44,28 @@ export async function POST(request: NextRequest) {
 
     // Get relevant document chunks using semantic search
     let relevantChunks = []
-    if (userId) {
-      try {
-        const searchResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/embeddings?q=${encodeURIComponent(topic)}&userId=${userId}&limit=8&threshold=0.6`)
-        if (searchResponse.ok) {
-          const searchResult = await searchResponse.json()
-          relevantChunks = searchResult.results || []
-          console.log(`Found ${relevantChunks.length} relevant document chunks for topic: ${topic}`)
-          
-          // Log the actual content found for debugging
-          relevantChunks.forEach((chunk, index) => {
-            console.log(`Chunk ${index + 1}: ${chunk.file_name} (${chunk.similarity_score?.toFixed(3)} similarity)`)
-            console.log(`Content preview: ${chunk.chunk_text.substring(0, 200)}...`)
-          })
-        }
-      } catch (error) {
-        console.error('Error performing semantic search:', error)
+    try {
+      const searchResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/semantic-search?q=${encodeURIComponent(topic)}&limit=8&threshold=0.6`)
+      if (searchResponse.ok) {
+        const searchResult = await searchResponse.json()
+        relevantChunks = searchResult.results || []
+        console.log(`Found ${relevantChunks.length} relevant document chunks for topic: ${topic}`)
+        
+        // Log the actual content found for debugging
+        relevantChunks.forEach((chunk: any, index: number) => {
+          console.log(`Chunk ${index + 1}: ${chunk.file_name} (${chunk.similarity_score?.toFixed(3)} similarity)`)
+          console.log(`Content preview: ${chunk.chunk_text.substring(0, 200)}...`)
+        })
       }
+    } catch (error) {
+      console.error('Error performing semantic search:', error)
     }
 
     // If no relevant chunks found, try a broader search
-    if (relevantChunks.length === 0 && userId) {
+    if (relevantChunks.length === 0) {
       try {
         console.log('No relevant chunks found, trying broader search...')
-        const broadSearchResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/embeddings?q=${encodeURIComponent(topic)}&userId=${userId}&limit=5&threshold=0.4`)
+        const broadSearchResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/semantic-search?q=${encodeURIComponent(topic)}&limit=5&threshold=0.4`)
         if (broadSearchResponse.ok) {
           const broadSearchResult = await broadSearchResponse.json()
           relevantChunks = broadSearchResult.results || []
@@ -53,9 +76,39 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Build study context instructions
+    let contextInstructions = ""
+    if (studyContext) {
+      contextInstructions = "\n\nSTUDY PREFERENCES:\n"
+      if (studyContext.studyFocus) {
+        contextInstructions += `- Study Focus: ${studyContext.studyFocus}\n`
+      }
+      if (studyContext.questionTypes && studyContext.questionTypes.length > 0) {
+        contextInstructions += `- Preferred Question Types: ${studyContext.questionTypes.join(', ')}\n`
+      }
+      if (studyContext.difficulty) {
+        contextInstructions += `- Difficulty Level: ${studyContext.difficulty}\n`
+      }
+      if (studyContext.specialInstructions) {
+        contextInstructions += `- Special Instructions: ${studyContext.specialInstructions}\n`
+      }
+      contextInstructions += "\nPlease tailor the quiz questions to these preferences while still basing everything on the document content.\n"
+    }
+
     // Create a comprehensive prompt for quiz generation
     const prompt = `
-Generate 5 quiz questions about "${topic}" with ${difficulty} difficulty level.
+Generate 5 quiz questions about "${topic}" with ${difficulty} difficulty level.${contextInstructions}
+
+${complexityAnalysis ? `
+COMPLEXITY ANALYSIS (use this to match question difficulty to content level):
+- Education Level: ${complexityAnalysis.education_level || 'Not specified'}
+- Vocabulary Level: ${complexityAnalysis.vocabulary_level || 'Not specified'}
+- Concept Sophistication: ${complexityAnalysis.concept_sophistication || 'Not specified'}
+- Reasoning Level Required: ${complexityAnalysis.reasoning_level || 'Not specified'}
+- Prerequisite Knowledge: ${complexityAnalysis.prerequisite_knowledge?.join(', ') || 'None specified'}
+
+IMPORTANT: Match your question complexity to the detected education level and reasoning requirements. Use vocabulary and concepts appropriate for the target audience.
+` : ''}
 
 ${relevantChunks.length === 0 ? `
 ⚠️ WARNING: No specific document content was found for this topic. You should still try to create questions that would be relevant to the topic, but note that they cannot be based on specific document content.
@@ -76,22 +129,7 @@ ${chunk.chunk_text}
 
 ` : ''}
 
-${studyNotes ? `
-ADDITIONAL STUDY NOTES CONTEXT:
-
-Title: ${studyNotes.title}
-
-Outline:
-${studyNotes.outline?.map((item: string) => `- ${item}`).join('\n') || 'N/A'}
-
-Key Terms: ${studyNotes.key_terms?.join(', ') || 'N/A'}
-
-Concepts:
-${studyNotes.concepts?.map((concept: any) => `- ${concept.title}: ${concept.description}`).join('\n') || 'N/A'}
-
-` : ''}
-
-IMPORTANT: The study notes above are supplementary. Your primary source for questions should be the specific document content provided above.
+IMPORTANT: Base all questions on the specific document content provided above.
 
 For each question, provide:
 1. A clear, well-written question
@@ -175,7 +213,14 @@ Generate exactly 5 questions that test knowledge of the specific document conten
     }
 
     // Parse the JSON response
-    const quizData = JSON.parse(response)
+    let quizData
+    try {
+      quizData = JSON.parse(response)
+    } catch (error) {
+      console.error("❌ [QUIZ API] Failed to parse OpenAI response as JSON:", error)
+      console.log("📄 [QUIZ API] Raw response:", response)
+      throw new Error("Failed to parse quiz data from OpenAI")
+    }
     
     // Validate the response structure
     if (!quizData.questions || !Array.isArray(quizData.questions)) {

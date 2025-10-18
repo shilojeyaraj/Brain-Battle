@@ -3,15 +3,16 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
-import { Sparkles, Mail, Lock, ArrowLeft, AlertCircle } from "lucide-react"
+import { Sparkles, Mail, Lock, ArrowLeft, AlertCircle, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { login } from "@/lib/actions/custom-auth"
 import { useSearchParams } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useState, Suspense, useTransition } from "react"
 
-export default function LoginPage() {
+function LoginForm() {
   const searchParams = useSearchParams()
   const [error, setError] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
 
   useEffect(() => {
     const errorParam = searchParams.get('error')
@@ -22,6 +23,12 @@ export default function LoginPage() {
 
   const clearError = () => {
     setError(null)
+  }
+
+  const handleSubmit = (formData: FormData) => {
+    startTransition(() => {
+      login(formData)
+    })
   }
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -57,7 +64,7 @@ export default function LoginPage() {
             </div>
           )}
           
-          <form action={login} className="space-y-6">
+          <form action={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <label htmlFor="email" className="text-sm font-black text-foreground">
                 Email
@@ -69,8 +76,9 @@ export default function LoginPage() {
                   name="email"
                   type="email"
                   placeholder="Enter your email"
-                  className="pl-10 h-12 text-lg font-bold cartoon-border bg-card"
+                  className="pl-10 h-12 text-lg font-bold cartoon-border bg-card disabled:opacity-50"
                   required
+                  disabled={isPending}
                   onChange={clearError}
                 />
               </div>
@@ -106,9 +114,17 @@ export default function LoginPage() {
 
             <Button
               type="submit"
-              className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg cartoon-border cartoon-shadow cartoon-hover"
+              disabled={isPending}
+              className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg cartoon-border cartoon-shadow cartoon-hover disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Sign In
+              {isPending ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" strokeWidth={3} />
+                  Signing In...
+                </>
+              ) : (
+                "Sign In"
+              )}
             </Button>
           </form>
 
@@ -123,5 +139,17 @@ export default function LoginPage() {
         </Card>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background flex items-center justify-center p-6">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    }>
+      <LoginForm />
+    </Suspense>
   )
 }

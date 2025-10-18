@@ -15,7 +15,8 @@ import {
   Calendar,
   X,
   Crown,
-  Award
+  Award,
+  User
 } from "lucide-react"
 import { UserProfile } from "@/lib/actions/user-stats-client"
 
@@ -43,7 +44,7 @@ export function UserProfileModal({ isOpen, onClose, userProfile }: UserProfileMo
               <Avatar className="h-16 w-16 cartoon-border cartoon-shadow">
                 <AvatarImage src="/placeholder.svg?height=64&width=64" />
                 <AvatarFallback className="bg-primary text-primary-foreground font-black text-2xl">
-                  {userProfile.username.charAt(0).toUpperCase()}
+                  <User className="h-8 w-8" strokeWidth={3} />
                 </AvatarFallback>
               </Avatar>
               <div>

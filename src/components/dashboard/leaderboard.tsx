@@ -76,7 +76,7 @@ export function Leaderboard() {
             level: userRankData.level,
             xp: userRankData.xp,
             wins: userRankData.wins,
-            avatar_url: null
+            avatar_url: undefined
           }
         }
       }
@@ -98,7 +98,7 @@ export function Leaderboard() {
         level: player.level,
         xp: player.xp,
         wins: player.wins,
-        avatar_url: null
+        avatar_url: undefined
       })) || []
 
       setTopPlayers(playersWithRank)
@@ -190,7 +190,7 @@ export function Leaderboard() {
         </button>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-6">
         {topPlayers.map((player) => {
           const rank = getRankFromXP(player.xp)
           const isCurrentUser = currentUserRank?.user_id === player.user_id
@@ -198,7 +198,7 @@ export function Leaderboard() {
           return (
             <div
               key={player.rank}
-              className={`p-4 rounded-xl border-4 transition-all duration-300 cartoon-hover ${
+              className={`p-6 rounded-xl border-4 transition-all duration-300 cartoon-hover ${
                 player.rank === 1
                   ? "bg-primary/10 border-primary cartoon-shadow"
                   : player.rank === 2
@@ -210,10 +210,10 @@ export function Leaderboard() {
                   : "bg-secondary/30 border-border hover:border-primary"
               }`}
             >
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-6">
                 <div className="relative">
                   <div
-                    className={`text-xl font-black w-10 h-10 rounded-full flex items-center justify-center cartoon-border ${
+                    className={`text-2xl font-black w-12 h-12 rounded-full flex items-center justify-center cartoon-border ${
                       player.rank === 1
                         ? "bg-primary text-primary-foreground"
                         : player.rank === 2
@@ -226,11 +226,11 @@ export function Leaderboard() {
                     {player.rank}
                   </div>
                   {player.rank === 1 && (
-                    <Crown className="absolute -top-2 -right-2 h-5 w-5 text-primary" strokeWidth={3} />
+                    <Crown className="absolute -top-2 -right-2 h-6 w-6 text-primary" strokeWidth={3} />
                   )}
                 </div>
 
-                <Avatar className="h-12 w-12 cartoon-border">
+                <Avatar className="h-14 w-14 cartoon-border">
                   <AvatarImage src={player.avatar_url || "/placeholder.svg"} />
                   <AvatarFallback className="bg-secondary text-secondary-foreground font-black">
                     {player.username.slice(0, 2).toUpperCase()}
@@ -238,26 +238,26 @@ export function Leaderboard() {
                 </Avatar>
 
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="font-black text-foreground truncate text-lg">{player.username}</p>
+                  <div className="flex items-center gap-3">
+                    <p className="font-black text-foreground truncate text-xl">{player.username}</p>
                     {isCurrentUser && (
-                      <Badge className="bg-secondary text-secondary-foreground text-xs">You</Badge>
+                      <Badge className="bg-secondary text-secondary-foreground text-sm px-2 py-1">You</Badge>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground font-bold">
+                  <div className="flex items-center gap-3 text-base text-muted-foreground font-bold">
                     <span>{formatXP(player.xp)} XP</span>
                     <span>•</span>
                     <span>{player.wins} wins</span>
                     <span>•</span>
-                    <div className="flex items-center gap-1">
-                      {getRankIcon(rank, "h-3 w-3")}
+                    <div className="flex items-center gap-2">
+                      {getRankIcon(rank, "h-4 w-4")}
                       <span>{rank.name}</span>
                     </div>
                   </div>
                 </div>
 
                 {player.rank <= 3 && (
-                  <TrendingUp className="h-5 w-5 text-chart-3" strokeWidth={3} />
+                  <TrendingUp className="h-6 w-6 text-chart-3" strokeWidth={3} />
                 )}
               </div>
             </div>

@@ -121,6 +121,10 @@ export function calculateLevelFromXP(xp: number): number {
   return Math.floor(xp / 1000) + 1
 }
 
+export function getCurrentLevel(xp: number): number {
+  return calculateLevelFromXP(xp)
+}
+
 export function getXPToNextLevel(xp: number): number {
   const level = calculateLevelFromXP(xp)
   const nextLevelXP = level * 1000

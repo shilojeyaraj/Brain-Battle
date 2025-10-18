@@ -66,7 +66,14 @@ Make sure the questions are:
     }
 
     // Parse the JSON response
-    const quizData = JSON.parse(response)
+    let quizData
+    try {
+      quizData = JSON.parse(response)
+    } catch (error) {
+      console.error("❌ [QUIZ GENERATION] Failed to parse OpenAI response as JSON:", error)
+      console.log("📄 [QUIZ GENERATION] Raw response:", response)
+      throw new Error("Failed to parse quiz data from OpenAI")
+    }
     
     // Validate the response structure
     if (!quizData.questions || !Array.isArray(quizData.questions)) {

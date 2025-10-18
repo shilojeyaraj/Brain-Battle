@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button"
-import { Sparkles, Users, Zap, Trophy, Star, Rocket, Target, Award } from "lucide-react"
+import { Brain, Users, Zap, Trophy, Star, Rocket, Target, Award } from "lucide-react"
 import Link from "next/link"
 
 export default function HomePage() {
@@ -9,21 +9,13 @@ export default function HomePage() {
         <div className="container mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-14 h-14 bg-primary rounded-2xl flex items-center justify-center cartoon-border cartoon-shadow">
-              <Sparkles className="w-8 h-8 text-primary-foreground" strokeWidth={3} />
+              <Brain className="w-8 h-8 text-primary-foreground" strokeWidth={3} />
             </div>
             <span className="text-4xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
               Brain<span className="text-primary">Battle</span>
             </span>
           </div>
           <div className="flex items-center gap-3">
-            <Link href="/dashboard">
-              <Button
-                variant="ghost"
-                className="text-foreground hover:text-primary font-bold text-lg cartoon-border bg-card cartoon-hover"
-              >
-                Dashboard
-              </Button>
-            </Link>
             <Link href="/login">
               <Button className="cartoon-border bg-card hover:bg-muted text-foreground font-black text-lg cartoon-shadow cartoon-hover">
                 Sign In
@@ -51,12 +43,12 @@ export default function HomePage() {
             className="text-6xl lg:text-8xl font-black text-foreground text-balance leading-tight"
             style={{ fontFamily: "var(--font-display)" }}
           >
-            Turn Studying Into
-            <span className="block text-primary mt-2">Epic Showdowns!</span>
+            AI-Powered Study
+            <span className="block text-primary mt-2">Battles!</span>
           </h1>
 
           <p className="text-xl lg:text-2xl text-muted-foreground max-w-3xl mx-auto text-pretty leading-relaxed font-bold">
-            Challenge your friends, answer questions, and climb the leaderboards. Learning has never been this exciting!
+            Upload your study materials, generate personalized questions with AI, and compete with friends in real-time battles. Transform any subject into an engaging learning experience!
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-6">
@@ -80,26 +72,6 @@ export default function HomePage() {
             </Link>
           </div>
 
-          <div className="grid grid-cols-3 gap-6 max-w-4xl mx-auto pt-16">
-            <div className="p-6 rounded-2xl bg-card cartoon-border cartoon-shadow-lg">
-              <div className="text-5xl font-black text-primary" style={{ fontFamily: "var(--font-display)" }}>
-                10K+
-              </div>
-              <div className="text-sm font-black text-foreground mt-2">Players</div>
-            </div>
-            <div className="p-6 rounded-2xl bg-card cartoon-border cartoon-shadow-lg">
-              <div className="text-5xl font-black text-secondary" style={{ fontFamily: "var(--font-display)" }}>
-                500K+
-              </div>
-              <div className="text-sm font-black text-foreground mt-2">Battles</div>
-            </div>
-            <div className="p-6 rounded-2xl bg-card cartoon-border cartoon-shadow-lg">
-              <div className="text-5xl font-black text-chart-3" style={{ fontFamily: "var(--font-display)" }}>
-                1M+
-              </div>
-              <div className="text-sm font-black text-foreground mt-2">Questions</div>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -109,10 +81,10 @@ export default function HomePage() {
             className="text-5xl lg:text-6xl font-black text-foreground mb-4"
             style={{ fontFamily: "var(--font-display)" }}
           >
-            Why You'll Love It
+            How It Works
           </h2>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto font-bold">
-            Everything you need for epic study sessions
+            Transform any study material into engaging battles with AI-powered question generation
           </p>
         </div>
 
@@ -122,10 +94,10 @@ export default function HomePage() {
               <Users className="w-8 h-8 text-primary-foreground" strokeWidth={3} />
             </div>
             <h3 className="text-2xl font-black text-foreground mb-3" style={{ fontFamily: "var(--font-display)" }}>
-              Private Lobbies
+              Upload & Study
             </h3>
             <p className="text-muted-foreground leading-relaxed font-bold">
-              Create your own battle rooms! Invite friends, set the rules, and study together in style.
+              Upload your PDFs, documents, or notes. Our AI analyzes your content and generates personalized study materials and questions.
             </p>
           </div>
 
@@ -134,10 +106,10 @@ export default function HomePage() {
               <Zap className="w-8 h-8 text-secondary-foreground" strokeWidth={3} />
             </div>
             <h3 className="text-2xl font-black text-foreground mb-3" style={{ fontFamily: "var(--font-display)" }}>
-              Lightning Fast
+              AI-Generated Questions
             </h3>
             <p className="text-muted-foreground leading-relaxed font-bold">
-              Answer questions in real-time! Quick thinking wins battles and earns you bragging rights.
+              Our AI creates multiple choice and open-ended questions based on your uploaded content, ensuring every question is relevant to your study material.
             </p>
           </div>
 
@@ -146,10 +118,10 @@ export default function HomePage() {
               <Trophy className="w-8 h-8 text-foreground" strokeWidth={3} />
             </div>
             <h3 className="text-2xl font-black text-foreground mb-3" style={{ fontFamily: "var(--font-display)" }}>
-              Leaderboards
+              Multiplayer Battles
             </h3>
             <p className="text-muted-foreground leading-relaxed font-bold">
-              Climb to the top! Track your progress and show everyone who's the ultimate brain champion.
+              Create study rooms and compete with friends in real-time! Host study sessions with customizable timers and shared study materials.
             </p>
           </div>
 
@@ -158,10 +130,10 @@ export default function HomePage() {
               <Star className="w-8 h-8 text-card" strokeWidth={3} />
             </div>
             <h3 className="text-2xl font-black text-foreground mb-3" style={{ fontFamily: "var(--font-display)" }}>
-              Any Subject
+              Smart Study Notes
             </h3>
             <p className="text-muted-foreground leading-relaxed font-bold">
-              Math, science, history, or anything else! Create custom question sets for any topic you're studying.
+              Get AI-generated study notes with key concepts, definitions, examples, and practice questions tailored to your uploaded content.
             </p>
           </div>
 
@@ -170,10 +142,10 @@ export default function HomePage() {
               <Target className="w-8 h-8 text-accent-foreground" strokeWidth={3} />
             </div>
             <h3 className="text-2xl font-black text-foreground mb-3" style={{ fontFamily: "var(--font-display)" }}>
-              Track Progress
+              Progress Tracking
             </h3>
             <p className="text-muted-foreground leading-relaxed font-bold">
-              See how you improve over time! Detailed stats show your strengths and what to work on.
+              Track your performance with XP, levels, and detailed statistics. See your improvement over time and identify areas to focus on.
             </p>
           </div>
 
@@ -182,10 +154,10 @@ export default function HomePage() {
               <Award className="w-8 h-8 text-primary-foreground" strokeWidth={3} />
             </div>
             <h3 className="text-2xl font-black text-foreground mb-3" style={{ fontFamily: "var(--font-display)" }}>
-              Multiple Modes
+              Single & Multiplayer
             </h3>
             <p className="text-muted-foreground leading-relaxed font-bold">
-              Quick battles, team challenges, endurance rounds, and more! Never get bored with tons of game modes.
+              Study solo with AI-generated questions or create multiplayer rooms with friends. Flexible study modes for every learning style.
             </p>
           </div>
         </div>
@@ -201,7 +173,7 @@ export default function HomePage() {
               Ready to Battle?
             </h2>
             <p className="text-2xl text-card/90 max-w-2xl mx-auto text-pretty font-black">
-              Join thousands of students making studying actually fun!
+              Transform your study materials into engaging battles with AI-powered question generation!
             </p>
             <div className="pt-6">
               <Link href="/signup">
@@ -209,7 +181,7 @@ export default function HomePage() {
                   size="lg"
                   className="bg-card hover:bg-card/90 text-foreground text-2xl px-12 h-20 font-black cartoon-border cartoon-shadow-lg cartoon-hover"
                 >
-                  <Sparkles className="w-7 h-7 mr-3" strokeWidth={3} />
+                  <Brain className="w-7 h-7 mr-3" strokeWidth={3} />
                   Let's Go!
                 </Button>
               </Link>
@@ -224,13 +196,13 @@ export default function HomePage() {
             <div className="space-y-4">
               <div className="flex items-center gap-2">
                 <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center cartoon-border cartoon-shadow">
-                  <Sparkles className="w-7 h-7 text-primary-foreground" strokeWidth={3} />
+                  <Brain className="w-7 h-7 text-primary-foreground" strokeWidth={3} />
                 </div>
                 <span className="text-2xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
                   BrainBattle
                 </span>
               </div>
-              <p className="text-sm text-muted-foreground font-bold">Making studying fun, one battle at a time!</p>
+              <p className="text-sm text-muted-foreground font-bold">AI-powered study battles from your own materials!</p>
             </div>
 
             <div>
@@ -298,7 +270,7 @@ export default function HomePage() {
           </div>
 
           <div className="cartoon-border border-t mt-12 pt-8 text-center text-sm text-muted-foreground font-bold">
-            <p>&copy; 2025 BrainBattle. Making learning awesome!</p>
+            <p>&copy; 2025 BrainBattle. AI-powered study battles!</p>
           </div>
         </div>
       </footer>

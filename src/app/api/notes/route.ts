@@ -14,6 +14,16 @@ export async function POST(req: NextRequest) {
     const files = form.getAll("files") as File[]
     const topic = form.get("topic") as string
     const difficulty = form.get("difficulty") as string
+    const instructions = form.get("instructions") as string
+    const studyContextStr = form.get("studyContext") as string
+    let studyContext = null
+    if (studyContextStr) {
+      try {
+        studyContext = JSON.parse(studyContextStr)
+      } catch (e) {
+        console.log("⚠️ [NOTES API] Failed to parse study context:", e)
+      }
+    }
     
     console.log("📋 [NOTES API] Request details:")
     console.log(`  - Topic: ${topic}`)
@@ -56,23 +66,17 @@ export async function POST(req: NextRequest) {
           // Extract text from PDF using pdf-parse
           try {
             console.log(`  🔍 [NOTES API] Importing pdf-parse library...`)
-            const pdfParse = await import("pdf-parse")
+            const pdfParseModule = await import("pdf-parse")
             console.log(`  📖 [NOTES API] Parsing PDF content...`)
             
-            // Try multiple import methods for pdf-parse
-            let pdfFunction
-            if (typeof pdfParse.default === 'function') {
-              pdfFunction = pdfParse.default
-            } else if (typeof pdfParse === 'function') {
-              pdfFunction = pdfParse
-            } else {
-              throw new Error('pdf-parse function not found')
-            }
-            
-            const pdfData = await pdfFunction(buffer)
+            // Use pdf-parse function directly
+            const pdfData = await (pdfParseModule as any).default(buffer)
             textContent = pdfData.text
             console.log(`  ✅ [NOTES API] Successfully extracted ${textContent.length} characters from PDF`)
             console.log(`  📊 [NOTES API] PDF info: ${pdfData.numpages} pages, ${pdfData.info?.Title || 'No title'}`)
+            
+            // Log first 500 characters to verify content extraction
+            console.log(`  📄 [NOTES API] Content preview: ${textContent.substring(0, 500)}...`)
           } catch (pdfError) {
             console.error(`  ❌ [NOTES API] Error parsing PDF ${file.name}:`, pdfError)
             // Fallback: provide context based on filename and topic
@@ -126,83 +130,155 @@ export async function POST(req: NextRequest) {
     console.log(`  - Images extracted: ${extractedImages.length}`)
     console.log(`  - Total content length: ${fileContents.join('').length} characters`)
 
-    // 3) Generate study notes using OpenAI Responses API
-    const systemPrompt = `You are an expert study note generator. You MUST analyze the provided document content and create study materials based ONLY on what's actually in the documents.
-
-CRITICAL REQUIREMENTS:
-1. Base ALL content on the actual document text provided
-2. Extract key concepts, terms, and information directly from the documents
-3. Create quiz questions that test understanding of the ACTUAL content
-4. For diagrams, only suggest images that are relevant to the document content
-5. If the document mentions specific topics, focus on those topics
-
-Return a JSON object with this structure:
-
-{
-  "title": "Main topic from the document",
-  "outline": ["5-10 main points extracted from the document"],
-  "key_terms": ["6-10 important terms found in the document"],
-  "concepts": [
-    {
-      "heading": "Concept from the document",
-      "bullets": ["explanation based on document content"]
+    // 3) Use semantic search to understand the content better
+    console.log("🔍 [NOTES API] Performing semantic search to understand content...")
+    let relevantChunks: any[] = []
+    try {
+      const searchQuery = instructions || topic || fileContents.join(' ').substring(0, 500)
+      const searchResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/semantic-search?q=${encodeURIComponent(searchQuery)}&limit=10&threshold=0.6`)
+      
+      if (searchResponse.ok) {
+        const searchData = await searchResponse.json()
+        relevantChunks = searchData.chunks || []
+        console.log(`  ✅ [NOTES API] Found ${relevantChunks.length} relevant chunks from semantic search`)
+      } else {
+        console.log("  ⚠️ [NOTES API] Semantic search failed, proceeding with document content only")
+      }
+    } catch (error) {
+      console.error("  ❌ [NOTES API] Error performing semantic search:", error)
     }
-  ],
-  "diagrams": [
-    {
-      "source": "web",
-      "title": "Relevant diagram title", 
-      "caption": "Description of what this diagram should show based on document content",
-      "keywords": ["specific", "search", "terms", "from", "document"]
+
+    // 4) Analyze content complexity and education level
+    console.log("🔍 [NOTES API] Analyzing content complexity and education level...")
+    
+    // 5) Generate study notes using OpenAI with enhanced schema
+    const systemPrompt = `You are an expert study note generator and educational content creator. Your task is to create comprehensive, high-quality study materials based on the ACTUAL CONTENT provided in the documents.
+
+    CRITICAL REQUIREMENTS:
+    1. CONTENT-SPECIFIC ANALYSIS:
+       - You MUST base ALL content on the actual document text provided
+       - Extract specific concepts, examples, and details from the documents
+       - Use the exact terminology and definitions found in the documents
+       - Reference specific sections, chapters, or topics mentioned in the documents
+       - Do NOT generate generic content - everything must be specific to the provided materials
+       - When no specific study instructions are provided, analyze the documents to determine the main subject, topics, and learning objectives
+
+    2. DOCUMENT-SPECIFIC QUESTION GENERATION:
+       - Create questions that test understanding of the ACTUAL content in the documents
+       - Include questions that reference specific examples, data, or concepts from the documents
+       - When documents contain diagrams, charts, or images, reference them in questions
+       - Extract specific facts, figures, or details from the documents for factual questions
+       - Create application questions based on the specific examples given in the documents
+
+    3. CONTENT COMPLEXITY ANALYSIS:
+       - Examine the actual vocabulary and technical terms used in the documents
+       - Identify the specific prerequisite knowledge mentioned or implied
+       - Determine education level based on the actual content complexity
+       - Match question difficulty to the actual content level in the documents
+
+    4. RESOURCE GENERATION:
+       - Find resources that directly relate to the specific topics covered in the documents
+       - Include resources that explain the same concepts using similar terminology
+       - Prioritize resources that cover the same examples or case studies mentioned
+       - Ensure resources match the specific subject matter and level of the documents
+
+    5. SCHEMA COMPLIANCE:
+       - Use the exact JSON schema provided - no deviations
+       - All content must be directly derived from the provided document content
+       - Include specific page references or section mentions when available
+       - Extract actual key terms and definitions from the documents
+
+    You must return a valid JSON object matching this exact schema:
+    ${JSON.stringify(notesSchema, null, 2)}
+
+    REMEMBER: Every piece of content you generate must be directly based on the actual document content provided. Do not generate generic educational content.`
+
+    // Build study context instructions
+    let contextInstructions = ""
+    if (studyContext) {
+      contextInstructions = "\n\nSTUDY PREFERENCES:\n"
+      if (studyContext.studyFocus) {
+        contextInstructions += `- Study Focus: ${studyContext.studyFocus}\n`
+      }
+      if (studyContext.questionTypes && studyContext.questionTypes.length > 0) {
+        contextInstructions += `- Preferred Question Types: ${studyContext.questionTypes.join(', ')}\n`
+      }
+      if (studyContext.difficulty) {
+        contextInstructions += `- Difficulty Level: ${studyContext.difficulty}\n`
+      }
+      if (studyContext.specialInstructions) {
+        contextInstructions += `- Special Instructions: ${studyContext.specialInstructions}\n`
+      }
+      contextInstructions += "\nPlease tailor the study notes to these preferences while still basing everything on the document content.\n"
     }
-  ],
-  "quiz": [
-    {
-      "question": "Question about specific content from the document",
-      "options": [
-        "Correct answer based on document content",
-        "Realistic but incorrect option 1",
-        "Realistic but incorrect option 2", 
-        "Realistic but incorrect option 3"
-      ],
-      "correct": 0,
-      "explanation": "Detailed explanation of why the correct answer is right, based on document content"
+
+    // Auto-generate topic from document content if not provided
+    let studyTopic = topic || instructions
+    if (!studyTopic) {
+      // Extract first few lines from documents to generate a topic
+      const firstDocument = fileContents[0] || ''
+      const firstLines = firstDocument.split('\n').slice(0, 10).join(' ').substring(0, 200)
+      studyTopic = `Study materials from uploaded documents: ${firstLines}...`
     }
-  ]
-}
 
-IMPORTANT: Only create content that is directly related to what's in the provided documents. Do not add random or generic content.`
+    const userPrompt = `Generate comprehensive study notes based on the ACTUAL CONTENT from these specific documents:
 
-    const userPrompt = `Generate comprehensive study notes for the topic: "${topic}" (difficulty: ${difficulty})
+    STUDY TOPIC: ${studyTopic}
+    DIFFICULTY: ${difficulty || 'medium'}
+    STUDY INSTRUCTIONS: ${instructions || 'Analyze the uploaded documents and create comprehensive study notes based on their actual content. Extract key concepts, terms, and topics from the documents themselves.'}
 
-IMPORTANT: You MUST base ALL your content on the actual document text provided below. Do not add generic or random content.
+    CRITICAL: You MUST extract and use the ACTUAL content from these documents. Do not generate generic content.
 
-DOCUMENT CONTENTS:
-${fileContents.join('\n\n')}
+    DOCUMENT CONTENT (EXTRACT THE SPECIFIC INFORMATION FROM THESE):
+    ${fileContents.map((content, index) => `--- DOCUMENT ${index + 1} (${fileNames[index] || `File ${index + 1}`}) ---\n${content}\n`).join('\n')}
 
-${extractedImages.length > 0 ? `\nEXTRACTED IMAGES: ${extractedImages.length} images were extracted from the documents.\n` : ''}
+    ${relevantChunks.length > 0 ? `\nSEMANTIC SEARCH RESULTS (for additional context):
+    ${relevantChunks.map((chunk, index) => `Chunk ${index + 1}: ${chunk.content}`).join('\n\n')}\n` : ''}
 
-REQUIREMENTS:
-1. Extract a clear outline (5-10 main points) directly from the document content
-2. Identify key terms and definitions (6-10) that are actually mentioned in the documents
-3. Create detailed concept explanations (3-6 sections) based on the document content
-4. Suggest relevant diagrams (3-8 figures) that would help explain concepts from the documents
-5. Generate practice questions (5-8 flashcard pairs) that test understanding of the ACTUAL document content
+    ${extractedImages.length > 0 ? `\nEXTRACTED IMAGES: ${extractedImages.length} images were extracted from the documents.\n` : ''}${contextInstructions}
 
-For diagrams:
-- Only suggest diagrams that are relevant to the document content
-- Use specific search keywords that relate to the actual topics in the documents
-- Focus on concepts that are mentioned in the documents
+    CONTENT EXTRACTION REQUIREMENTS:
+    1. EXTRACT SPECIFIC INFORMATION:
+       - Pull out the exact key terms, definitions, and concepts from the documents
+       - Extract specific examples, case studies, and data mentioned in the documents
+       - Identify the actual structure and organization of the content
+       - Note any specific formulas, equations, or technical details provided
+       - Extract any specific learning objectives or goals mentioned
+       - If no study instructions are provided, analyze the documents to determine the main subject area, key topics, and educational level
 
-For quiz questions:
-- Create multiple choice questions that test knowledge of the specific content in the documents
-- Base the correct answer on the information provided in the documents
-- Create 3 realistic but incorrect options that are plausible but wrong
-- Make incorrect options related to the topic but contain common misconceptions or slightly different concepts
-- Include questions about key concepts, terms, and processes mentioned in the documents
-- Provide detailed explanations for why the correct answer is right
+    2. DOCUMENT-SPECIFIC QUESTION CREATION:
+       - Create questions that test understanding of the ACTUAL content in these documents
+       - Include questions about specific examples, data, or concepts mentioned
+       - Reference specific sections, chapters, or topics from the documents
+       - Extract specific facts, figures, or details for factual questions
+       - Create application questions based on the specific examples given
 
-CRITICAL: Every piece of content you generate must be directly related to what's in the provided documents.`
+    3. CONTENT-SPECIFIC RESOURCES:
+       - Find resources that directly relate to the specific topics covered in these documents
+       - Include resources that explain the same concepts using similar terminology
+       - Prioritize resources that cover the same examples or case studies mentioned
+       - Ensure resources match the specific subject matter and level of these documents
+
+    4. ACCURATE COMPLEXITY ANALYSIS:
+       - Base education level on the actual vocabulary and concepts used in these documents
+       - Identify prerequisite knowledge based on what's actually mentioned or implied
+       - Match difficulty level to the actual content complexity in these documents
+
+    5. DOCUMENT-SPECIFIC STUDY MATERIALS:
+       - Create an outline based on the actual structure of the documents
+       - Extract key terms and definitions as they appear in the documents
+       - Use the specific examples and explanations provided in the documents
+       - Create study tips based on the actual content and learning objectives
+       - Identify misconceptions based on the specific subject matter covered
+
+    6. AUTOMATIC DOCUMENT ANALYSIS (when no instructions provided):
+       - Analyze the document titles, headers, and content to determine the main subject
+       - Identify the educational level based on vocabulary and concept complexity
+       - Extract the key learning objectives from the document structure
+       - Determine the appropriate difficulty level based on content complexity
+       - Create a meaningful title that reflects the actual document content
+
+    REMEMBER: Every piece of content must be directly derived from the actual document content provided above. Extract specific information, examples, and details from these documents rather than generating generic educational content.`
 
     console.log(`\n🤖 [NOTES API] Preparing OpenAI API call...`)
     console.log(`  - Model: gpt-4o`)
@@ -255,7 +331,8 @@ CRITICAL: Every piece of content you generate must be directly related to what's
 
     // 4) Enrich with web images if needed
     console.log(`\n🖼️ [NOTES API] Enriching with web images...`)
-    const enrichedNotes = await enrichWithWebImages(notesData)
+    const enrichedDiagrams = await enrichWithWebImages(notesData)
+    const enrichedNotes = { ...notesData, diagrams: enrichedDiagrams }
     console.log(`✅ [NOTES API] Image enrichment completed`)
 
     // 5) Generate and store embeddings for semantic search
@@ -328,10 +405,17 @@ CRITICAL: Every piece of content you generate must be directly related to what's
 
 // Helper function to extract images from PDF (simplified version)
 async function extractImagesFromPDF(buffer: Buffer, filename: string): Promise<{ image_data_b64: string; page: number }[]> {
-  // This is a placeholder - in production, you'd use PyMuPDF or similar
-  // For now, we'll return an empty array and rely on web image enrichment
-  console.log(`Would extract images from PDF: ${filename}`)
-  return []
+  try {
+    console.log(`🖼️ [IMAGE EXTRACTION] Attempting to extract images from PDF: ${filename}`)
+    
+    // For now, we'll return an empty array and rely on web image enrichment
+    // In the future, we could use pdf2pic or similar libraries to extract images
+    console.log(`  ⚠️ [IMAGE EXTRACTION] Image extraction not yet implemented, using web enrichment instead`)
+    return []
+  } catch (error) {
+    console.error(`  ❌ [IMAGE EXTRACTION] Error extracting images from ${filename}:`, error)
+    return []
+  }
 }
 
 // Helper function to enrich notes with web images
@@ -341,7 +425,7 @@ async function enrichWithWebImages(notes: { diagrams: { source: string; keywords
   
   for (let i = 0; i < notes.diagrams.length; i++) {
     const diagram = notes.diagrams[i]
-    console.log(`    📊 [IMAGE ENRICHMENT] Processing diagram ${i + 1}/${notes.diagrams.length}: ${diagram.title}`)
+    console.log(`    📊 [IMAGE ENRICHMENT] Processing diagram ${i + 1}/${notes.diagrams.length}: ${(diagram as any).title || 'Untitled'}`)
     console.log(`      - Source: ${diagram.source}`)
     console.log(`      - Keywords: ${diagram.keywords?.join(', ') || 'None'}`)
     

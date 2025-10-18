@@ -92,7 +92,20 @@ Return as JSON:
       throw new Error("No response from OpenAI")
     }
 
-    const analysis = JSON.parse(response)
+    let analysis
+    try {
+      analysis = JSON.parse(response)
+    } catch (error) {
+      console.error("❌ [EMBEDDINGS API] Failed to parse OpenAI response as JSON:", error)
+      console.log("📄 [EMBEDDINGS API] Raw response:", response)
+      // Return default values if JSON parsing fails
+      return {
+        subjectTags: [],
+        courseTopics: [],
+        difficultyLevel: "intermediate"
+      }
+    }
+    
     return {
       subjectTags: analysis.subjectTags || [],
       courseTopics: analysis.courseTopics || [],
