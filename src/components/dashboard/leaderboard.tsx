@@ -88,11 +88,11 @@ export function Leaderboard() {
           userRank = {
             rank: (higherXpCount || 0) + 1,
             user_id: userStatsData.user_id,
-            username: userStatsData.users.username,
+            username: userStatsData.users?.username || 'Unknown',
             level: userStatsData.level,
             xp: userStatsData.xp,
             wins: userStatsData.total_wins,
-            avatar_url: userStatsData.users.avatar_url
+            avatar_url: userStatsData.users?.avatar_url
           }
         }
       }
@@ -111,11 +111,11 @@ export function Leaderboard() {
       const playersWithRank = playersData?.map((player, index) => ({
         rank: index + 1,
         user_id: player.user_id,
-        username: player.users.username,
+        username: player.users?.username || 'Unknown',
         level: player.level,
         xp: player.xp,
         wins: player.total_wins,
-        avatar_url: player.users.avatar_url
+        avatar_url: player.users?.avatar_url
       })) || []
 
       setTopPlayers(playersWithRank)
@@ -218,78 +218,78 @@ export function Leaderboard() {
           </div>
         ) : (
           topPlayers.map((player) => {
-          const rank = getRankFromXP(player.xp)
-          const isCurrentUser = currentUserRank?.user_id === player.user_id
-          
-          return (
-            <div
-              key={player.rank}
-              className={`p-6 rounded-xl border-4 transition-all duration-300 cartoon-hover ${
-                player.rank === 1
-                  ? "bg-primary/10 border-primary cartoon-shadow"
-                  : player.rank === 2
-                  ? "bg-accent/10 border-accent cartoon-shadow"
-                  : player.rank === 3
-                  ? "bg-chart-3/10 border-chart-3 cartoon-shadow"
-                  : isCurrentUser
-                  ? "bg-secondary/30 border-secondary"
-                  : "bg-secondary/30 border-border hover:border-primary"
-              }`}
-            >
-              <div className="flex items-center gap-6">
-                <div className="relative">
-                  <div
-                    className={`text-2xl font-black w-12 h-12 rounded-full flex items-center justify-center cartoon-border ${
-                      player.rank === 1
-                        ? "bg-primary text-primary-foreground"
-                        : player.rank === 2
-                        ? "bg-accent text-accent-foreground"
-                        : player.rank === 3
-                        ? "bg-chart-3 text-foreground"
-                        : "bg-secondary text-secondary-foreground"
-                    }`}
-                  >
-                    {player.rank}
-                  </div>
-                  {player.rank === 1 && (
-                    <Crown className="absolute -top-2 -right-2 h-6 w-6 text-primary" strokeWidth={3} />
-                  )}
-                </div>
-
-                <Avatar className="h-14 w-14 cartoon-border">
-                  <AvatarImage src={player.avatar_url || "/placeholder.svg"} />
-                  <AvatarFallback className="bg-secondary text-secondary-foreground font-black">
-                    {player.username.slice(0, 2).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-3">
-                    <p className="font-black text-foreground truncate text-xl">{player.username}</p>
-                    {isCurrentUser && (
-                      <Badge className="bg-secondary text-secondary-foreground text-sm px-2 py-1">You</Badge>
+            const rank = getRankFromXP(player.xp)
+            const isCurrentUser = currentUserRank?.user_id === player.user_id
+            
+            return (
+              <div
+                key={player.rank}
+                className={`p-6 rounded-xl border-4 transition-all duration-300 cartoon-hover ${
+                  player.rank === 1
+                    ? "bg-primary/10 border-primary cartoon-shadow"
+                    : player.rank === 2
+                    ? "bg-accent/10 border-accent cartoon-shadow"
+                    : player.rank === 3
+                    ? "bg-chart-3/10 border-chart-3 cartoon-shadow"
+                    : isCurrentUser
+                    ? "bg-secondary/30 border-secondary"
+                    : "bg-secondary/30 border-border hover:border-primary"
+                }`}
+              >
+                <div className="flex items-center gap-6">
+                  <div className="relative">
+                    <div
+                      className={`text-2xl font-black w-12 h-12 rounded-full flex items-center justify-center cartoon-border ${
+                        player.rank === 1
+                          ? "bg-primary text-primary-foreground"
+                          : player.rank === 2
+                          ? "bg-accent text-accent-foreground"
+                          : player.rank === 3
+                          ? "bg-chart-3 text-foreground"
+                          : "bg-secondary text-secondary-foreground"
+                      }`}
+                    >
+                      {player.rank}
+                    </div>
+                    {player.rank === 1 && (
+                      <Crown className="absolute -top-2 -right-2 h-6 w-6 text-primary" strokeWidth={3} />
                     )}
                   </div>
-                  <div className="flex items-center gap-3 text-base text-muted-foreground font-bold">
-                    <span>{formatXP(player.xp)} XP</span>
-                    <span>•</span>
-                    <span>{player.wins} wins</span>
-                    <span>•</span>
-                    <div className="flex items-center gap-2">
-                      {getRankIcon(rank, "h-4 w-4")}
-                      <span>{rank.name}</span>
+
+                  <Avatar className="h-14 w-14 cartoon-border">
+                    <AvatarImage src={player.avatar_url || "/placeholder.svg"} />
+                    <AvatarFallback className="bg-secondary text-secondary-foreground font-black">
+                      {player.username.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3">
+                      <p className="font-black text-foreground truncate text-xl">{player.username}</p>
+                      {isCurrentUser && (
+                        <Badge className="bg-secondary text-secondary-foreground text-sm px-2 py-1">You</Badge>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-3 text-base text-muted-foreground font-bold">
+                      <span>{formatXP(player.xp)} XP</span>
+                      <span>•</span>
+                      <span>{player.wins} wins</span>
+                      <span>•</span>
+                      <div className="flex items-center gap-2">
+                        {getRankIcon(rank, "h-4 w-4")}
+                        <span>{rank.name}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {player.rank <= 3 && (
-                  <TrendingUp className="h-6 w-6 text-chart-3" strokeWidth={3} />
-                )}
+                  {player.rank <= 3 && (
+                    <TrendingUp className="h-6 w-6 text-chart-3" strokeWidth={3} />
+                  )}
+                </div>
               </div>
-            </div>
-          )
-        })
-        }
+            )
+          })
+        )}
       </div>
 
       {/* Show current user's rank if not in top 10 */}
