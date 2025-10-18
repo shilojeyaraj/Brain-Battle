@@ -344,6 +344,7 @@ export async function POST(req: NextRequest) {
       const combinedText = fileContents.join('\n\n')
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
       console.log(`  🌐 [NOTES API] Using base URL: ${baseUrl}`)
+      console.log(`  🔧 [NOTES API] Environment check: VERCEL_URL=${process.env.VERCEL_URL}, NEXT_PUBLIC_APP_URL=${process.env.NEXT_PUBLIC_APP_URL}`)
       const embeddingResponse = await fetch(`${baseUrl}/api/embeddings`, {
         method: 'POST',
         headers: {
