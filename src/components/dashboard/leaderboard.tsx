@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, memo } from "react"
 import { Card } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -19,7 +19,7 @@ interface LeaderboardPlayer {
   avatar_url?: string
 }
 
-export function Leaderboard() {
+const Leaderboard = memo(function Leaderboard() {
   const [topPlayers, setTopPlayers] = useState<LeaderboardPlayer[]>([])
   const [currentUserRank, setCurrentUserRank] = useState<LeaderboardPlayer | null>(null)
   const [totalPlayers, setTotalPlayers] = useState(0)
@@ -27,7 +27,7 @@ export function Leaderboard() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchLeaderboard = async (isRefresh = false) => {
+  const fetchLeaderboard = useCallback(async (isRefresh = false) => {
     try {
       if (isRefresh) {
         setRefreshing(true)
@@ -88,11 +88,11 @@ export function Leaderboard() {
           userRank = {
             rank: (higherXpCount || 0) + 1,
             user_id: userStatsData.user_id,
-            username: userStatsData.users?.username || 'Unknown',
+            username: userStatsData.users?.[0]?.username || 'Unknown',
             level: userStatsData.level,
             xp: userStatsData.xp,
             wins: userStatsData.total_wins,
-            avatar_url: userStatsData.users?.avatar_url
+            avatar_url: userStatsData.users?.[0]?.avatar_url
           }
         }
       }
@@ -111,11 +111,11 @@ export function Leaderboard() {
       const playersWithRank = playersData?.map((player, index) => ({
         rank: index + 1,
         user_id: player.user_id,
-        username: player.users?.username || 'Unknown',
+        username: player.users?.[0]?.username || 'Unknown',
         level: player.level,
         xp: player.xp,
         wins: player.total_wins,
-        avatar_url: player.users?.avatar_url
+        avatar_url: player.users?.[0]?.avatar_url
       })) || []
 
       setTopPlayers(playersWithRank)
@@ -129,7 +129,7 @@ export function Leaderboard() {
       setLoading(false)
       setRefreshing(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     fetchLeaderboard()
@@ -140,11 +140,11 @@ export function Leaderboard() {
     }, 30000)
 
     return () => clearInterval(interval)
-  }, [])
+  }, [fetchLeaderboard])
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     fetchLeaderboard(true)
-  }
+  }, [fetchLeaderboard])
 
   if (loading) {
     return (
@@ -322,4 +322,6 @@ export function Leaderboard() {
       </div>
     </Card>
   )
-}
+})
+
+export { Leaderboard }

@@ -264,7 +264,7 @@ Generate exactly 5 questions that test knowledge of the specific document conten
       
       try {
         // Insert questions into quiz_questions table
-        const questionsToInsert = validatedQuestions.map((q, index) => ({
+        const questionsToInsert = validatedQuestions.map((q: any, index: number) => ({
           session_id: sessionId,
           idx: index,
           type: q.type === "multiple_choice" ? "mcq" : "short",

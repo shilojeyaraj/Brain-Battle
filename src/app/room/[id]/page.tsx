@@ -8,6 +8,7 @@ import Link from 'next/link'
 import { useAntiCheat, CheatEvent } from '@/hooks/use-anti-cheat'
 import { CheatAlertContainer, CheatAlertData } from '@/components/multiplayer/cheat-alert'
 import { QuizProgressBar } from '@/components/ui/quiz-progress-bar'
+import { Button } from '@/components/ui/button'
 import { getCurrentUserId } from '@/lib/auth/session'
 
 interface Room {
@@ -116,16 +117,20 @@ export default function RoomPage() {
   // Anti-cheat functionality
   const handleCheatDetected = async (event: CheatEvent) => {
     if (!quizSession) {
-      console.warn('🚨 [ROOM] Cheat detected but no active quiz session')
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('🚨 [ROOM] Cheat detected but no active quiz session')
+      }
       return
     }
 
-    console.log('🚨 [ROOM] Reporting cheat event:', {
-      sessionId: quizSession.id,
-      violationType: event.type,
-      duration: event.duration,
-      timestamp: event.timestamp
-    })
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🚨 [ROOM] Reporting cheat event:', {
+        sessionId: quizSession.id,
+        violationType: event.type,
+        duration: event.duration,
+        timestamp: event.timestamp
+      })
+    }
 
     try {
       const response = await fetch('/api/cheat-events', {
@@ -142,13 +147,19 @@ export default function RoomPage() {
 
       if (!response.ok) {
         const errorText = await response.text()
-        console.error('❌ [ROOM] Failed to log cheat event:', response.status, errorText)
+        if (process.env.NODE_ENV === 'development') {
+          console.error('❌ [ROOM] Failed to log cheat event:', response.status, errorText)
+        }
       } else {
         const result = await response.json()
-        console.log('✅ [ROOM] Cheat event logged successfully:', result)
+        if (process.env.NODE_ENV === 'development') {
+          console.log('✅ [ROOM] Cheat event logged successfully:', result)
+        }
       }
     } catch (error) {
-      console.error('❌ [ROOM] Error logging cheat event:', error)
+      if (process.env.NODE_ENV === 'development') {
+        console.error('❌ [ROOM] Error logging cheat event:', error)
+      }
     }
   }
 

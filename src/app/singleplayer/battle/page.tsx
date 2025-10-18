@@ -48,7 +48,9 @@ export default function BattlePage() {
 
   // Anti-cheat functionality for singleplayer
   const handleCheatDetected = (event: CheatEvent) => {
-    console.log('🚨 [SINGLEPLAYER] Cheat detected:', event)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🚨 [SINGLEPLAYER] Cheat detected:', event)
+    }
     setCheatViolations(prev => [...prev, event])
     setShowCheatWarning(true)
     

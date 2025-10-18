@@ -8,7 +8,9 @@ const openai = new OpenAI({
 })
 
 export async function POST(req: NextRequest) {
-  console.log("🚀 [NOTES API] Starting notes generation request...")
+  if (process.env.NODE_ENV === 'development') {
+    console.log("🚀 [NOTES API] Starting notes generation request...")
+  }
   try {
     const form = await req.formData()
     const files = form.getAll("files") as File[]

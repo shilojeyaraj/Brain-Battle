@@ -63,7 +63,9 @@ export default function MultiplayerBattlePage() {
 
   // Anti-cheat functionality
   const handleCheatDetected = (event: CheatEvent) => {
-    console.log('🚨 [MULTIPLAYER BATTLE] Cheat detected:', event)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🚨 [MULTIPLAYER BATTLE] Cheat detected:', event)
+    }
     setCheatViolations(prev => [...prev, event])
     setShowCheatWarning(true)
     
@@ -179,7 +181,7 @@ export default function MultiplayerBattlePage() {
         correct_count: p.correct_count,
         total_answered: p.total_answered,
         last_idx: p.last_idx,
-        display_name: p.profiles?.display_name || 'Unknown Player'
+        display_name: p.profiles?.[0]?.display_name || 'Unknown Player'
       })) || []
 
       setPlayerProgress(formattedProgress)
