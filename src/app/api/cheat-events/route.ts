@@ -14,100 +14,82 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Parse request body
     const body = await request.json()
-    const { session_id, violation_type, duration_ms } = body
+    const { room_id, user_id, violation_type, duration_seconds, timestamp } = body
 
     // Validate required fields
-    if (!session_id || !violation_type || duration_ms === undefined) {
+    if (!room_id || !user_id || !violation_type || !duration_seconds || !timestamp) {
       return NextResponse.json(
-        { error: 'Missing required fields: session_id, violation_type, duration_ms' },
+        { error: 'Missing required fields: room_id, user_id, violation_type, duration_seconds, timestamp' },
         { status: 400 }
       )
     }
 
-    // Get user's display name from profiles
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('display_name')
-      .eq('user_id', user.id)
-      .single()
+    console.log('🚨 [CHEAT EVENTS] Recording cheat violation:', {
+      room_id,
+      user_id,
+      violation_type,
+      duration_seconds,
+      timestamp
+    })
 
-    if (profileError) {
-      return NextResponse.json(
-        { error: 'Failed to fetch user profile' },
-        { status: 500 }
-      )
-    }
-
-    // Verify user is a member of the room that owns this session
+    // Find the active quiz session for this room
     const { data: session, error: sessionError } = await supabase
       .from('quiz_sessions')
-      .select(`
-        id,
-        room_id,
-        rooms!inner(id, room_members!inner(user_id))
-      `)
-      .eq('id', session_id)
+      .select('id')
+      .eq('room_id', room_id)
+      .eq('status', 'active')
       .single()
 
     if (sessionError || !session) {
+      console.error('❌ [CHEAT EVENTS] No active quiz session found:', sessionError)
       return NextResponse.json(
-        { error: 'Quiz session not found' },
+        { error: 'No active quiz session found' },
         { status: 404 }
       )
     }
 
-    // Check if user is a member of the room
-    const isMember = session.rooms.some((room: any) => 
-      room.room_members?.some((member: { user_id: string }) => member.user_id === user.id)
-    )
-
-    if (!isMember) {
-      return NextResponse.json(
-        { error: 'Not authorized to report events for this session' },
-        { status: 403 }
-      )
-    }
-
-    // Create cheat event payload
-    const payload = {
-      user_id: user.id,
-      display_name: profile.display_name,
-      violation_type,
-      duration_seconds: Math.round(duration_ms / 1000),
-      timestamp: new Date().toISOString()
-    }
-
-    // Insert the cheat event
-    const { data: event, error: insertError } = await supabase
-      .from('session_events')
-      .insert({
-        session_id,
-        type: 'cheat_detected',
-        payload
-      })
-      .select()
+    // Get user profile for display name
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('display_name')
+      .eq('user_id', user_id)
       .single()
 
-    if (insertError) {
-      console.error('Error inserting cheat event:', insertError)
+    // Insert cheat event into session_events table
+    const { error: eventError } = await supabase
+      .from('session_events')
+      .insert({
+        session_id: session.id,
+        type: 'cheat_detected',
+        payload: {
+          user_id: user_id,
+          display_name: profile?.display_name || 'Unknown Player',
+          violation_type: violation_type,
+          duration_seconds: duration_seconds,
+          timestamp: timestamp
+        }
+      })
+
+    if (eventError) {
+      console.error('❌ [CHEAT EVENTS] Error inserting cheat event:', eventError)
       return NextResponse.json(
-        { error: 'Failed to log cheat event' },
+        { error: 'Failed to record cheat event' },
         { status: 500 }
       )
     }
 
+    console.log('✅ [CHEAT EVENTS] Cheat event recorded successfully')
+
     return NextResponse.json({
       success: true,
-      event_id: event.id,
-      payload
+      message: 'Cheat event recorded'
     })
 
   } catch (error) {
-    console.error('Error in cheat events API:', error)
+    console.error('❌ [CHEAT EVENTS] Error in cheat events API:', error)
     return NextResponse.json(
-      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

@@ -27,6 +27,7 @@ export default function BattlePage() {
   const [battleComplete, setBattleComplete] = useState(false)
   const [questions, setQuestions] = useState(defaultQuestions)
   const [topic, setTopic] = useState("General Knowledge")
+  const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">("medium")
   const [isLoading, setIsLoading] = useState(true)
   const [hasError, setHasError] = useState(false)
   const [userAnswers, setUserAnswers] = useState<(number | string)[]>([])
@@ -71,6 +72,7 @@ export default function BattlePage() {
     
     const storedQuestions = sessionStorage.getItem('quizQuestions')
     const storedTopic = sessionStorage.getItem('quizTopic')
+    const storedDifficulty = sessionStorage.getItem('quizDifficulty')
     
     if (storedQuestions) {
       try {
@@ -96,6 +98,10 @@ export default function BattlePage() {
     
     if (storedTopic) {
       setTopic(storedTopic)
+    }
+    
+    if (storedDifficulty) {
+      setDifficulty(storedDifficulty as "easy" | "medium" | "hard")
     }
   }, [])
 
@@ -182,7 +188,7 @@ export default function BattlePage() {
         correctAnswers,
         totalQuestions,
         averageTimePerQuestion,
-        difficulty: 'medium', // Default for singleplayer
+        difficulty: difficulty,
         winStreak: 0, // Would need to fetch from user stats
         isPerfectScore: correctAnswers === totalQuestions,
         isMultiplayer: false
@@ -216,21 +222,26 @@ export default function BattlePage() {
           const leveledUp = checkLevelUp(result.oldXP || 0, result.newXP || 0)
           
           // Set results state
-          setBattleResults({
-            xpEarned: xpResult.totalXP,
+          const results = {
+            xpEarned: result.xpEarned || xpResult.totalXP,
             oldXP: result.oldXP || 0,
             newXP: result.newXP || 0,
             xpBreakdown: getXPExplanation(xpResult, {
               correctAnswers,
               totalQuestions,
               averageTimePerQuestion,
-              difficulty: 'medium',
+              difficulty: difficulty,
               winStreak: 0,
               isPerfectScore: correctAnswers === totalQuestions,
               isMultiplayer: false
             }),
             leveledUp
-          })
+          }
+          
+          setBattleResults(results)
+          
+          // Store results in sessionStorage for the results screen
+          sessionStorage.setItem('battleResults', JSON.stringify(results))
 
           // Show level up modal if applicable
           if (leveledUp) {
@@ -246,7 +257,7 @@ export default function BattlePage() {
       setIsSubmittingResults(false)
       setBattleComplete(true)
     }
-  }, [score, questions, userAnswers, topic])
+  }, [score, questions, userAnswers, topic, difficulty])
 
   const handleNext = useCallback(() => {
     if (currentQuestion < questions.length - 1) {
@@ -613,6 +624,14 @@ function BattleResultsScreen({
 }: BattleResultsScreenProps) {
   const [userProfile, setUserProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [showLevelUpModal, setShowLevelUpModal] = useState(false)
+  const [battleResults, setBattleResults] = useState<{
+    xpEarned: number
+    oldXP: number
+    newXP: number
+    xpBreakdown: string[]
+    leveledUp: boolean
+  } | null>(null)
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -633,6 +652,20 @@ function BattleResultsScreen({
     }
 
     fetchUserProfile()
+    
+    // Check if we have battle results from sessionStorage
+    const storedResults = sessionStorage.getItem('battleResults')
+    if (storedResults) {
+      try {
+        const results = JSON.parse(storedResults)
+        setBattleResults(results)
+        if (results.leveledUp) {
+          setShowLevelUpModal(true)
+        }
+      } catch (error) {
+        console.error('Error parsing stored battle results:', error)
+      }
+    }
   }, [])
 
   const accuracy = totalQuestions > 0 ? (score / totalQuestions) * 100 : 0
@@ -642,13 +675,13 @@ function BattleResultsScreen({
     <div className="min-h-screen bg-background p-6">
       <div className="max-w-4xl mx-auto">
         {/* Level Up Modal */}
-        {userProfile && (
+        {battleResults && (
           <LevelUpModal
-            isOpen={false} // Would be controlled by parent component
-            onClose={() => {}}
-            oldXP={0}
-            newXP={0}
-            xpEarned={0}
+            isOpen={showLevelUpModal}
+            onClose={() => setShowLevelUpModal(false)}
+            oldXP={battleResults.oldXP}
+            newXP={battleResults.newXP}
+            xpEarned={battleResults.xpEarned}
           />
         )}
 
@@ -685,6 +718,64 @@ function BattleResultsScreen({
             </Badge>
           </div>
         </div>
+
+        {/* XP Earned Section */}
+        {battleResults && (
+          <Card className="p-6 bg-card cartoon-border cartoon-shadow mb-8">
+            <div className="text-center">
+              <div className="flex items-center justify-center gap-2 mb-4">
+                <Star className="h-6 w-6 text-chart-3" strokeWidth={3} />
+                <h3 className="text-2xl font-black text-foreground">XP Earned</h3>
+              </div>
+              
+              <div className="grid md:grid-cols-3 gap-6 mb-6">
+                <div className="p-4 bg-primary/10 rounded-xl cartoon-border">
+                  <div className="text-3xl font-black text-primary mb-2">
+                    +{battleResults.xpEarned}
+                  </div>
+                  <div className="text-sm text-muted-foreground font-bold">XP Earned</div>
+                </div>
+                
+                <div className="p-4 bg-secondary/10 rounded-xl cartoon-border">
+                  <div className="text-3xl font-black text-secondary mb-2">
+                    {battleResults.oldXP}
+                  </div>
+                  <div className="text-sm text-muted-foreground font-bold">Previous XP</div>
+                </div>
+                
+                <div className="p-4 bg-chart-3/10 rounded-xl cartoon-border">
+                  <div className="text-3xl font-black text-chart-3 mb-2">
+                    {battleResults.newXP}
+                  </div>
+                  <div className="text-sm text-muted-foreground font-bold">Total XP</div>
+                </div>
+              </div>
+
+              {/* XP Breakdown */}
+              {battleResults.xpBreakdown && battleResults.xpBreakdown.length > 0 && (
+                <div className="bg-secondary/20 rounded-xl p-4 cartoon-border">
+                  <h4 className="font-black text-foreground mb-3">XP Breakdown:</h4>
+                  <div className="space-y-2">
+                    {battleResults.xpBreakdown.map((explanation, index) => (
+                      <div key={index} className="text-sm text-muted-foreground font-bold">
+                        • {explanation}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              {battleResults.leveledUp && (
+                <div className="mt-4 p-3 bg-chart-3/20 border-2 border-chart-3 rounded-xl cartoon-border">
+                  <div className="flex items-center justify-center gap-2">
+                    <Trophy className="h-5 w-5 text-chart-3" strokeWidth={3} />
+                    <span className="font-black text-chart-3">Level Up!</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </Card>
+        )}
 
         {/* User Stats and XP Progress */}
         {userProfile && (

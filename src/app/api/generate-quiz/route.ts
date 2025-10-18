@@ -8,19 +8,35 @@ const openai = new OpenAI({
 
 export async function POST(request: NextRequest) {
   try {
-    const form = await request.formData()
-    const files = form.getAll("files") as File[]
-    const topic = form.get("topic") as string
-    const difficulty = form.get("difficulty") as string
-    const instructions = form.get("instructions") as string
-    const notes = form.get("notes") as string
-    const studyContextStr = form.get("studyContext") as string
+    // Check if this is a JSON request (multiplayer) or form data (singleplayer)
+    const contentType = request.headers.get('content-type')
+    let topic, difficulty, totalQuestions, sessionId, files, instructions, notes, studyContextStr
     let studyContext = null
-    if (studyContextStr) {
-      try {
-        studyContext = JSON.parse(studyContextStr)
-      } catch (e) {
-        console.log("⚠️ [QUIZ API] Failed to parse study context:", e)
+
+    if (contentType?.includes('application/json')) {
+      // Multiplayer request
+      const body = await request.json()
+      topic = body.topic
+      difficulty = body.difficulty
+      totalQuestions = body.totalQuestions
+      sessionId = body.sessionId
+      files = []
+    } else {
+      // Singleplayer request (form data)
+      const form = await request.formData()
+      files = form.getAll("files") as File[]
+      topic = form.get("topic") as string
+      difficulty = form.get("difficulty") as string
+      instructions = form.get("instructions") as string
+      notes = form.get("notes") as string
+      studyContextStr = form.get("studyContext") as string
+      
+      if (studyContextStr) {
+        try {
+          studyContext = JSON.parse(studyContextStr)
+        } catch (e) {
+          console.log("⚠️ [QUIZ API] Failed to parse study context:", e)
+        }
       }
     }
     
@@ -96,8 +112,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Create a comprehensive prompt for quiz generation
+    const numQuestions = totalQuestions || 5
     const prompt = `
-Generate 5 quiz questions about "${topic}" with ${difficulty} difficulty level.${contextInstructions}
+Generate ${numQuestions} quiz questions about "${topic}" with ${difficulty} difficulty level.${contextInstructions}
 
 ${complexityAnalysis ? `
 COMPLEXITY ANALYSIS (use this to match question difficulty to content level):
@@ -240,6 +257,43 @@ Generate exactly 5 questions that test knowledge of the specific document conten
       explanation: q.explanation || "Explanation not available",
       source_document: q.source_document || "Document content"
     }))
+
+    // If this is a multiplayer session, store questions in database
+    if (sessionId) {
+      const supabase = await createClient()
+      
+      try {
+        // Insert questions into quiz_questions table
+        const questionsToInsert = validatedQuestions.map((q, index) => ({
+          session_id: sessionId,
+          idx: index,
+          type: q.type === "multiple_choice" ? "mcq" : "short",
+          prompt: q.question,
+          options: q.options || [],
+          answer: q.type === "multiple_choice" ? (q.options?.[q.correct] || "") : (q.expected_answers?.[0] || ""),
+          meta: {
+            explanation: q.explanation,
+            source_document: q.source_document,
+            hints: q.hints,
+            answer_format: q.answer_format
+          }
+        }))
+
+        const { error: questionsError } = await supabase
+          .from('quiz_questions')
+          .insert(questionsToInsert)
+
+        if (questionsError) {
+          console.error('❌ [QUIZ API] Error inserting questions:', questionsError)
+          throw new Error('Failed to store questions in database')
+        }
+
+        console.log('✅ [QUIZ API] Questions stored in database for session:', sessionId)
+      } catch (error) {
+        console.error('❌ [QUIZ API] Error storing questions:', error)
+        throw error
+      }
+    }
 
     return NextResponse.json({
       success: true,

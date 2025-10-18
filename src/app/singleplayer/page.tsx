@@ -632,8 +632,8 @@ export default function SingleplayerPage() {
                     sessionStorage.setItem('quizTopic', topic)
                     sessionStorage.setItem('quizDifficulty', difficulty)
                     
-                    // Redirect to quiz page
-                    window.location.href = '/singleplayer/quiz'
+                    // Redirect to battle page
+                    window.location.href = '/singleplayer/battle'
                   } else {
                     console.error('Failed to generate quiz:', result.error)
                     alert('Failed to generate quiz questions. Please try again.')

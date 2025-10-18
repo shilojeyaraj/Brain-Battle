@@ -179,7 +179,9 @@ export async function POST(request: NextRequest) {
       success: true, 
       sessionId: sessionData.id,
       gameResultId: gameResult.id,
-      xpEarned 
+      xpEarned,
+      oldXP: currentStats.xp,
+      newXP: currentStats.xp + xpEarned
     })
 
   } catch (error) {

@@ -655,9 +655,35 @@ export default function RoomPage() {
       })
       setPlayerProgress(initialProgress)
 
-      // TODO: Generate quiz questions and redirect to quiz
-      console.log('🎯 [ROOM] Quiz started successfully!')
-      alert('Quiz started! (Quiz generation and navigation coming soon)')
+      // Generate quiz questions
+      try {
+        const questionsResponse = await fetch('/api/generate-quiz', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            topic: room.subject || 'General Knowledge',
+            difficulty: quizSettings.difficulty,
+            totalQuestions: quizSettings.totalQuestions,
+            sessionId: sessionData.id
+          })
+        })
+
+        if (questionsResponse.ok) {
+          const questionsResult = await questionsResponse.json()
+          console.log('✅ [ROOM] Quiz questions generated successfully')
+          
+          // Redirect all players to the battle page
+          router.push(`/room/${room.id}/battle`)
+        } else {
+          console.error('❌ [ROOM] Failed to generate quiz questions')
+          alert('Failed to generate quiz questions. Please try again.')
+        }
+      } catch (error) {
+        console.error('❌ [ROOM] Error generating quiz questions:', error)
+        alert('Failed to generate quiz questions. Please try again.')
+      }
       
     } catch (error) {
       console.error('❌ [ROOM] Error starting quiz:', error)
@@ -1922,6 +1948,25 @@ export default function RoomPage() {
                       Waiting for host to start the quiz...
                     </p>
                   </div>
+                  
+                  {/* Active Quiz Session */}
+                  {quizSession?.status === 'active' && (
+                    <div className="p-4 bg-chart-3/10 border-2 border-chart-3 rounded-xl cartoon-border">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Zap className="h-5 w-5 text-chart-3" strokeWidth={3} />
+                        <span className="font-black text-chart-3">Quiz Active!</span>
+                      </div>
+                      <p className="text-sm text-chart-3 font-bold mb-4">
+                        The quiz has started! Join the battle to compete with other players.
+                      </p>
+                      <Link href={`/room/${roomId}/battle`}>
+                        <Button className="w-full bg-chart-3 hover:bg-chart-3/90 text-foreground font-black cartoon-border cartoon-shadow cartoon-hover">
+                          <Zap className="h-5 w-5 mr-2" strokeWidth={3} />
+                          Join Battle
+                        </Button>
+                      </Link>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
