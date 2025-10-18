@@ -4,10 +4,13 @@ import { StatsGrid } from "@/components/dashboard/stats-grid"
 import { LobbySection } from "@/components/dashboard/lobby-section"
 import { RecentBattles } from "@/components/dashboard/recent-battles"
 import { Leaderboard } from "@/components/dashboard/leaderboard"
-import dynamic from "next/dynamic"
+import dynamicImport from "next/dynamic"
+
+// Force dynamic rendering to avoid SSR issues
+export const dynamic = 'force-dynamic'
 
 // Lazy load heavy components to improve initial page load
-const LazyLeaderboard = dynamic(() => import("@/components/dashboard/leaderboard").then(mod => ({ default: mod.Leaderboard })), {
+const LazyLeaderboard = dynamicImport(() => import("@/components/dashboard/leaderboard").then(mod => ({ default: mod.Leaderboard })), {
   loading: () => (
     <div className="animate-pulse">
       <div className="h-8 bg-muted rounded mb-4"></div>
@@ -20,7 +23,7 @@ const LazyLeaderboard = dynamic(() => import("@/components/dashboard/leaderboard
   )
 })
 
-const LazyRecentBattles = dynamic(() => import("@/components/dashboard/recent-battles").then(mod => ({ default: mod.RecentBattles })), {
+const LazyRecentBattles = dynamicImport(() => import("@/components/dashboard/recent-battles").then(mod => ({ default: mod.RecentBattles })), {
   loading: () => (
     <div className="animate-pulse">
       <div className="h-8 bg-muted rounded mb-4"></div>

@@ -8,13 +8,18 @@ import { Brain, Users, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { getCurrentUserId } from '@/lib/auth/session'
 
+// Force dynamic rendering to avoid SSR issues
+export const dynamic = 'force-dynamic'
+
 export default function CreateRoomPage() {
   const [roomName, setRoomName] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [userId, setUserId] = useState<string | null>(null)
   const router = useRouter()
-  const supabase = createClient()
+  
+  // Create Supabase client inside component to avoid SSR issues
+  const supabase = typeof window !== 'undefined' ? createClient() : null
 
   useEffect(() => {
     const currentUserId = getCurrentUserId()
@@ -39,9 +44,16 @@ export default function CreateRoomPage() {
     setLoading(true)
     setError('')
 
+    if (!supabase) {
+      setError('Application is loading, please try again.')
+      setLoading(false)
+      return
+    }
+
     try {
       if (!userId) {
         setError('You must be logged in to create a room')
+        setLoading(false)
         return
       }
 
