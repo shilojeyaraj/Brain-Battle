@@ -6,6 +6,9 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Brain, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 
+// Force dynamic rendering to avoid SSR issues
+export const dynamic = 'force-dynamic'
+
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -13,12 +16,20 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const router = useRouter()
-  const supabase = createClient()
+  
+  // Create Supabase client inside component to avoid SSR issues
+  const supabase = typeof window !== 'undefined' ? createClient() : null
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
+
+    if (!supabase) {
+      setError('Application is loading, please try again.')
+      setLoading(false)
+      return
+    }
 
     try {
       const { error } = await supabase.auth.signInWithPassword({
