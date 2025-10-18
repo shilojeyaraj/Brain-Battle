@@ -137,7 +137,8 @@ export async function POST(req: NextRequest) {
     let relevantChunks: any[] = []
     try {
       const searchQuery = instructions || topic || fileContents.join(' ').substring(0, 500)
-      const searchResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/semantic-search?q=${encodeURIComponent(searchQuery)}&limit=10&threshold=0.6`)
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+      const searchResponse = await fetch(`${baseUrl}/api/semantic-search?q=${encodeURIComponent(searchQuery)}&limit=10&threshold=0.6`)
       
       if (searchResponse.ok) {
         const searchData = await searchResponse.json()
@@ -341,7 +342,9 @@ export async function POST(req: NextRequest) {
     console.log(`\n🧠 [NOTES API] Generating embeddings for semantic search...`)
     try {
       const combinedText = fileContents.join('\n\n')
-      const embeddingResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/embeddings`, {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+      console.log(`  🌐 [NOTES API] Using base URL: ${baseUrl}`)
+      const embeddingResponse = await fetch(`${baseUrl}/api/embeddings`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

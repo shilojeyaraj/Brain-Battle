@@ -61,7 +61,8 @@ export async function POST(request: NextRequest) {
     // Get relevant document chunks using semantic search
     let relevantChunks = []
     try {
-      const searchResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/semantic-search?q=${encodeURIComponent(topic)}&limit=8&threshold=0.6`)
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
+      const searchResponse = await fetch(`${baseUrl}/api/semantic-search?q=${encodeURIComponent(topic)}&limit=8&threshold=0.6`)
       if (searchResponse.ok) {
         const searchResult = await searchResponse.json()
         relevantChunks = searchResult.results || []
@@ -81,7 +82,7 @@ export async function POST(request: NextRequest) {
     if (relevantChunks.length === 0) {
       try {
         console.log('No relevant chunks found, trying broader search...')
-        const broadSearchResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/semantic-search?q=${encodeURIComponent(topic)}&limit=5&threshold=0.4`)
+        const broadSearchResponse = await fetch(`${baseUrl}/api/semantic-search?q=${encodeURIComponent(topic)}&limit=5&threshold=0.4`)
         if (broadSearchResponse.ok) {
           const broadSearchResult = await broadSearchResponse.json()
           relevantChunks = broadSearchResult.results || []
