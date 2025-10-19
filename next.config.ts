@@ -27,18 +27,12 @@ const nextConfig: NextConfig = {
       'node_modules'
     ];
     
-    // Disable problematic webpack features
-    config.cache = false;
-    config.watchOptions = {
-      poll: 1000,
-      aggregateTimeout: 300,
-    };
-    
-    // Disable file system watchers that cause issues
+    // Keep webpack cache enabled for stability (removed cache = false)
+    // Only configure watch options for development
     if (dev) {
       config.watchOptions = {
-        ...config.watchOptions,
-        ignored: /node_modules/,
+        ignored: ['**/node_modules', '**/.next'],
+        poll: false,  // Disable polling to prevent race conditions
       };
     }
     
