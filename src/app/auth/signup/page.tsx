@@ -165,6 +165,32 @@ export default function SignupPage() {
               <p className="text-sm text-gray-500 mt-1">Password must be at least 6 characters</p>
             </div>
 
+            <div>
+              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
+                Confirm Password
+              </label>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <input
+                  id="confirmPassword"
+                  type={showPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  placeholder="Confirm your password"
+                  required
+                  minLength={6}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
+            </div>
+
             <button
               type="submit"
               disabled={loading}
