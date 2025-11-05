@@ -78,7 +78,7 @@ export function StatsGrid() {
   const winRate = stats.total_games > 0 ? (stats.total_wins / stats.total_games * 100) : 0
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" data-tutorial="stats-grid">
       {/* XP Progress Bar */}
       <Card className="p-8 bg-card cartoon-border cartoon-shadow">
         <CompactXPBar xp={stats.xp} />

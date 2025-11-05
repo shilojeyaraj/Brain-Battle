@@ -158,6 +158,13 @@ For each question, provide:
 3. For multiple choice: 4 options (A, B, C, D) and correct answer index (0-3)
 4. For open-ended: expected answer(s) and answer format hints
 5. A detailed explanation
+6. If the question references a diagram, figure, chart, or image from the document, include an "image_reference" field indicating which image it relates to
+
+IMPORTANT FOR IMAGES AND DIAGRAMS:
+- If the document content mentions diagrams, figures, charts, or images, create questions about them
+- Questions should test understanding of visual content when relevant
+- Include questions that ask students to interpret or analyze visual elements
+- Reference specific images by their page number or description when available
 
 Format the response as JSON:
 {
@@ -207,9 +214,18 @@ Examples of document-specific questions:
 - If document describes a process → Ask about specific steps in that process
 - If document mentions specific examples → Ask questions about those examples
 
-For each question, also include a "source_document" field indicating which document the question is based on.
+For each question, also include:
+- A "source_document" field indicating which document the question is based on
+- An "image_reference" field (optional) if the question relates to a diagram, figure, or image from the document
+- An "requires_image" boolean field (true/false) indicating if the question needs an image to be answered properly
 
-Generate exactly 5 questions that test knowledge of the specific document content provided.
+IMAGES AND VISUAL CONTENT:
+- If documents contain diagrams, figures, charts, or images, create questions that reference them
+- Questions about visual content should clearly indicate they require viewing an image
+- Set "requires_image" to true for questions that need visual context
+- Use "image_reference" to indicate which image the question relates to (e.g., "Figure 1", "Diagram on page 5", "Chart showing X")
+
+Generate exactly ${numQuestions} questions that test knowledge of the specific document content provided.
 `
 
     const completion = await openai.chat.completions.create({
@@ -259,7 +275,10 @@ Generate exactly 5 questions that test knowledge of the specific document conten
       answer_format: q.type === "open_ended" ? (q.answer_format || "text") : null,
       hints: q.type === "open_ended" ? (q.hints || []) : null,
       explanation: q.explanation || "Explanation not available",
-      source_document: q.source_document || "Document content"
+      source_document: q.source_document || "Document content",
+      image_reference: q.image_reference || null,
+      requires_image: q.requires_image || false,
+      image_data_b64: q.image_data_b64 || null // Base64 image data if available
     }))
 
     // If this is a multiplayer session, store questions in database

@@ -4,6 +4,7 @@ import { StatsGrid } from "@/components/dashboard/stats-grid"
 import { LobbySection } from "@/components/dashboard/lobby-section"
 import { RecentBattles } from "@/components/dashboard/recent-battles"
 import { Leaderboard } from "@/components/dashboard/leaderboard"
+import { DashboardTutorial } from "@/components/tutorial/dashboard-tutorial"
 import dynamicImport from "next/dynamic"
 
 // Force dynamic rendering to avoid SSR issues
@@ -39,6 +40,7 @@ const LazyRecentBattles = dynamicImport(() => import("@/components/dashboard/rec
 export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-background">
+      <DashboardTutorial />
       <DashboardHeader />
 
       <main className="container mx-auto px-6 py-12 space-y-12">

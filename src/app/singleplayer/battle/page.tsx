@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, memo } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Clock, Target, Trophy, Zap, AlertTriangle, EyeOff, X, Star, TrendingUp, FileText } from "lucide-react"
+import { ArrowLeft, Clock, Target, Trophy, Zap, AlertTriangle, EyeOff, X, Star, TrendingUp, FileText, Image } from "lucide-react"
 import Link from "next/link"
 import { useAntiCheat, CheatEvent } from "@/hooks/use-anti-cheat"
 import { calculateXP, getXPExplanation, checkLevelUp } from "@/lib/xp-calculator"
@@ -463,6 +463,36 @@ export default function BattlePage() {
                   <span className="text-sm text-muted-foreground font-bold">Based on:</span>
                   <span className="text-sm text-foreground font-black">{question.source_document}</span>
                 </div>
+              </div>
+            )}
+            
+            {/* Display image if question requires it */}
+            {(question.requires_image || question.image_data_b64 || question.image_reference) && (
+              <div className="mb-6 p-4 rounded-xl bg-card cartoon-border cartoon-shadow">
+                <div className="flex items-center gap-2 mb-3">
+                  <Image className="h-5 w-5 text-primary" strokeWidth={3} />
+                  <span className="text-sm font-black text-foreground">
+                    {question.image_reference || "Reference Image"}
+                  </span>
+                </div>
+                {question.image_data_b64 && (
+                  <div className="relative w-full rounded-lg overflow-hidden cartoon-border">
+                    <img
+                      src={`data:image/png;base64,${question.image_data_b64}`}
+                      alt={question.image_reference || "Question reference image"}
+                      className="w-full h-auto max-h-96 object-contain bg-muted"
+                    />
+                  </div>
+                )}
+                {question.requires_image && !question.image_data_b64 && (
+                  <div className="p-8 rounded-lg bg-muted/50 cartoon-border text-center">
+                    <Image className="h-12 w-12 text-muted-foreground mx-auto mb-2" strokeWidth={2} />
+                    <p className="text-sm text-muted-foreground font-bold">
+                      This question references a diagram or figure from the source document.
+                      {question.image_reference && ` (${question.image_reference})`}
+                    </p>
+                  </div>
+                )}
               </div>
             )}
             

@@ -192,84 +192,35 @@ export default function HomePage() {
 
       <footer className="cartoon-border border-t bg-card mt-20 cartoon-shadow">
         <div className="container mx-auto px-4 py-12">
-          <div className="grid md:grid-cols-4 gap-8">
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center cartoon-border cartoon-shadow">
-                  <Brain className="w-7 h-7 text-primary-foreground" strokeWidth={3} />
-                </div>
-                <span className="text-2xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
-                  BrainBattle
-                </span>
+          <div className="flex flex-col md:flex-row items-center justify-between gap-8">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center cartoon-border cartoon-shadow">
+                <Brain className="w-7 h-7 text-primary-foreground" strokeWidth={3} />
               </div>
-              <p className="text-sm text-muted-foreground font-bold">AI-powered study battles from your own materials!</p>
+              <div>
+                <span className="text-2xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
+                  Brain<span className="text-primary">Battle</span>
+                </span>
+                <p className="text-sm text-muted-foreground font-bold">AI-powered study battles from your own materials!</p>
+              </div>
             </div>
 
-            <div>
-              <h4 className="font-black text-foreground mb-4">Product</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground font-bold">
-                <li>
-                  <Link href="/features" className="hover:text-primary transition-colors">
-                    Features
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/pricing" className="hover:text-primary transition-colors">
-                    Pricing
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/demo" className="hover:text-primary transition-colors">
-                    Demo
-                  </Link>
-                </li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="font-black text-foreground mb-4">Company</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground font-bold">
-                <li>
-                  <Link href="/about" className="hover:text-primary transition-colors">
-                    About
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/blog" className="hover:text-primary transition-colors">
-                    Blog
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/careers" className="hover:text-primary transition-colors">
-                    Careers
-                  </Link>
-                </li>
-              </ul>
-            </div>
-
-            <div>
-              <h4 className="font-black text-foreground mb-4">Support</h4>
-              <ul className="space-y-2 text-sm text-muted-foreground font-bold">
-                <li>
-                  <Link href="/help" className="hover:text-primary transition-colors">
-                    Help Center
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/contact" className="hover:text-primary transition-colors">
-                    Contact
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/privacy" className="hover:text-primary transition-colors">
-                    Privacy
-                  </Link>
-                </li>
-              </ul>
+            <div className="flex items-center gap-6">
+              <Link href="/demo" className="text-sm text-muted-foreground font-bold hover:text-primary transition-colors">
+                Demo
+              </Link>
+              <Link href="/login" className="text-sm text-muted-foreground font-bold hover:text-primary transition-colors">
+                Sign In
+              </Link>
+              <Link href="/signup">
+                <Button className="bg-primary hover:bg-primary/90 text-primary-foreground font-black text-sm px-6 py-2 cartoon-border cartoon-shadow cartoon-hover">
+                  Get Started
+                </Button>
+              </Link>
             </div>
           </div>
 
-          <div className="cartoon-border border-t mt-12 pt-8 text-center text-sm text-muted-foreground font-bold">
+          <div className="cartoon-border border-t mt-8 pt-8 text-center text-sm text-muted-foreground font-bold">
             <p>&copy; 2025 BrainBattle. AI-powered study battles!</p>
           </div>
         </div>

@@ -262,10 +262,10 @@ export async function signup(formData: FormData) {
   // Store user in session
   if (result.user) {
     revalidatePath("/")
-    redirect(`/dashboard?userId=${result.user.id}`)
+    redirect(`/dashboard?userId=${result.user.id}&newUser=true`)
   } else {
     revalidatePath("/")
-    redirect("/dashboard")
+    redirect("/dashboard?newUser=true")
   }
 }
 

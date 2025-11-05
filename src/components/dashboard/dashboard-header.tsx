@@ -76,7 +76,7 @@ function DashboardHeaderContent() {
     }
   }, [userProfile])
   return (
-    <header className="cartoon-border border-b bg-card sticky top-0 z-50 cartoon-shadow">
+    <header className="cartoon-border border-b bg-card sticky top-0 z-50 cartoon-shadow" data-tutorial="dashboard-header">
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -110,7 +110,14 @@ function DashboardHeaderContent() {
               </div>
             </div>
 
-            <Button className="bg-card hover:bg-muted rounded-xl cartoon-border cartoon-shadow cartoon-hover">
+            <Button 
+              className="bg-card hover:bg-muted rounded-xl cartoon-border cartoon-shadow cartoon-hover"
+              onClick={() => {
+                localStorage.removeItem('dashboard_tutorial_completed')
+                window.location.reload()
+              }}
+              title="Restart Tutorial"
+            >
               <Settings className="h-5 w-5" strokeWidth={3} />
             </Button>
 

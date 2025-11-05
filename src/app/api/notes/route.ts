@@ -238,7 +238,17 @@ export async function POST(req: NextRequest) {
     ${relevantChunks.length > 0 ? `\nSEMANTIC SEARCH RESULTS (for additional context):
     ${relevantChunks.map((chunk, index) => `Chunk ${index + 1}: ${chunk.content}`).join('\n\n')}\n` : ''}
 
-    ${extractedImages.length > 0 ? `\nEXTRACTED IMAGES: ${extractedImages.length} images were extracted from the documents.\n` : ''}${contextInstructions}
+    ${extractedImages.length > 0 ? `\nEXTRACTED IMAGES FROM DOCUMENTS: ${extractedImages.length} images were extracted from the PDF documents.
+    
+    IMPORTANT: These images contain diagrams, figures, charts, and illustrations from the original documents. When creating study notes and quiz questions:
+    - Reference these images in your questions and explanations
+    - Ask questions about the content visible in these images
+    - Use the images to create visual learning questions
+    - Include image descriptions and captions in your study materials
+    
+    ${extractedImages.map((img, idx) => `Image ${idx + 1} (Page ${img.page}${img.width && img.height ? `, ${img.width}x${img.height}px` : ''}):
+    [Base64 encoded image data available - use this to reference visual content from the document]
+    `).join('\n')}\n` : ''}${contextInstructions}
 
     CONTENT EXTRACTION REQUIREMENTS:
     1. EXTRACT SPECIFIC INFORMATION:
@@ -409,17 +419,106 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Helper function to extract images from PDF (simplified version)
-async function extractImagesFromPDF(buffer: Buffer, filename: string): Promise<{ image_data_b64: string; page: number }[]> {
+// Helper function to extract images from PDF using pdfjs-dist
+async function extractImagesFromPDF(buffer: Buffer, filename: string): Promise<{ image_data_b64: string; page: number; width?: number; height?: number }[]> {
   try {
     console.log(`🖼️ [IMAGE EXTRACTION] Attempting to extract images from PDF: ${filename}`)
     
-    // For now, we'll return an empty array and rely on web image enrichment
-    // In the future, we could use pdf2pic or similar libraries to extract images
-    console.log(`  ⚠️ [IMAGE EXTRACTION] Image extraction not yet implemented, using web enrichment instead`)
-    return []
-  } catch (error) {
-    console.error(`  ❌ [IMAGE EXTRACTION] Error extracting images from ${filename}:`, error)
+    // Import pdfjs-dist dynamically
+    const pdfjsLib = await import('pdfjs-dist')
+    
+    // Set up the worker (required for pdfjs)
+    try {
+      // Try to set worker from node_modules
+      const workerPath = require.resolve('pdfjs-dist/build/pdf.worker.min.js')
+      pdfjsLib.GlobalWorkerOptions.workerSrc = workerPath
+    } catch (e) {
+      // Fallback: use CDN worker
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+    }
+    
+    // Load the PDF document
+    const loadingTask = pdfjsLib.getDocument({
+      data: buffer,
+      useSystemFonts: true,
+      verbosity: 0 // Reduce console output
+    })
+    
+    const pdfDocument = await loadingTask.promise
+    console.log(`  📄 [IMAGE EXTRACTION] PDF loaded: ${pdfDocument.numPages} pages`)
+    
+    const extractedImages: { image_data_b64: string; page: number; width?: number; height?: number }[] = []
+    
+    // Iterate through all pages
+    for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
+      try {
+        const page = await pdfDocument.getPage(pageNum)
+        
+        // Get resources from the page
+        const resources = await page.getResources()
+        
+        if (resources && resources.get('XObject')) {
+          const xObjects = resources.get('XObject')
+          if (xObjects) {
+            const xObjectKeys = Array.from(xObjects.keys())
+            
+            for (const key of xObjectKeys) {
+              try {
+                const xObject = xObjects.get(key)
+                
+                // Check if it's an image
+                if (xObject && xObject.subtype === 'Image') {
+                  try {
+                    // Get image data
+                    const imageData = await xObject.getImageData()
+                    
+                    if (imageData && imageData.data) {
+                      // Convert image data to base64
+                      // Handle different image formats
+                      let imageBuffer: Buffer
+                      
+                      if (imageData.data instanceof Uint8Array || imageData.data instanceof Buffer) {
+                        imageBuffer = Buffer.from(imageData.data)
+                      } else if (Array.isArray(imageData.data)) {
+                        imageBuffer = Buffer.from(imageData.data)
+                      } else {
+                        console.log(`  ⚠️ [IMAGE EXTRACTION] Unsupported image data format for image ${key} on page ${pageNum}`)
+                        continue
+                      }
+                      
+                      const base64 = imageBuffer.toString('base64')
+                      
+                      extractedImages.push({
+                        image_data_b64: base64,
+                        page: pageNum,
+                        width: imageData.width,
+                        height: imageData.height
+                      })
+                      
+                      console.log(`  ✅ [IMAGE EXTRACTION] Extracted image from page ${pageNum} (${imageData.width}x${imageData.height}px)`)
+                    }
+                  } catch (imageError: any) {
+                    console.log(`  ⚠️ [IMAGE EXTRACTION] Could not extract image ${key} from page ${pageNum}: ${imageError.message}`)
+                  }
+                }
+              } catch (e: any) {
+                // Skip if we can't process this XObject
+                console.log(`  ⚠️ [IMAGE EXTRACTION] Error processing XObject ${key} on page ${pageNum}: ${e.message}`)
+              }
+            }
+          }
+        }
+        
+      } catch (pageError: any) {
+        console.error(`  ❌ [IMAGE EXTRACTION] Error processing page ${pageNum}:`, pageError.message)
+      }
+    }
+    
+    console.log(`  ✅ [IMAGE EXTRACTION] Extracted ${extractedImages.length} images from ${pdfDocument.numPages} pages`)
+    return extractedImages
+    
+  } catch (error: any) {
+    console.error(`  ❌ [IMAGE EXTRACTION] Error extracting images from ${filename}:`, error.message || error)
     return []
   }
 }

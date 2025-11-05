@@ -190,7 +190,7 @@ const Leaderboard = memo(function Leaderboard() {
   }
 
   return (
-    <Card className="p-6 bg-card cartoon-border cartoon-shadow sticky top-24">
+    <Card className="p-6 bg-card cartoon-border cartoon-shadow sticky top-24" data-tutorial="leaderboard">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
           <Crown className="h-6 w-6 text-primary" strokeWidth={3} />

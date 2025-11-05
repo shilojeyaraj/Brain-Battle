@@ -73,7 +73,7 @@ export function LobbySection() {
   }
 
   return (
-    <Card className="p-8 bg-card cartoon-border cartoon-shadow">
+    <Card className="p-8 bg-card cartoon-border cartoon-shadow" data-tutorial="lobby-section">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h2 className="text-4xl font-black text-foreground mb-2" style={{ fontFamily: "var(--font-display)" }}>
@@ -86,6 +86,7 @@ export function LobbySection() {
             onClick={handleStartSingleplayer}
             className="bg-primary hover:bg-primary/90 text-primary-foreground font-black text-xl px-8 py-4 cartoon-border cartoon-shadow cartoon-hover cursor-pointer"
             type="button"
+            data-tutorial="singleplayer-button"
           >
             <Zap className="h-6 w-6 mr-3" strokeWidth={3} />
             Singleplayer
@@ -94,6 +95,7 @@ export function LobbySection() {
             onClick={handleJoinLobby}
             className="bg-secondary hover:bg-secondary/90 text-secondary-foreground font-black text-xl px-8 py-4 cartoon-border cartoon-shadow cartoon-hover cursor-pointer"
             type="button"
+            data-tutorial="join-lobby-button"
           >
             <LogIn className="h-6 w-6 mr-3" strokeWidth={3} />
             Join Lobby
@@ -102,6 +104,7 @@ export function LobbySection() {
             onClick={handleCreateLobby}
             className="bg-accent hover:bg-accent/90 text-accent-foreground font-black text-xl px-8 py-4 cartoon-border cartoon-shadow cartoon-hover cursor-pointer"
             type="button"
+            data-tutorial="create-lobby-button"
           >
             <Plus className="h-6 w-6 mr-3" strokeWidth={3} />
             Create Lobby
