@@ -21,7 +21,7 @@ export interface AuthResponse {
 }
 
 // Register a new user
-async function registerUser(
+export async function registerUser(
   email: string, 
   password: string, 
   username: string
@@ -150,7 +150,7 @@ async function registerUser(
 }
 
 // Authenticate a user
-async function authenticateUser(
+export async function authenticateUser(
   email: string, 
   password: string
 ): Promise<AuthResponse> {

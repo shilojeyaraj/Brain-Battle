@@ -1,8 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Brain, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 
@@ -16,31 +15,39 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const router = useRouter()
+  const searchParams = useSearchParams()
   
-  // Create Supabase client inside component to avoid SSR issues
-  const supabase = typeof window !== 'undefined' ? createClient() : null
+  // Get error from URL params
+  const urlError = searchParams.get('error')
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
 
-    if (!supabase) {
-      setError('Application is loading, please try again.')
-      setLoading(false)
-      return
-    }
-
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+      const formData = new FormData()
+      formData.append('email', email)
+      formData.append('password', password)
+
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        body: formData,
       })
 
-      if (error) {
-        setError(error.message)
+      if (response.ok) {
+        const result = await response.json()
+        if (result.success) {
+          // Store user in localStorage for client-side access
+          localStorage.setItem('user', JSON.stringify(result.user))
+          localStorage.setItem('userId', result.user.id)
+          router.push('/dashboard')
+        } else {
+          setError(result.error || 'Login failed')
+        }
       } else {
-        router.push('/')
+        const result = await response.json()
+        setError(result.error || 'Login failed')
       }
     } catch (err) {
       setError('An unexpected error occurred')
@@ -64,9 +71,9 @@ export default function LoginPage() {
         {/* Login Form */}
         <div className="bg-white rounded-2xl shadow-lg p-8">
           <form onSubmit={handleLogin} className="space-y-6">
-            {error && (
+            {(error || urlError) && (
               <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg">
-                {error}
+                {error || urlError}
               </div>
             )}
 
