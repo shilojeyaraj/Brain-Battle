@@ -15,7 +15,13 @@ const nextConfig: NextConfig = {
   // Disable automatic workspace detection
   typescript: {
     // Only check TypeScript in this directory
-    tsconfigPath: './tsconfig.json'
+    tsconfigPath: './tsconfig.json',
+    // Ignore TypeScript errors in test files during build
+    ignoreBuildErrors: false,
+  },
+  eslint: {
+    // Ignore ESLint errors during build (we run lint separately)
+    ignoreDuringBuilds: true,
   },
   // Set output file tracing root to prevent workspace detection issues
   outputFileTracingRoot: path.resolve(__dirname),

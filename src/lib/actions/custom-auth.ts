@@ -305,11 +305,8 @@ export async function login(formData: FormData) {
 }
 
 export async function logout() {
-  // Clear user session
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem('user')
-    localStorage.removeItem('userId')
-  }
+  // Note: localStorage clearing happens client-side
+  // Server action just redirects - client should clear session
   revalidatePath("/")
   redirect("/")
 }

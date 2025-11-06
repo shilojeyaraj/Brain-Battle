@@ -428,14 +428,8 @@ async function extractImagesFromPDF(buffer: Buffer, filename: string): Promise<{
     const pdfjsLib = await import('pdfjs-dist')
     
     // Set up the worker (required for pdfjs)
-    try {
-      // Try to set worker from node_modules
-      const workerPath = require.resolve('pdfjs-dist/build/pdf.worker.min.js')
-      pdfjsLib.GlobalWorkerOptions.workerSrc = workerPath
-    } catch (e) {
-      // Fallback: use CDN worker
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
-    }
+    // Use CDN worker for Next.js compatibility
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
     
     // Load the PDF document
     const loadingTask = pdfjsLib.getDocument({

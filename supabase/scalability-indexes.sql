@@ -138,3 +138,4 @@ ANALYZE session_events;
 --
 -- If any index is unused after 1 week, consider dropping it
 
+

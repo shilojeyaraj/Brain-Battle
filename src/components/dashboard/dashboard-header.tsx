@@ -121,11 +121,18 @@ function DashboardHeaderContent() {
               <Settings className="h-5 w-5" strokeWidth={3} />
             </Button>
 
-            <form action={logout}>
-              <Button type="submit" className="bg-card hover:bg-muted rounded-xl cartoon-border cartoon-shadow cartoon-hover">
-                <LogOut className="h-5 w-5" strokeWidth={3} />
-              </Button>
-            </form>
+            <Button 
+              onClick={() => {
+                // Clear localStorage client-side
+                localStorage.removeItem('user')
+                localStorage.removeItem('userId')
+                // Call server action to redirect
+                logout()
+              }}
+              className="bg-card hover:bg-muted rounded-xl cartoon-border cartoon-shadow cartoon-hover"
+            >
+              <LogOut className="h-5 w-5" strokeWidth={3} />
+            </Button>
 
             <button
               onClick={handleAvatarClick}

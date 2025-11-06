@@ -2,10 +2,11 @@
  * Tests for room creation functionality
  */
 
+import { generateRoomCode } from '@/lib/utils'
+
 describe('Create Room Functionality', () => {
   describe('Room Creation Logic', () => {
     it('should generate a unique room code', () => {
-      const { generateRoomCode } = require('@/lib/utils')
       const code1 = generateRoomCode()
       const code2 = generateRoomCode()
       

@@ -161,8 +161,9 @@ describe('POST /api/multiplayer-results', () => {
   })
 
   it('should return 401 when user is not authenticated', async () => {
-    const { createClient } = require('@/lib/supabase/server')
-    createClient.mockReturnValueOnce({
+    const supabaseModule = await import('@/lib/supabase/server')
+    const mockCreateClient = supabaseModule.createClient as jest.Mock
+    mockCreateClient.mockReturnValueOnce({
       auth: {
         getUser: jest.fn().mockResolvedValue({
           data: { user: null },

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Fredoka } from "next/font/google";
+import { ErrorBoundary } from "@/components/error-boundary";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -36,7 +37,9 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} ${fredoka.variable} antialiased`}
         suppressHydrationWarning
       >
-        {children}
+        <ErrorBoundary>
+          {children}
+        </ErrorBoundary>
       </body>
     </html>
   );
