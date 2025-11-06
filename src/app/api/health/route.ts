@@ -7,7 +7,18 @@ import { createClient } from '@/lib/supabase/server'
  */
 export async function GET() {
   const startTime = Date.now()
-  const health = {
+  const health: {
+    status: string
+    timestamp: string
+    uptime: number
+    version: string
+    environment: string
+    checks: {
+      database: { status: string; responseTime: number; error?: string }
+      api: { status: string; responseTime: number; error?: string }
+      env?: { status: string; missing: string[] }
+    }
+  } = {
     status: 'healthy',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
@@ -29,7 +40,7 @@ export async function GET() {
     health.checks.database = {
       status: dbError ? 'unhealthy' : 'healthy',
       responseTime: dbResponseTime,
-      error: dbError?.message,
+      ...(dbError && { error: dbError.message }),
     }
 
     // Overall health status

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Brain, Mail, Lock, Eye, EyeOff, User } from 'lucide-react'
@@ -8,7 +8,7 @@ import { Brain, Mail, Lock, Eye, EyeOff, User } from 'lucide-react'
 // Force dynamic rendering to avoid SSR issues
 export const dynamic = 'force-dynamic'
 
-export default function SignupPage() {
+function SignupForm() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [username, setUsername] = useState('')
@@ -211,5 +211,13 @@ export default function SignupPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gradient-to-br from-purple-50 to-indigo-50 flex items-center justify-center">Loading...</div>}>
+      <SignupForm />
+    </Suspense>
   )
 }

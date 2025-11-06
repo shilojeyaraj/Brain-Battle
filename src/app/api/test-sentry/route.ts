@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
 import { captureException, captureMessage } from '@/lib/monitoring/sentry'
 
+// Force this route to use Node.js runtime (not Edge)
+export const runtime = 'nodejs'
+
 /**
  * Test endpoint to verify Sentry is working
  * Visit: http://localhost:3000/api/test-sentry

@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
 
     // 1) Process files and extract text content
     const fileContents: string[] = []
-    const extractedImages: { image_data_b64: string; page: number }[] = []
+    const extractedImages: { image_data_b64: string; page: number; width?: number; height?: number }[] = []
     const fileNames: string[] = []
     
     console.log(`📁 [NOTES API] Processing ${files.length} files for study notes generation...`)
@@ -420,7 +420,17 @@ export async function POST(req: NextRequest) {
 }
 
 // Helper function to extract images from PDF using pdfjs-dist
+// TODO: Implement proper image extraction using pdf-lib or similar library
+// The current pdfjs-dist API doesn't support direct image extraction in the way needed
 async function extractImagesFromPDF(buffer: Buffer, filename: string): Promise<{ image_data_b64: string; page: number; width?: number; height?: number }[]> {
+  console.log(`🖼️ [IMAGE EXTRACTION] Image extraction temporarily disabled - returning empty array`)
+  console.log(`  ℹ️ [IMAGE EXTRACTION] TODO: Implement proper PDF image extraction using pdf-lib`)
+  
+  // For now, return empty array to avoid TypeScript/API compatibility issues
+  // This feature will be implemented in Phase 1.2 of the roadmap
+  return []
+  
+  /* Original implementation commented out due to TypeScript/API issues
   try {
     console.log(`🖼️ [IMAGE EXTRACTION] Attempting to extract images from PDF: ${filename}`)
     
@@ -428,14 +438,13 @@ async function extractImagesFromPDF(buffer: Buffer, filename: string): Promise<{
     const pdfjsLib = await import('pdfjs-dist')
     
     // Set up the worker (required for pdfjs)
-    // Use CDN worker for Next.js compatibility
     pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
     
     // Load the PDF document
     const loadingTask = pdfjsLib.getDocument({
       data: buffer,
       useSystemFonts: true,
-      verbosity: 0 // Reduce console output
+      verbosity: 0
     })
     
     const pdfDocument = await loadingTask.promise
@@ -448,60 +457,8 @@ async function extractImagesFromPDF(buffer: Buffer, filename: string): Promise<{
       try {
         const page = await pdfDocument.getPage(pageNum)
         
-        // Get resources from the page
-        const resources = await page.getResources()
-        
-        if (resources && resources.get('XObject')) {
-          const xObjects = resources.get('XObject')
-          if (xObjects) {
-            const xObjectKeys = Array.from(xObjects.keys())
-            
-            for (const key of xObjectKeys) {
-              try {
-                const xObject = xObjects.get(key)
-                
-                // Check if it's an image
-                if (xObject && xObject.subtype === 'Image') {
-                  try {
-                    // Get image data
-                    const imageData = await xObject.getImageData()
-                    
-                    if (imageData && imageData.data) {
-                      // Convert image data to base64
-                      // Handle different image formats
-                      let imageBuffer: Buffer
-                      
-                      if (imageData.data instanceof Uint8Array || imageData.data instanceof Buffer) {
-                        imageBuffer = Buffer.from(imageData.data)
-                      } else if (Array.isArray(imageData.data)) {
-                        imageBuffer = Buffer.from(imageData.data)
-                      } else {
-                        console.log(`  ⚠️ [IMAGE EXTRACTION] Unsupported image data format for image ${key} on page ${pageNum}`)
-                        continue
-                      }
-                      
-                      const base64 = imageBuffer.toString('base64')
-                      
-                      extractedImages.push({
-                        image_data_b64: base64,
-                        page: pageNum,
-                        width: imageData.width,
-                        height: imageData.height
-                      })
-                      
-                      console.log(`  ✅ [IMAGE EXTRACTION] Extracted image from page ${pageNum} (${imageData.width}x${imageData.height}px)`)
-                    }
-                  } catch (imageError: any) {
-                    console.log(`  ⚠️ [IMAGE EXTRACTION] Could not extract image ${key} from page ${pageNum}: ${imageError.message}`)
-                  }
-                }
-              } catch (e: any) {
-                // Skip if we can't process this XObject
-                console.log(`  ⚠️ [IMAGE EXTRACTION] Error processing XObject ${key} on page ${pageNum}: ${e.message}`)
-              }
-            }
-          }
-        }
+        // TODO: Use proper API to extract images
+        // The getResources() method doesn't exist in the public API
         
       } catch (pageError: any) {
         console.error(`  ❌ [IMAGE EXTRACTION] Error processing page ${pageNum}:`, pageError.message)
@@ -515,6 +472,7 @@ async function extractImagesFromPDF(buffer: Buffer, filename: string): Promise<{
     console.error(`  ❌ [IMAGE EXTRACTION] Error extracting images from ${filename}:`, error.message || error)
     return []
   }
+  */
 }
 
 // Helper function to enrich notes with web images

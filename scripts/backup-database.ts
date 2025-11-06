@@ -68,7 +68,7 @@ async function backupDatabase() {
     'document_embeddings',
   ]
 
-  const backup: Record<string, any[]> = {
+  const backup: Record<string, any> = {
     metadata: {
       timestamp: new Date().toISOString(),
       version: '1.0.0',

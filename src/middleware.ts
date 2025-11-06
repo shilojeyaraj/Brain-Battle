@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import { rateLimit } from './middleware/rate-limit'
+import { rateLimit, getRateLimitIdentifier } from './middleware/rate-limit'
 import { logger } from './lib/monitoring/logger'
 import { trackApiPerformance } from './lib/monitoring/performance'
 import { trackApiCost } from './lib/monitoring/cost'
@@ -20,9 +20,24 @@ export async function middleware(request: NextRequest) {
 
   // Rate limiting for API routes
   if (path.startsWith('/api/')) {
-    const rateLimitResult = await rateLimit(request)
-    if (rateLimitResult) {
-      return rateLimitResult
+    const identifier = getRateLimitIdentifier(request)
+    const rateLimitResult = rateLimit(identifier, {
+      interval: 60000, // 1 minute
+      limit: 100 // 100 requests per minute
+    })
+    
+    if (!rateLimitResult.success) {
+      return NextResponse.json(
+        { error: 'Too many requests' },
+        { 
+          status: 429,
+          headers: {
+            'X-RateLimit-Limit': rateLimitResult.limit.toString(),
+            'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
+            'X-RateLimit-Reset': new Date(rateLimitResult.reset).toISOString(),
+          }
+        }
+      )
     }
   }
 
