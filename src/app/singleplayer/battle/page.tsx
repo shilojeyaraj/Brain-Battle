@@ -13,6 +13,8 @@ import { XPProgressBar } from "@/components/ui/xp-progress-bar"
 import { LevelUpModal } from "@/components/ui/level-up-modal"
 import { QuizProgressBar } from "@/components/ui/quiz-progress-bar"
 import { getCurrentUserId } from "@/lib/auth/session"
+import { useFeedback } from "@/hooks/useFeedback"
+import { RewardToast } from "@/components/feedback/GameFeedback"
 
 // Default empty questions - will be loaded from sessionStorage
 const defaultQuestions: any[] = []
@@ -22,6 +24,8 @@ export default function BattlePage() {
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
   const [textAnswer, setTextAnswer] = useState("")
   const [showResult, setShowResult] = useState(false)
+  const [showRewardToast, setShowRewardToast] = useState(false)
+  const [rewardMessage, setRewardMessage] = useState<string>("")
   const [score, setScore] = useState(0)
   const [timeLeft, setTimeLeft] = useState(30)
   const [battleComplete, setBattleComplete] = useState(false)
@@ -66,6 +70,8 @@ export default function BattlePage() {
     thresholdMs: 2500,
     onCheatDetected: handleCheatDetected
   })
+
+  const { playCorrect, playWrong, playClick, burstConfetti } = useFeedback()
 
   // Load questions from sessionStorage on component mount
   useEffect(() => {
@@ -139,6 +145,13 @@ export default function BattlePage() {
     const isCorrect = answerIndex === correctAnswer
     if (isCorrect) {
       setScore(prev => prev + 1)
+      playCorrect()
+      burstConfetti({ particleCount: 80, spread: 60 })
+      setRewardMessage("+10 XP!")
+      setShowRewardToast(true)
+      setTimeout(() => setShowRewardToast(false), 1200)
+    } else {
+      playWrong()
     }
     
     // Store user answer
@@ -147,7 +160,7 @@ export default function BattlePage() {
       newAnswers[currentQuestion] = answerIndex
       return newAnswers
     })
-  }, [question, currentQuestion])
+  }, [question, currentQuestion, playCorrect, playWrong, burstConfetti])
 
   const handleTextAnswer = useCallback(() => {
     if (!question || !textAnswer.trim()) return
@@ -165,6 +178,13 @@ export default function BattlePage() {
     
     if (isCorrect) {
       setScore(prev => prev + 1)
+      playCorrect()
+      burstConfetti({ particleCount: 80, spread: 60 })
+      setRewardMessage("+10 XP!")
+      setShowRewardToast(true)
+      setTimeout(() => setShowRewardToast(false), 1200)
+    } else {
+      playWrong()
     }
     
     // Store user answer
@@ -173,7 +193,7 @@ export default function BattlePage() {
       newAnswers[currentQuestion] = textAnswer.trim()
       return newAnswers
     })
-  }, [question, textAnswer, currentQuestion])
+  }, [question, textAnswer, currentQuestion, playCorrect, playWrong, burstConfetti])
 
   const handleBattleComplete = useCallback(async () => {
     setIsSubmittingResults(true)
@@ -631,6 +651,8 @@ export default function BattlePage() {
           )}
         </Card>
       </div>
+
+      <RewardToast show={showRewardToast} message={rewardMessage} />
     </div>
   )
 }

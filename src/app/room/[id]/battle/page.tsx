@@ -11,6 +11,8 @@ import { QuizProgressBar } from "@/components/ui/quiz-progress-bar"
 import { getCurrentUserId } from "@/lib/auth/session"
 import { createClient } from "@/lib/supabase/client"
 import { useParams, useRouter } from "next/navigation"
+import { useFeedback } from "@/hooks/useFeedback"
+import { RewardToast } from "@/components/feedback/GameFeedback"
 
 interface Question {
   id: number
@@ -42,6 +44,8 @@ export default function MultiplayerBattlePage() {
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
   const [textAnswer, setTextAnswer] = useState("")
   const [showResult, setShowResult] = useState(false)
+  const [showRewardToast, setShowRewardToast] = useState(false)
+  const [rewardMessage, setRewardMessage] = useState<string>("")
   const [timeLeft, setTimeLeft] = useState(30)
   const [questions, setQuestions] = useState<Question[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -57,6 +61,7 @@ export default function MultiplayerBattlePage() {
   const router = useRouter()
   const supabase = createClient()
   const channelRef = useRef<any>(null)
+  const { playCorrect, playWrong, burstConfetti } = useFeedback()
 
   // Track if battle is actively running
   const isBattleActive = !isLoading && !hasError && !battleComplete && questions.length > 0
@@ -260,6 +265,15 @@ export default function MultiplayerBattlePage() {
                         textAnswer
 
     try {
+      if (isCorrect) {
+        playCorrect()
+        burstConfetti({ particleCount: 80, spread: 60 })
+        setRewardMessage("+10 XP!")
+        setShowRewardToast(true)
+        setTimeout(() => setShowRewardToast(false), 1200)
+      } else {
+        playWrong()
+      }
       // Submit answer to database
       const { error: answerError } = await supabase
         .from('quiz_answers')
@@ -314,7 +328,7 @@ export default function MultiplayerBattlePage() {
     } catch (error) {
       console.error('❌ [BATTLE] Error handling answer:', error)
     }
-  }, [currentQuestionData, currentUserId, quizSession, playerProgress, currentQuestion, textAnswer])
+  }, [currentQuestionData, currentUserId, quizSession, playerProgress, currentQuestion, textAnswer, playCorrect, playWrong, burstConfetti])
 
   const handleTextAnswer = useCallback(() => {
     if (!currentQuestionData || !textAnswer.trim()) return
@@ -697,6 +711,7 @@ export default function MultiplayerBattlePage() {
           </div>
         </div>
       </div>
+      <RewardToast show={showRewardToast} message={rewardMessage} />
     </div>
   )
 }

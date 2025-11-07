@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion"
 import { X, Star, Zap, Trophy, Crown, Sparkles } from "lucide-react"
 import { getRankFromXP, getRankIcon, getRankTitle } from "@/lib/rank-system"
 import { getLevelUpInfo } from "@/lib/xp-calculator"
+import { useFeedback } from "@/hooks/useFeedback"
 
 interface LevelUpModalProps {
   isOpen: boolean
@@ -26,6 +27,7 @@ export function LevelUpModal({
   className = ""
 }: LevelUpModalProps) {
   const [showCelebration, setShowCelebration] = useState(false)
+  const { playLevelUp, burstConfetti } = useFeedback()
   
   const levelUpInfo = getLevelUpInfo(oldXP, newXP)
   const oldRank = getRankFromXP(oldXP)
@@ -35,6 +37,9 @@ export function LevelUpModal({
   useEffect(() => {
     if (isOpen && levelUpInfo.leveledUp) {
       setShowCelebration(true)
+      // SFX + particles
+      playLevelUp()
+      burstConfetti({ particleCount: 160, spread: 80, startVelocity: 45 })
       // Auto-close after 5 seconds
       const timer = setTimeout(() => {
         onClose()
@@ -42,7 +47,7 @@ export function LevelUpModal({
       
       return () => clearTimeout(timer)
     }
-  }, [isOpen, levelUpInfo.leveledUp, onClose])
+  }, [isOpen, levelUpInfo.leveledUp, onClose, playLevelUp, burstConfetti])
 
   const celebrationVariants = {
     initial: { scale: 0, rotate: -180 },
