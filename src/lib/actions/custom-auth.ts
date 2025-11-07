@@ -20,6 +20,15 @@ export interface AuthResponse {
   error?: string
 }
 
+// Detect Next.js redirect errors so we don't catch them
+const isNextRedirectError = (err: unknown): boolean => {
+  return (
+    err instanceof Error &&
+    typeof (err as any).digest === "string" &&
+    (err as any).digest.startsWith("NEXT_REDIRECT")
+  )
+}
+
 // Register a new user
 export async function registerUser(
   email: string, 
@@ -299,6 +308,9 @@ export async function login(formData: FormData) {
       redirect("/dashboard")
     }
   } catch (error) {
+    if (isNextRedirectError(error)) {
+      throw error
+    }
     console.error("❌ [LOGIN] Server error during authentication:", error)
     redirect("/login?error=Server error. Please try again.")
   }

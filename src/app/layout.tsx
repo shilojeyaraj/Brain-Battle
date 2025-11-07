@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { Fredoka } from "next/font/google";
 import { ErrorBoundary } from "@/components/error-boundary";
 import "./globals.css";
+import { AppProviders } from "@/components/providers";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -38,7 +39,9 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <ErrorBoundary>
-          {children}
+          <AppProviders>
+            {children}
+          </AppProviders>
         </ErrorBoundary>
       </body>
     </html>

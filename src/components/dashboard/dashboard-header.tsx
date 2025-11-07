@@ -11,9 +11,11 @@ import { getUserStatsClient, UserProfile } from "@/lib/actions/user-stats-client
 import { UserProfileModal } from "@/components/ui/user-profile-modal"
 import { getCurrentUserId, setUserSession } from "@/lib/auth/session"
 import Link from "next/link"
+import { SettingsModal } from "@/components/ui/settings-modal"
 
 function DashboardHeaderContent() {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -122,6 +124,14 @@ function DashboardHeaderContent() {
             </Button>
 
             <Button 
+              className="bg-card hover:bg-muted rounded-xl cartoon-border cartoon-shadow cartoon-hover"
+              onClick={() => setIsSettingsOpen(true)}
+              title="Sound & Motion Settings"
+            >
+              <Settings className="h-5 w-5" strokeWidth={3} />
+            </Button>
+
+            <Button 
               onClick={() => {
                 // Clear localStorage client-side
                 localStorage.removeItem('user')
@@ -160,6 +170,12 @@ function DashboardHeaderContent() {
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
         userProfile={userProfile}
+      />
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
       />
     </header>
   )

@@ -8,6 +8,8 @@ import { Plus, Search, Users, Lock, Globe, LogIn, Zap } from "lucide-react"
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { motion } from "framer-motion"
+import { useFeedback } from "@/hooks/useFeedback"
 
 const activeLobbies: any[] = [
   // Empty array - no active lobbies yet
@@ -18,12 +20,31 @@ export function LobbySection() {
   const [searchQuery, setSearchQuery] = useState("")
   const [mounted, setMounted] = useState(false)
   const router = useRouter()
+  const { playClick, burstConfetti } = useFeedback()
 
   useEffect(() => {
     setMounted(true)
   }, [])
 
+  // Fire a single confetti burst on lobby load (respects Reduced Motion)
+  useEffect(() => {
+    if (!mounted) return
+    let initialTimeout: number | undefined
+    try {
+      // small initial delay so the UI paints first
+      initialTimeout = window.setTimeout(() => {
+        burstConfetti({ particleCount: 100, spread: 70, startVelocity: 40 })
+      }, 300)
+    } catch {
+      // ignore
+    }
+    return () => {
+      if (initialTimeout) window.clearTimeout(initialTimeout)
+    }
+  }, [mounted, burstConfetti])
+
   const handleCreateLobby = () => {
+    playClick()
     console.log("Create Lobby button clicked!")
     console.log("Current URL:", window.location.href)
     console.log("Attempting to navigate to /create-room")
@@ -36,6 +57,7 @@ export function LobbySection() {
   }
 
   const handleJoinLobby = () => {
+    playClick()
     console.log("Join Lobby button clicked!")
     console.log("Attempting to navigate to /join-room")
     try {
@@ -47,6 +69,7 @@ export function LobbySection() {
   }
 
   const handleStartSingleplayer = () => {
+    playClick()
     console.log("Start Singleplayer Battle button clicked!")
     try {
       router.push("/singleplayer")
@@ -82,33 +105,39 @@ export function LobbySection() {
           <p className="text-base text-muted-foreground font-bold">Join or create a study battle</p>
         </div>
         <div className="flex gap-4">
-          <Button 
-            onClick={handleStartSingleplayer}
-            className="bg-primary hover:bg-primary/90 text-primary-foreground font-black text-xl px-8 py-4 cartoon-border cartoon-shadow cartoon-hover cursor-pointer"
-            type="button"
-            data-tutorial="singleplayer-button"
-          >
-            <Zap className="h-6 w-6 mr-3" strokeWidth={3} />
-            Singleplayer
-          </Button>
-          <Button 
-            onClick={handleJoinLobby}
-            className="bg-secondary hover:bg-secondary/90 text-secondary-foreground font-black text-xl px-8 py-4 cartoon-border cartoon-shadow cartoon-hover cursor-pointer"
-            type="button"
-            data-tutorial="join-lobby-button"
-          >
-            <LogIn className="h-6 w-6 mr-3" strokeWidth={3} />
-            Join Lobby
-          </Button>
-          <Button 
-            onClick={handleCreateLobby}
-            className="bg-accent hover:bg-accent/90 text-accent-foreground font-black text-xl px-8 py-4 cartoon-border cartoon-shadow cartoon-hover cursor-pointer"
-            type="button"
-            data-tutorial="create-lobby-button"
-          >
-            <Plus className="h-6 w-6 mr-3" strokeWidth={3} />
-            Create Lobby
-          </Button>
+          <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+            <Button 
+              onClick={handleStartSingleplayer}
+              className="bg-primary hover:bg-primary/90 text-primary-foreground font-black text-xl px-8 py-4 cartoon-border cartoon-shadow cartoon-hover cursor-pointer"
+              type="button"
+              data-tutorial="singleplayer-button"
+            >
+              <Zap className="h-6 w-6 mr-3" strokeWidth={3} />
+              Singleplayer
+            </Button>
+          </motion.div>
+          <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+            <Button 
+              onClick={handleJoinLobby}
+              className="bg-secondary hover:bg-secondary/90 text-secondary-foreground font-black text-xl px-8 py-4 cartoon-border cartoon-shadow cartoon-hover cursor-pointer"
+              type="button"
+              data-tutorial="join-lobby-button"
+            >
+              <LogIn className="h-6 w-6 mr-3" strokeWidth={3} />
+              Join Lobby
+            </Button>
+          </motion.div>
+          <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+            <Button 
+              onClick={handleCreateLobby}
+              className="bg-accent hover:bg-accent/90 text-accent-foreground font-black text-xl px-8 py-4 cartoon-border cartoon-shadow cartoon-hover cursor-pointer"
+              type="button"
+              data-tutorial="create-lobby-button"
+            >
+              <Plus className="h-6 w-6 mr-3" strokeWidth={3} />
+              Create Lobby
+            </Button>
+          </motion.div>
         </div>
       </div>
 
@@ -131,22 +160,26 @@ export function LobbySection() {
                 <h3 className="text-2xl font-black text-foreground mb-3">No active lobbies!</h3>
                 <p className="text-lg text-muted-foreground font-bold mb-8">Be the first to create a study battle and invite your friends.</p>
                 <div className="flex gap-4 justify-center">
-                  <Button 
-                    onClick={handleJoinLobby}
-                    className="bg-secondary hover:bg-secondary/90 text-secondary-foreground font-black text-xl px-8 py-4 cartoon-border cartoon-shadow cartoon-hover cursor-pointer"
-                    type="button"
-                  >
-                    <LogIn className="h-6 w-6 mr-3" strokeWidth={3} />
-                    Join Lobby
-                  </Button>
-                  <Button 
-                    onClick={handleCreateLobby}
-                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-black text-xl px-8 py-4 cartoon-border cartoon-shadow cartoon-hover cursor-pointer"
-                    type="button"
-                  >
-                    <Plus className="h-6 w-6 mr-3" strokeWidth={3} />
-                    Create First Lobby
-                  </Button>
+                  <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                    <Button 
+                      onClick={handleJoinLobby}
+                      className="bg-secondary hover:bg-secondary/90 text-secondary-foreground font-black text-xl px-8 py-4 cartoon-border cartoon-shadow cartoon-hover cursor-pointer"
+                      type="button"
+                    >
+                      <LogIn className="h-6 w-6 mr-3" strokeWidth={3} />
+                      Join Lobby
+                    </Button>
+                  </motion.div>
+                  <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                    <Button 
+                      onClick={handleCreateLobby}
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground font-black text-xl px-8 py-4 cartoon-border cartoon-shadow cartoon-hover cursor-pointer"
+                      type="button"
+                    >
+                      <Plus className="h-6 w-6 mr-3" strokeWidth={3} />
+                      Create First Lobby
+                    </Button>
+                  </motion.div>
                 </div>
           </div>
         ) : (
