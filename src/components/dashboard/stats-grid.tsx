@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, memo, useMemo, useCallback } from "react"
 import { Card } from "@/components/ui/card"
 import { Trophy, Target, Zap, Users, Loader2 } from "lucide-react"
 import { getUserStatsClient, UserProfile } from "@/lib/actions/user-stats-client"
@@ -8,7 +8,8 @@ import { getCurrentUserId } from "@/lib/auth/session"
 import { getRankFromXP, getRankIcon, formatXP } from "@/lib/rank-system"
 import { CompactXPBar } from "@/components/ui/xp-progress-bar"
 
-export function StatsGrid() {
+// 🚀 OPTIMIZATION: Memoize component to prevent unnecessary re-renders
+export const StatsGrid = memo(function StatsGrid() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -74,8 +75,13 @@ export function StatsGrid() {
   }
 
   const { stats } = userProfile
-  const rank = getRankFromXP(stats.xp)
-  const winRate = stats.total_games > 0 ? (stats.total_wins / stats.total_games * 100) : 0
+  
+  // 🚀 OPTIMIZATION: Memoize expensive calculations
+  const rank = useMemo(() => getRankFromXP(stats.xp), [stats.xp])
+  const winRate = useMemo(
+    () => stats.total_games > 0 ? (stats.total_wins / stats.total_games * 100) : 0,
+    [stats.total_wins, stats.total_games]
+  )
 
   return (
     <div className="space-y-8" data-tutorial="stats-grid">
@@ -166,4 +172,4 @@ export function StatsGrid() {
       </div>
     </div>
   )
-}
+})
