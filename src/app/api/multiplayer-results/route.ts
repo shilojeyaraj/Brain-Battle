@@ -101,6 +101,21 @@ export async function POST(request: NextRequest) {
 
     const profileMap = new Map(profiles?.map(p => [p.user_id, p.display_name]) || [])
 
+    // 🚀 OPTIMIZATION: Fetch all player stats at once (fix N+1 query)
+    const { data: allPlayerStats, error: statsError } = await supabase
+      .from('player_stats')
+      .select('user_id, win_streak')
+      .in('user_id', userIds)
+
+    if (statsError) {
+      console.error('❌ [MULTIPLAYER RESULTS] Error fetching player stats:', statsError)
+    }
+
+    const statsMap = new Map(allPlayerStats?.map(s => [s.user_id, s.win_streak]) || [])
+
+    // Import XP calculator once (not in loop)
+    const { calculateXP } = await import('@/lib/xp-calculator')
+
     // Process each player's results
     const gameResults = []
     const statsUpdates = []
@@ -108,8 +123,20 @@ export async function POST(request: NextRequest) {
     for (const playerResult of player_results) {
       const rank = rankings.get(playerResult.user_id) || player_results.length
       const displayName = profileMap.get(playerResult.user_id) || 'Unknown Player'
+      const winStreak = statsMap.get(playerResult.user_id) || 0
       
       // Calculate XP using the enhanced system
+      const xpResult = calculateXP({
+        correctAnswers: playerResult.correct_answers,
+        totalQuestions: playerResult.questions_answered,
+        averageTimePerQuestion: playerResult.average_time_per_question,
+        difficulty: session.rooms[0]?.difficulty || 'medium',
+        winStreak: winStreak,
+        isPerfectScore: playerResult.correct_answers === playerResult.questions_answered,
+        isMultiplayer: true,
+        rank: rank
+      })
+
       const gameResult = {
         room_id: room_id,
         user_id: playerResult.user_id,
@@ -119,32 +146,9 @@ export async function POST(request: NextRequest) {
         correct_answers: playerResult.correct_answers,
         total_time: playerResult.total_time,
         rank: rank,
-        xp_earned: 0, // Will be calculated below
+        xp_earned: xpResult.totalXP,
         completed_at: new Date().toISOString()
       }
-
-      // Calculate XP
-      const { calculateXP } = await import('@/lib/xp-calculator')
-      
-      // Get current user stats for streak calculation
-      const { data: currentStats } = await supabase
-        .from('player_stats')
-        .select('win_streak')
-        .eq('user_id', playerResult.user_id)
-        .single()
-
-      const xpResult = calculateXP({
-        correctAnswers: playerResult.correct_answers,
-        totalQuestions: playerResult.questions_answered,
-        averageTimePerQuestion: playerResult.average_time_per_question,
-        difficulty: session.rooms[0]?.difficulty || 'medium',
-        winStreak: currentStats?.win_streak || 0,
-        isPerfectScore: playerResult.correct_answers === playerResult.questions_answered,
-        isMultiplayer: true,
-        rank: rank
-      })
-
-      gameResult.xp_earned = xpResult.totalXP
 
       gameResults.push(gameResult)
 

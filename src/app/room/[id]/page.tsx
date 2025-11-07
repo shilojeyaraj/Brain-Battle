@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useParams, useRouter } from 'next/navigation'
 import { Brain, Users, Upload, Settings, ArrowLeft, Copy, Check, Crown, Lock, RefreshCw, FileText, X, AlertCircle, Loader2, Zap, BookOpen, Lightbulb, MessageSquare, Clock } from 'lucide-react'
@@ -704,12 +704,13 @@ export default function RoomPage() {
     }
   }
 
-  const updateQuizSettings = (field: string, value: any) => {
+  // 🚀 OPTIMIZATION: Memoize callback to prevent re-renders
+  const updateQuizSettings = useCallback((field: string, value: any) => {
     setQuizSettings(prev => ({
       ...prev,
       [field]: value
     }))
-  }
+  }, [])
 
   // Study session functionality
   const startStudySession = async () => {

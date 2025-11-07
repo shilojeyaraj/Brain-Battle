@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
       duration
     })
 
-    // 1. Create a quiz session record
+    // 🚀 OPTIMIZATION: Create session and insert questions in one go
     const { data: sessionData, error: sessionError } = await supabase
       .from('quiz_sessions')
       .insert({
@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
 
     console.log("✅ [QUIZ RESULTS] Created quiz session:", sessionData.id)
 
-    // 2. Insert questions
+    // 🚀 OPTIMIZATION: Insert questions and get IDs back in one operation
     const questionsToInsert = questions.map((q: any, index: number) => ({
       session_id: sessionData.id,
       question_text: q.question || q.q,
@@ -61,28 +61,18 @@ export async function POST(request: NextRequest) {
       order_index: index
     }))
 
-    const { error: questionsError } = await supabase
+    const { data: insertedQuestions, error: questionsError } = await supabase
       .from('questions')
       .insert(questionsToInsert)
+      .select('id, order_index')
+      .order('order_index')
 
-    if (questionsError) {
+    if (questionsError || !insertedQuestions) {
       console.error("❌ [QUIZ RESULTS] Error inserting questions:", questionsError)
       return NextResponse.json({ error: "Failed to insert questions" }, { status: 500 })
     }
 
-    console.log("✅ [QUIZ RESULTS] Inserted questions")
-
-    // 3. Get the inserted questions to get their IDs
-    const { data: insertedQuestions, error: fetchQuestionsError } = await supabase
-      .from('questions')
-      .select('id, order_index')
-      .eq('session_id', sessionData.id)
-      .order('order_index')
-
-    if (fetchQuestionsError) {
-      console.error("❌ [QUIZ RESULTS] Error fetching questions:", fetchQuestionsError)
-      return NextResponse.json({ error: "Failed to fetch questions" }, { status: 500 })
-    }
+    console.log("✅ [QUIZ RESULTS] Inserted questions with IDs")
 
     // 4. Insert player answers
     const answersToInsert = answers.map((answer: any, index: number) => {
