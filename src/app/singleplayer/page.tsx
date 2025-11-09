@@ -248,7 +248,7 @@ export default function SingleplayerPage() {
         {/* Header */}
         <div className="flex items-center gap-4 mb-8">
           <Link href="/dashboard">
-            <Button variant="outline" className="cartoon-border cartoon-shadow">
+            <Button className="bg-chart-5 hover:bg-chart-5/90 text-foreground font-black cartoon-border cartoon-shadow cartoon-hover">
               <ArrowLeft className="h-4 w-4 mr-2" strokeWidth={3} />
               Back to Dashboard
             </Button>

@@ -30,10 +30,25 @@ export function TutorialOverlay({
   const [currentStep, setCurrentStep] = useState(0)
   const [targetElement, setTargetElement] = useState<HTMLElement | null>(null)
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null)
+  const [viewportSize, setViewportSize] = useState({ width: 0, height: 0 })
   const overlayRef = useRef<HTMLDivElement>(null)
   const spotlightRef = useRef<HTMLDivElement>(null)
 
   const step = steps[currentStep]
+
+  // Track viewport size for positioning calculations
+  useEffect(() => {
+    const updateViewportSize = () => {
+      setViewportSize({ width: window.innerWidth, height: window.innerHeight })
+    }
+    
+    updateViewportSize()
+    window.addEventListener('resize', updateViewportSize)
+    
+    return () => {
+      window.removeEventListener('resize', updateViewportSize)
+    }
+  }, [])
 
   // Find and highlight target element
   useEffect(() => {
@@ -129,30 +144,76 @@ export function TutorialOverlay({
     }
     
     const padding = 20
-    const cardWidth = 400
-    const cardHeight = 250
+    const cardWidth = 500  // Increased from 400 for better readability
+    const cardHeight = 300  // Increased from 250 to accommodate wider text
+    const viewportWidth = viewportSize.width || window.innerWidth
+    const viewportHeight = viewportSize.height || window.innerHeight
+    
+    // Helper to clamp values within viewport bounds
+    const clampLeft = (left: number) => Math.max(padding, Math.min(left, viewportWidth - cardWidth - padding))
+    const clampTop = (top: number) => Math.max(padding, Math.min(top, viewportHeight - cardHeight - padding))
     
     switch (step.position) {
-      case 'top':
-        return {
-          top: `${targetRect.top - cardHeight - padding}px`,
-          left: `${targetRect.left + (targetRect.width / 2) - (cardWidth / 2)}px`,
+      case 'top': {
+        const top = targetRect.top - cardHeight - padding
+        const left = clampLeft(targetRect.left + (targetRect.width / 2) - (cardWidth / 2))
+        // If card would be above viewport, position it below instead
+        if (top < padding) {
+          return {
+            top: `${clampTop(targetRect.bottom + padding)}px`,
+            left: `${left}px`,
+          }
         }
-      case 'bottom':
         return {
-          top: `${targetRect.bottom + padding}px`,
-          left: `${targetRect.left + (targetRect.width / 2) - (cardWidth / 2)}px`,
+          top: `${clampTop(top)}px`,
+          left: `${left}px`,
         }
-      case 'left':
+      }
+      case 'bottom': {
+        const top = targetRect.bottom + padding
+        const left = clampLeft(targetRect.left + (targetRect.width / 2) - (cardWidth / 2))
+        // If card would be below viewport, position it above instead
+        if (top + cardHeight > viewportHeight - padding) {
+          return {
+            top: `${clampTop(targetRect.top - cardHeight - padding)}px`,
+            left: `${left}px`,
+          }
+        }
         return {
-          top: `${targetRect.top + (targetRect.height / 2) - (cardHeight / 2)}px`,
-          left: `${targetRect.left - cardWidth - padding}px`,
+          top: `${clampTop(top)}px`,
+          left: `${left}px`,
         }
-      case 'right':
+      }
+      case 'left': {
+        const left = targetRect.left - cardWidth - padding
+        const top = clampTop(targetRect.top + (targetRect.height / 2) - (cardHeight / 2))
+        // If card would be off left edge, position it to the right instead
+        if (left < padding) {
+          return {
+            top: `${top}px`,
+            left: `${clampLeft(targetRect.right + padding)}px`,
+          }
+        }
         return {
-          top: `${targetRect.top + (targetRect.height / 2) - (cardHeight / 2)}px`,
-          left: `${targetRect.right + padding}px`,
+          top: `${top}px`,
+          left: `${clampLeft(left)}px`,
         }
+      }
+      case 'right': {
+        const left = targetRect.right + padding
+        const top = clampTop(targetRect.top + (targetRect.height / 2) - (cardHeight / 2))
+        // If card would be off right edge, position it to the left instead
+        if (left + cardWidth > viewportWidth - padding) {
+          return {
+            top: `${top}px`,
+            left: `${clampLeft(targetRect.left - cardWidth - padding)}px`,
+          }
+        }
+        return {
+          top: `${top}px`,
+          left: `${clampLeft(left)}px`,
+        }
+      }
       case 'center':
       default:
         return {
@@ -194,10 +255,12 @@ export function TutorialOverlay({
 
       {/* Tutorial Card */}
       <div
-        className="fixed z-[10000] bg-card rounded-2xl cartoon-border cartoon-shadow-lg p-6 max-w-md pointer-events-auto"
+        className="fixed z-[10000] bg-card rounded-2xl cartoon-border cartoon-shadow-lg p-6 pointer-events-auto"
         style={{
           ...cardPosition,
           position: 'fixed',
+          width: Math.min(500, viewportSize.width - 40) + 'px',
+          maxWidth: '90vw',
         }}
       >
         <div className="flex items-start justify-between mb-4">
@@ -213,14 +276,14 @@ export function TutorialOverlay({
             onClick={handleSkip}
             className="h-8 w-8 p-0 hover:bg-muted"
           >
-            <X className="h-4 w-4" strokeWidth={3} />
+            <X className="h-4 w-4 text-foreground" strokeWidth={3} />
           </Button>
         </div>
 
         <h3 className="text-2xl font-black text-foreground mb-3" style={{ fontFamily: "var(--font-display)" }}>
           {step.title}
         </h3>
-        <p className="text-base text-muted-foreground font-bold mb-6 leading-relaxed">
+        <p className="text-base text-muted-foreground font-bold mb-6 leading-relaxed whitespace-normal break-words" style={{ lineHeight: '1.6' }}>
           {step.description}
         </p>
 
@@ -236,15 +299,13 @@ export function TutorialOverlay({
                 Previous
               </Button>
             )}
-            {step.showSkip && (
-              <Button
-                variant="ghost"
-                onClick={handleSkip}
-                className="font-bold text-muted-foreground hover:text-foreground"
-              >
-                Skip Tutorial
-              </Button>
-            )}
+            <Button
+              variant="ghost"
+              onClick={handleSkip}
+              className="font-bold text-muted-foreground hover:text-foreground"
+            >
+              Skip Tutorial
+            </Button>
           </div>
           <Button
             onClick={handleNext}

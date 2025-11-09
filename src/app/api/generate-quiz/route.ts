@@ -10,17 +10,29 @@ export async function POST(request: NextRequest) {
   try {
     // Check if this is a JSON request (multiplayer) or form data (singleplayer)
     const contentType = request.headers.get('content-type')
-    let topic, difficulty, totalQuestions, sessionId, files, instructions, notes, studyContextStr
+    let topic, difficulty, totalQuestions, sessionId, instructions, notes, studyContextStr
+    let files: File[] = []
     let studyContext = null
 
     if (contentType?.includes('application/json')) {
-      // Multiplayer request
+      // Could be multiplayer OR singleplayer with notes
       const body = await request.json()
       topic = body.topic
       difficulty = body.difficulty
       totalQuestions = body.totalQuestions
       sessionId = body.sessionId
+      notes = body.studyNotes ? JSON.stringify(body.studyNotes) : body.notes
+      studyContextStr = body.studyContext ? JSON.stringify(body.studyContext) : null
       files = []
+      
+      // If studyContext is provided, parse it
+      if (studyContextStr) {
+        try {
+          studyContext = typeof studyContextStr === 'string' ? JSON.parse(studyContextStr) : studyContextStr
+        } catch (e) {
+          console.log("⚠️ [QUIZ API] Failed to parse study context:", e)
+        }
+      }
     } else {
       // Singleplayer request (form data)
       const form = await request.formData()
@@ -58,43 +70,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get relevant document chunks using semantic search
-    let relevantChunks = []
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
-    console.log(`🌐 [QUIZ API] Using base URL: ${baseUrl}`)
-    console.log(`🔧 [QUIZ API] Environment check: VERCEL_URL=${process.env.VERCEL_URL}, NEXT_PUBLIC_APP_URL=${process.env.NEXT_PUBLIC_APP_URL}`)
-    
-    try {
-      const searchResponse = await fetch(`${baseUrl}/api/semantic-search?q=${encodeURIComponent(topic)}&limit=8&threshold=0.6`)
-      if (searchResponse.ok) {
-        const searchResult = await searchResponse.json()
-        relevantChunks = searchResult.results || []
-        console.log(`Found ${relevantChunks.length} relevant document chunks for topic: ${topic}`)
-        
-        // Log the actual content found for debugging
-        relevantChunks.forEach((chunk: any, index: number) => {
-          console.log(`Chunk ${index + 1}: ${chunk.file_name} (${chunk.similarity_score?.toFixed(3)} similarity)`)
-          console.log(`Content preview: ${chunk.chunk_text.substring(0, 200)}...`)
-        })
-      }
-    } catch (error) {
-      console.error('Error performing semantic search:', error)
-    }
-
-    // If no relevant chunks found, try a broader search
-    if (relevantChunks.length === 0) {
-      try {
-        console.log('No relevant chunks found, trying broader search...')
-        const broadSearchResponse = await fetch(`${baseUrl}/api/semantic-search?q=${encodeURIComponent(topic)}&limit=5&threshold=0.4`)
-        if (broadSearchResponse.ok) {
-          const broadSearchResult = await broadSearchResponse.json()
-          relevantChunks = broadSearchResult.results || []
-          console.log(`Found ${relevantChunks.length} chunks with broader search`)
-        }
-      } catch (error) {
-        console.error('Error performing broad semantic search:', error)
-      }
-    }
+    // Semantic search is optional and only useful if searching previously uploaded documents
+    // Since we're processing new documents from files, we'll skip semantic search
+    // This avoids connection errors and focuses on the uploaded file content
+    console.log("🔍 [QUIZ API] Skipping semantic search (using uploaded file content)")
+    let relevantChunks: any[] = []
 
     // Build study context instructions
     let contextInstructions = ""
@@ -115,6 +95,148 @@ export async function POST(request: NextRequest) {
       contextInstructions += "\nPlease tailor the quiz questions to these preferences while still basing everything on the document content.\n"
     }
 
+    // Extract text from uploaded files if available, OR use notes content
+    let fileContent = ""
+    if (files && files.length > 0) {
+      console.log(`📄 [QUIZ API] Processing ${files.length} uploaded files for quiz generation...`)
+      try {
+        const fileTexts = await Promise.all(
+          (files as File[]).map(async (file: File) => {
+            const buffer = Buffer.from(await file.arrayBuffer())
+            if (file.type === "text/plain") {
+              return `=== ${file.name} ===\n${buffer.toString('utf-8')}\n`
+            } else if (file.type === "application/pdf") {
+              // Use dynamic import for ESM module (required by Next.js)
+              const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
+              const pdfjsLib = pdfjsModule.default || pdfjsModule
+              
+              // Load the PDF document with server-side optimized settings
+              const loadingTask = pdfjsLib.getDocument({
+                data: new Uint8Array(buffer),
+                useSystemFonts: true,
+                verbosity: 0,
+                isEvalSupported: false, // Disable eval for server-side
+              })
+              
+              const pdfDocument = await loadingTask.promise
+              
+              // Extract text from all pages
+              const textParts: string[] = []
+              for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
+                const page = await pdfDocument.getPage(pageNum)
+                const textContent = await page.getTextContent()
+                const pageText = textContent.items
+                  .map((item: any) => item.str)
+                  .join(' ')
+                textParts.push(pageText)
+              }
+              
+              const text = textParts.join('\n\n')
+              return `=== ${file.name} ===\n${text}\n`
+            }
+            return ""
+          })
+        )
+        fileContent = fileTexts.filter(Boolean).join('\n\n')
+        console.log(`✅ [QUIZ API] Extracted ${fileContent.length} characters from uploaded files`)
+      } catch (error) {
+        console.error(`❌ [QUIZ API] Error extracting file content:`, error)
+      }
+    } else if (notes) {
+      // If no files but notes are provided, extract content from notes
+      try {
+        const parsedNotes = typeof notes === 'string' ? JSON.parse(notes) : notes
+        console.log(`📝 [QUIZ API] Using study notes content for quiz generation...`)
+        
+        // Extract all text content from notes structure - comprehensive extraction
+        const noteSections: string[] = []
+        
+        if (parsedNotes.title) noteSections.push(`Title: ${parsedNotes.title}`)
+        
+        if (parsedNotes.outline && Array.isArray(parsedNotes.outline)) {
+          noteSections.push(`Outline:\n${parsedNotes.outline.join('\n')}`)
+        }
+        
+        if (parsedNotes.key_terms && Array.isArray(parsedNotes.key_terms)) {
+          noteSections.push(`Key Terms:\n${parsedNotes.key_terms.map((kt: any) => 
+            typeof kt === 'string' ? kt : `${kt.term || kt}: ${kt.definition || ''}`
+          ).join('\n')}`)
+        }
+        
+        if (parsedNotes.concepts && Array.isArray(parsedNotes.concepts)) {
+          noteSections.push(`Concepts:\n${parsedNotes.concepts.map((c: any) => {
+            if (typeof c === 'string') return c
+            const heading = c.heading || c.title || c.name || ''
+            const bullets = c.bullets ? (Array.isArray(c.bullets) ? c.bullets.join('\n  • ') : c.bullets) : ''
+            const description = c.description || c.content || ''
+            const examples = c.examples ? `\nExamples: ${Array.isArray(c.examples) ? c.examples.join(', ') : c.examples}` : ''
+            const connections = c.connections ? `\nConnections: ${Array.isArray(c.connections) ? c.connections.join(', ') : c.connections}` : ''
+            const steps = c.steps ? `\nSteps: ${Array.isArray(c.steps) ? c.steps.join('\n') : c.steps}` : ''
+            const content = bullets ? `  • ${bullets}` : description
+            return `${heading}\n${content}${examples}${connections}${steps}`
+          }).join('\n\n')}`)
+        }
+        
+        if (parsedNotes.formulas && Array.isArray(parsedNotes.formulas)) {
+          noteSections.push(`Formulas:\n${parsedNotes.formulas.map((f: any) => 
+            `${f.name || ''}: ${f.formula || ''} - ${f.description || ''}${f.variables ? `\nVariables: ${JSON.stringify(f.variables)}` : ''}${f.example ? `\nExample: ${f.example}` : ''}`
+          ).join('\n\n')}`)
+        }
+        
+        // Extract practice questions from notes (if any) - these show what concepts are important
+        if (parsedNotes.practice_questions && Array.isArray(parsedNotes.practice_questions)) {
+          noteSections.push(`Practice Questions from Notes:\n${parsedNotes.practice_questions.map((q: any, idx: number) => {
+            if (typeof q === 'string') return `${idx + 1}. ${q}`
+            const question = q.question || q.prompt || ''
+            const answer = q.answer || q.correct_answer || ''
+            const explanation = q.explanation || ''
+            const topic = q.topic ? ` (Topic: ${q.topic})` : ''
+            return `${idx + 1}. ${question}\n   Answer: ${answer}\n   Explanation: ${explanation}${topic}`
+          }).join('\n\n')}`)
+        }
+        
+        // Also check for 'quiz' field (legacy support)
+        if (parsedNotes.quiz && Array.isArray(parsedNotes.quiz)) {
+          noteSections.push(`Additional Questions from Notes:\n${parsedNotes.quiz.map((q: any, idx: number) => {
+            if (typeof q === 'string') return `${idx + 1}. ${q}`
+            return `${idx + 1}. ${q.question || q.prompt || ''}\n   Answer: ${q.answer || q.correct_answer || ''}\n   Explanation: ${q.explanation || ''}`
+          }).join('\n\n')}`)
+        }
+        
+        // Extract diagrams information
+        if (parsedNotes.diagrams && Array.isArray(parsedNotes.diagrams)) {
+          noteSections.push(`Diagrams and Figures:\n${parsedNotes.diagrams.map((d: any) => 
+            `${d.title || 'Diagram'}: ${d.caption || d.description || ''}${d.page ? ` (Page ${d.page})` : ''}`
+          ).join('\n\n')}`)
+        }
+        
+        // Extract examples if they exist separately
+        if (parsedNotes.examples && Array.isArray(parsedNotes.examples)) {
+          noteSections.push(`Examples:\n${parsedNotes.examples.map((e: any, idx: number) => 
+            typeof e === 'string' ? `${idx + 1}. ${e}` : `${idx + 1}. ${e.description || e.content || e}`
+          ).join('\n\n')}`)
+        }
+        
+        fileContent = noteSections.join('\n\n')
+        console.log(`✅ [QUIZ API] Extracted ${fileContent.length} characters from study notes`)
+        console.log(`📊 [QUIZ API] Content sections: ${noteSections.length} sections extracted`)
+      } catch (error) {
+        console.error(`❌ [QUIZ API] Error extracting content from notes:`, error)
+      }
+    }
+
+    // Validate that we have content to generate questions from
+    if (!fileContent || fileContent.trim().length < 50) {
+      console.error(`❌ [QUIZ API] No content available for quiz generation. File content length: ${fileContent?.length || 0}`)
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'No document content available. Please ensure files are uploaded or study notes are provided.' 
+        },
+        { status: 400 }
+      )
+    }
+
     // Create a comprehensive prompt for quiz generation
     const numQuestions = totalQuestions || 5
     const prompt = `
@@ -131,9 +253,17 @@ COMPLEXITY ANALYSIS (use this to match question difficulty to content level):
 IMPORTANT: Match your question complexity to the detected education level and reasoning requirements. Use vocabulary and concepts appropriate for the target audience.
 ` : ''}
 
+${fileContent ? `
+=== UPLOADED DOCUMENT CONTENT ===
+${fileContent}
+
+CRITICAL: You MUST base ALL questions on this uploaded document content. Every question must reference specific facts, examples, formulas, processes, or concepts from the documents above.
+` : ''}
+
 ${relevantChunks.length === 0 ? `
-⚠️ WARNING: No specific document content was found for this topic. You should still try to create questions that would be relevant to the topic, but note that they cannot be based on specific document content.
+${fileContent ? '' : `⚠️ WARNING: No specific document content was found for this topic. You MUST NOT create generic questions. If you cannot create questions based on actual document content, indicate this clearly.`}
 ` : `
+=== SEMANTIC SEARCH RESULTS (Additional Context) ===
 CRITICAL REQUIREMENT: You MUST base ALL questions on the specific document content provided below. Do not create generic questions - every question must test knowledge of the actual content in the documents.
 `}
 
@@ -166,43 +296,37 @@ IMPORTANT FOR IMAGES AND DIAGRAMS:
 - Include questions that ask students to interpret or analyze visual elements
 - Reference specific images by their page number or description when available
 
-Format the response as JSON:
+Format the response as JSON with this structure:
 {
   "questions": [
     {
       "id": 1,
       "type": "multiple_choice",
-      "question": "What is the main process by which plants convert sunlight into energy?",
-      "options": [
-        "Respiration",
-        "Photosynthesis", 
-        "Digestion",
-        "Fermentation"
-      ],
-      "correct": 1,
-      "explanation": "Photosynthesis is the process by which plants use sunlight, carbon dioxide, and water to produce glucose and oxygen."
-    },
-    {
-      "id": 2,
-      "type": "open_ended",
-      "question": "Calculate the area of a circle with radius 5 cm. Show your work.",
-      "expected_answers": ["78.54", "78.5", "25π", "25*3.14"],
-      "answer_format": "number",
-      "hints": ["Use the formula A = πr²", "Round to 2 decimal places"],
-      "explanation": "The area of a circle is calculated using A = πr². With radius 5 cm: A = π × 5² = π × 25 = 78.54 cm²"
+      "question": "[Question based on actual document content]",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correct": 0,
+      "explanation": "[Explanation referencing specific document content]",
+      "source_document": "[Document name]",
+      "requires_image": false
     }
   ]
 }
+
+⚠️ CRITICAL: The examples above are just structure examples. DO NOT use photosynthesis, circle area, or any generic topics. ALL questions MUST be about the actual document content provided.
 
 MANDATORY REQUIREMENTS:
 - EVERY question MUST be based on the specific document content provided above
 - Do NOT create generic questions about "${topic}" - use the actual content from the documents
 - Test knowledge of specific facts, figures, processes, or concepts mentioned in the documents
 - Questions should reference specific details, examples, or data from the document content
+- Create THOROUGH questions that test deep understanding, not just surface-level recall
 - Mix of question types: 2-3 multiple choice, 2-3 open-ended
 - For open-ended: include calculations, word problems, or explanations based on document content
 - For multiple choice: create plausible incorrect options related to the document content
 - Include detailed explanations that reference the specific document content
+- Questions should test comprehension, application, and analysis - not just memorization
+- Use specific examples, formulas, processes, and data points from the content
+- Create questions that require students to connect concepts and apply knowledge
 
 Question type guidelines:
 - Multiple choice: Test specific facts, definitions, or concepts from the documents
@@ -233,14 +357,26 @@ Generate exactly ${numQuestions} questions that test knowledge of the specific d
       messages: [
         {
           role: "system",
-          content: "You are an expert quiz generator who creates questions based on specific document content. You MUST generate questions that test knowledge of the actual content provided in the documents, not generic questions about the topic. Always return valid JSON. Focus on specific facts, figures, processes, and examples mentioned in the document content."
+          content: `You are an expert quiz generator. Your ONLY job is to create questions based on the EXACT document content provided. 
+
+STRICT RULES:
+1. NEVER create generic questions about a topic - only use what's in the documents
+2. If the document is about sorting algorithms, create questions about sorting algorithms from the document
+3. If the document is about biology, create questions about biology from the document
+4. Every question MUST reference specific facts, examples, formulas, or processes from the provided documents
+5. If you cannot find enough content in the documents to create questions, indicate this clearly
+6. DO NOT invent or assume content that isn't in the documents
+7. Always return valid JSON format`
         },
         {
           role: "user",
           content: prompt
         }
       ],
-      temperature: 0.7,
+      response_format: {
+        type: "json_object"
+      },
+      temperature: 0.3, // Lower temperature for more grounded, document-based output
       max_tokens: 3000,
     })
 
@@ -250,12 +386,21 @@ Generate exactly ${numQuestions} questions that test knowledge of the specific d
     }
 
     // Parse the JSON response
+    // Strip markdown code blocks if present (fallback for cases where OpenAI still wraps it)
+    let cleanedResponse = response.trim()
+    if (cleanedResponse.startsWith('```json')) {
+      cleanedResponse = cleanedResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '')
+    } else if (cleanedResponse.startsWith('```')) {
+      cleanedResponse = cleanedResponse.replace(/^```\s*/, '').replace(/\s*```$/, '')
+    }
+    
     let quizData
     try {
-      quizData = JSON.parse(response)
+      quizData = JSON.parse(cleanedResponse)
     } catch (error) {
       console.error("❌ [QUIZ API] Failed to parse OpenAI response as JSON:", error)
       console.log("📄 [QUIZ API] Raw response:", response)
+      console.log("📄 [QUIZ API] Cleaned response:", cleanedResponse)
       throw new Error("Failed to parse quiz data from OpenAI")
     }
     

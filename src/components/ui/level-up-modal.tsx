@@ -119,7 +119,7 @@ export function LevelUpModal({
               onClick={onClose}
               className="absolute top-4 right-4 p-2 hover:bg-muted rounded-full transition-colors"
             >
-              <X className="h-5 w-5" />
+              <X className="h-5 w-5 text-foreground" strokeWidth={3} />
             </button>
 
             {/* Level Up Icon */}

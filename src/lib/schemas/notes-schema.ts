@@ -136,6 +136,49 @@ export const notesSchema = {
       },
       description: "3-8 high-value diagrams and figures relevant to the content"
     },
+    formulas: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          name: { 
+            type: "string",
+            description: "Name or description of the formula (e.g., 'Bubble Sort Time Complexity', 'Area of Circle')"
+          },
+          formula: { 
+            type: "string",
+            description: "The actual formula/equation as it appears in the document (e.g., 'O(n²)', 'A = πr²', 'T(n) = n(n-1)/2')"
+          },
+          description: { 
+            type: "string",
+            description: "Explanation of what the formula represents or when to use it"
+          },
+          variables: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                symbol: { type: "string" },
+                meaning: { type: "string" }
+              },
+              required: ["symbol", "meaning"]
+            },
+            description: "Explanation of variables used in the formula"
+          },
+          page: {
+            type: "number",
+            description: "Page number where the formula appears"
+          },
+          example: {
+            type: "string",
+            description: "Example calculation or application of the formula"
+          }
+        },
+        required: ["name", "formula", "description"],
+        additionalProperties: false
+      },
+      description: "Important formulas, equations, and mathematical expressions extracted from the documents"
+    },
     practice_questions: {
       type: "array",
       items: {
@@ -299,6 +342,17 @@ export type StudyNotes = {
     page?: number
     bbox?: number[]
     keywords?: string[]
+  }[]
+  formulas?: {
+    name: string
+    formula: string
+    description: string
+    variables?: {
+      symbol: string
+      meaning: string
+    }[]
+    page?: number
+    example?: string
   }[]
   practice_questions: {
     question: string

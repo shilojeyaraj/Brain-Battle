@@ -41,6 +41,20 @@ export const StatsGrid = memo(function StatsGrid() {
     fetchUserStats()
   }, [])
 
+  // 🚀 OPTIMIZATION: Memoize expensive calculations
+  // Must be called unconditionally (before any early returns) to follow Rules of Hooks
+  const rank = useMemo(() => {
+    if (!userProfile?.stats) return getRankFromXP(0)
+    return getRankFromXP(userProfile.stats.xp)
+  }, [userProfile?.stats?.xp])
+  
+  const winRate = useMemo(() => {
+    if (!userProfile?.stats) return 0
+    return userProfile.stats.total_games > 0 
+      ? (userProfile.stats.total_wins / userProfile.stats.total_games * 100) 
+      : 0
+  }, [userProfile?.stats?.total_wins, userProfile?.stats?.total_games])
+
   if (loading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -75,13 +89,6 @@ export const StatsGrid = memo(function StatsGrid() {
   }
 
   const { stats } = userProfile
-  
-  // 🚀 OPTIMIZATION: Memoize expensive calculations
-  const rank = useMemo(() => getRankFromXP(stats.xp), [stats.xp])
-  const winRate = useMemo(
-    () => stats.total_games > 0 ? (stats.total_wins / stats.total_games * 100) : 0,
-    [stats.total_wins, stats.total_games]
-  )
 
   return (
     <div className="space-y-8" data-tutorial="stats-grid">

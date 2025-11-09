@@ -67,7 +67,7 @@ export function UserProfileModal({ isOpen, onClose, userProfile }: UserProfileMo
               onClick={onClose}
               className="bg-card hover:bg-muted rounded-xl cartoon-border cartoon-shadow cartoon-hover"
             >
-              <X className="h-5 w-5" strokeWidth={3} />
+              <X className="h-5 w-5 text-foreground" strokeWidth={3} />
             </Button>
           </div>
 

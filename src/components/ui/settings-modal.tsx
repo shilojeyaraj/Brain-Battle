@@ -22,7 +22,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-black text-foreground">Settings</h2>
           <Button onClick={onClose} className="bg-card hover:bg-muted rounded-xl cartoon-border cartoon-shadow cartoon-hover">
-            <X className="h-5 w-5" strokeWidth={3} />
+            <X className="h-5 w-5 text-foreground" strokeWidth={3} />
           </Button>
         </div>
 

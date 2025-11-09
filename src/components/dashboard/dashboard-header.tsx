@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Brain, Trophy, Star, Settings, LogOut, User } from "lucide-react"
+import { Brain, Trophy, Star, Settings, LogOut, User, RotateCw } from "lucide-react"
 import { logout } from "@/lib/actions/custom-auth"
 import { getUserStatsClient, UserProfile } from "@/lib/actions/user-stats-client"
 import { UserProfileModal } from "@/components/ui/user-profile-modal"
@@ -13,7 +13,12 @@ import { getCurrentUserId, setUserSession } from "@/lib/auth/session"
 import Link from "next/link"
 import { SettingsModal } from "@/components/ui/settings-modal"
 
-function DashboardHeaderContent() {
+interface DashboardHeaderContentProps {
+  onToggleStats?: () => void
+  showStats?: boolean
+}
+
+function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderContentProps) {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
@@ -113,22 +118,22 @@ function DashboardHeaderContent() {
             </div>
 
             <Button 
-              className="bg-card hover:bg-muted rounded-xl cartoon-border cartoon-shadow cartoon-hover"
+              className="bg-card hover:bg-muted rounded-xl cartoon-border cartoon-shadow cartoon-hover text-foreground"
               onClick={() => {
                 localStorage.removeItem('dashboard_tutorial_completed')
                 window.location.reload()
               }}
               title="Restart Tutorial"
             >
-              <Settings className="h-5 w-5" strokeWidth={3} />
+              <RotateCw className="h-5 w-5 text-foreground" strokeWidth={3} />
             </Button>
 
             <Button 
-              className="bg-card hover:bg-muted rounded-xl cartoon-border cartoon-shadow cartoon-hover"
+              className="bg-card hover:bg-muted rounded-xl cartoon-border cartoon-shadow cartoon-hover text-foreground"
               onClick={() => setIsSettingsOpen(true)}
               title="Sound & Motion Settings"
             >
-              <Settings className="h-5 w-5" strokeWidth={3} />
+              <Settings className="h-5 w-5 text-foreground" strokeWidth={3} />
             </Button>
 
             <Button 
@@ -139,9 +144,10 @@ function DashboardHeaderContent() {
                 // Call server action to redirect
                 logout()
               }}
-              className="bg-card hover:bg-muted rounded-xl cartoon-border cartoon-shadow cartoon-hover"
+              className="bg-card hover:bg-muted rounded-xl cartoon-border cartoon-shadow cartoon-hover text-foreground"
+              title="Logout"
             >
-              <LogOut className="h-5 w-5" strokeWidth={3} />
+              <LogOut className="h-5 w-5 text-foreground" strokeWidth={3} />
             </Button>
 
             <button
@@ -181,7 +187,12 @@ function DashboardHeaderContent() {
   )
 }
 
-export function DashboardHeader() {
+interface DashboardHeaderProps {
+  onToggleStats?: () => void
+  showStats?: boolean
+}
+
+export function DashboardHeader({ onToggleStats, showStats }: DashboardHeaderProps = {}) {
   return (
     <Suspense fallback={
       <header className="bg-card border-b border-border">
@@ -201,7 +212,7 @@ export function DashboardHeader() {
         </div>
       </header>
     }>
-      <DashboardHeaderContent />
+      <DashboardHeaderContent onToggleStats={onToggleStats} showStats={showStats} />
     </Suspense>
   )
 }

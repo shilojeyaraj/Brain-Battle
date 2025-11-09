@@ -8,8 +8,11 @@ const nextConfig: NextConfig = {
     // Disable problematic optimizations
     optimizeCss: false,
     // Disable webpack cache that might cause issues
-    webpackBuildWorker: false
+    webpackBuildWorker: false,
   },
+  // Externalize PDF parsing libraries to avoid bundling issues
+  // Moved from experimental.serverComponentsExternalPackages (deprecated in Next.js 15)
+  serverExternalPackages: ['pdf-parse', 'pdfjs-dist'],
   // Ensure Next.js builds only in this directory
   distDir: '.next',
   // Disable automatic workspace detection
@@ -32,6 +35,18 @@ const nextConfig: NextConfig = {
       path.resolve(__dirname, 'node_modules'),
       'node_modules'
     ];
+    
+    // Externalize pdfjs-dist for server-side to avoid webpack bundling issues
+    if (isServer) {
+      const existingExternals = config.externals || [];
+      config.externals = [
+        ...(Array.isArray(existingExternals) ? existingExternals : [existingExternals]),
+        {
+          'pdfjs-dist': 'commonjs pdfjs-dist',
+          'pdfjs-dist/legacy/build/pdf.mjs': 'commonjs pdfjs-dist/legacy/build/pdf.mjs',
+        }
+      ].filter(Boolean);
+    }
     
     // Keep webpack cache enabled for stability (removed cache = false)
     // Only configure watch options for development
