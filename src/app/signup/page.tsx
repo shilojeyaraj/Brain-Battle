@@ -3,47 +3,56 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
-import { Sparkles, Mail, Lock, User, ArrowLeft, Loader2 } from "lucide-react"
+import { Sparkles, Mail, Lock, User, ArrowLeft, Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
 import Link from "next/link"
-import { signup } from "@/lib/actions/custom-auth"
-import { useTransition } from "react"
+import { signup } from "@/lib/auth/supabase-auth"
+import { useTransition, useEffect, useState, Suspense } from "react"
+import { useSearchParams } from "next/navigation"
 
-export default function SignupPage() {
+function SignupForm() {
   const [isPending, startTransition] = useTransition()
+  const searchParams = useSearchParams()
+  const [error, setError] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    const errorParam = searchParams.get('error')
+    const messageParam = searchParams.get('message')
+    if (errorParam) {
+      setError(decodeURIComponent(errorParam))
+      setSuccessMessage(null)
+    } else if (messageParam) {
+      setSuccessMessage(decodeURIComponent(messageParam))
+      setError(null)
+    }
+  }, [searchParams])
 
   const handleSubmit = (formData: FormData) => {
+    setError(null) // Clear previous error
     startTransition(() => {
       signup(formData)
     })
   }
-  return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <Link href="/" className="inline-flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors mb-6">
-            <ArrowLeft className="w-4 h-4" strokeWidth={3} />
-            <span className="font-bold">Back to Home</span>
-          </Link>
-          
-          <div className="flex items-center justify-center gap-3 mb-4">
-            <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center cartoon-border cartoon-shadow">
-              <Sparkles className="w-7 h-7 text-primary-foreground" strokeWidth={3} />
-            </div>
-            <span className="text-3xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
-              Brain<span className="text-primary">Battle</span>
-            </span>
-          </div>
-          
-          <h1 className="text-2xl font-black text-foreground mb-2" style={{ fontFamily: "var(--font-display)" }}>
-            Join the Battle!
-          </h1>
-          <p className="text-muted-foreground font-bold">
-            Create your account and start studying with friends
-          </p>
-        </div>
 
-        <Card className="p-8 bg-card cartoon-border cartoon-shadow">
-          <form action={handleSubmit} className="space-y-6">
+  return (
+    <Card className="p-8 bg-card cartoon-border cartoon-shadow">
+      {error && (
+        <div className="mb-6 p-4 bg-destructive/10 border-2 border-destructive/50 rounded-xl flex items-start gap-3 cartoon-border">
+          <AlertCircle className="w-5 h-5 text-destructive flex-shrink-0 mt-0.5" strokeWidth={3} />
+          <div className="flex-1">
+            <p className="text-sm font-black text-destructive">{error}</p>
+          </div>
+        </div>
+      )}
+      {successMessage && (
+        <div className="mb-6 p-4 bg-primary/10 border-2 border-primary/50 rounded-xl flex items-start gap-3 cartoon-border">
+          <CheckCircle2 className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" strokeWidth={3} />
+          <div className="flex-1">
+            <p className="text-sm font-black text-primary">{successMessage}</p>
+          </div>
+        </div>
+      )}
+        <form action={handleSubmit} className="space-y-6">
             <div className="space-y-2">
               <label htmlFor="username" className="text-sm font-black text-foreground">
                 Username
@@ -138,6 +147,39 @@ export default function SignupPage() {
             </p>
           </div>
         </Card>
+  )
+}
+
+export default function SignupPage() {
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        <div className="text-center mb-8">
+          <Link href="/" className="inline-flex items-center gap-2 text-muted-foreground hover:text-primary transition-colors mb-6">
+            <ArrowLeft className="w-4 h-4" strokeWidth={3} />
+            <span className="font-bold">Back to Home</span>
+          </Link>
+          
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center cartoon-border cartoon-shadow">
+              <Sparkles className="w-7 h-7 text-primary-foreground" strokeWidth={3} />
+            </div>
+            <span className="text-3xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
+              Brain<span className="text-primary">Battle</span>
+            </span>
+          </div>
+          
+          <h1 className="text-2xl font-black text-foreground mb-2" style={{ fontFamily: "var(--font-display)" }}>
+            Join the Battle!
+          </h1>
+          <p className="text-muted-foreground font-bold">
+            Create your account and start studying with friends
+          </p>
+        </div>
+
+        <Suspense fallback={<Card className="p-8 bg-card cartoon-border cartoon-shadow"><div className="text-center">Loading...</div></Card>}>
+          <SignupForm />
+        </Suspense>
       </div>
     </div>
   )

@@ -18,6 +18,8 @@ export interface AuthResponse {
   success: boolean
   user?: User
   error?: string
+  requiresMFA?: boolean
+  userId?: string
 }
 
 // Detect Next.js redirect errors so we don't catch them
@@ -161,7 +163,8 @@ export async function registerUser(
 // Authenticate a user
 export async function authenticateUser(
   email: string, 
-  password: string
+  password: string,
+  totpCode?: string
 ): Promise<AuthResponse> {
   try {
     const supabase = await createClient()
@@ -200,6 +203,10 @@ export async function authenticateUser(
       console.error('❌ [AUTH] Invalid password')
       return { success: false, error: 'Invalid email or password' }
     }
+    
+    // Note: MFA is now handled by Supabase Auth
+    // Custom MFA code has been removed - use Supabase Auth MFA instead
+    // This function is kept for backward compatibility but MFA is handled elsewhere
     
     // Update last login
     await supabase

@@ -100,10 +100,25 @@ Include page references in captions.`
       const data = JSON.parse(content)
 
       // Merge extracted image data with analysis
+      // Match by page number first, then fall back to index if page number doesn't match
       const enrichedDiagrams = data.diagrams?.map((diagram: any, idx: number) => {
-        const originalImage = input.extractedImages?.[idx]
+        // Try to find matching image by page number first (most reliable)
+        let originalImage = diagram.page 
+          ? input.extractedImages?.find((img) => img.page === diagram.page)
+          : null
+        
+        // Fallback to index-based matching if page number match fails
+        if (!originalImage && input.extractedImages?.[idx]) {
+          originalImage = input.extractedImages[idx]
+          if (process.env.NODE_ENV === 'development') {
+            console.warn(`[DIAGRAM ANALYZER] Page number mismatch for diagram ${idx + 1}, using index-based matching`)
+          }
+        }
+        
         return {
           ...diagram,
+          // Preserve page number from original image if available
+          page: originalImage?.page || diagram.page,
           image_data_b64: originalImage?.image_data_b64,
           width: originalImage?.width,
           height: originalImage?.height,

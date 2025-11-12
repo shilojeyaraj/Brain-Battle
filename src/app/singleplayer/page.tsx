@@ -55,9 +55,23 @@ export default function SingleplayerPage() {
         return
       }
 
-      // Check for duplicate names
-      if (uploadedFiles.some(existingFile => existingFile.name === file.name)) {
-        errors.push(`${file.name}: File already uploaded`)
+      // Check for duplicate names AND sizes (more robust duplicate detection)
+      const isDuplicate = uploadedFiles.some(existingFile => 
+        existingFile.name === file.name && existingFile.size === file.size
+      )
+      
+      if (isDuplicate) {
+        errors.push(`${file.name}: File already uploaded (same name and size)`)
+        return
+      }
+      
+      // Also check for duplicates within the current batch
+      const isDuplicateInBatch = validFiles.some(existingFile => 
+        existingFile.name === file.name && existingFile.size === file.size
+      )
+      
+      if (isDuplicateInBatch) {
+        errors.push(`${file.name}: Duplicate file in this upload`)
         return
       }
 
@@ -244,16 +258,20 @@ export default function SingleplayerPage() {
 
   return (
     <div className="min-h-screen bg-background p-6">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-5xl mx-auto">
         {/* Header */}
-        <div className="flex items-center gap-4 mb-8">
-          <Link href="/dashboard">
-            <Button className="bg-chart-5 hover:bg-chart-5/90 text-foreground font-black cartoon-border cartoon-shadow cartoon-hover">
-              <ArrowLeft className="h-4 w-4 mr-2" strokeWidth={3} />
-              Back to Dashboard
-            </Button>
-          </Link>
-          <div>
+        <div className="relative mb-8">
+          {/* Back button in top right corner */}
+          <div className="absolute right-0 top-0">
+            <Link href="/dashboard">
+              <Button className="bg-chart-5 hover:bg-chart-5/90 text-foreground font-black cartoon-border cartoon-shadow cartoon-hover">
+                <ArrowLeft className="h-4 w-4 mr-2" strokeWidth={3} />
+                Back to Dashboard
+              </Button>
+            </Link>
+          </div>
+          {/* Title and description centered */}
+          <div className="text-center">
             <h1 className="text-4xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
               Singleplayer Battle
             </h1>

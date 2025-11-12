@@ -27,31 +27,35 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
   const searchParams = useSearchParams()
 
   useEffect(() => {
-    // Check for userId in URL params (from login redirect)
-    const userIdFromUrl = searchParams.get('userId')
-    
-    if (userIdFromUrl) {
-      // Set the session and clear the URL parameter
-      setCurrentUserId(userIdFromUrl)
+    const fetchUserId = async () => {
+      // Check for userId in URL params (from login redirect)
+      const userIdFromUrl = searchParams.get('userId')
       
-      // Store the session in localStorage
-      localStorage.setItem('userId', userIdFromUrl)
-      console.log('✅ [DASHBOARD] User session stored:', userIdFromUrl)
-      
-      // Clear the URL parameter without causing a page reload
-      const url = new URL(window.location.href)
-      url.searchParams.delete('userId')
-      window.history.replaceState({}, '', url.toString())
-    } else {
-      // Try to get user ID from session
-      const userId = getCurrentUserId()
-      setCurrentUserId(userId)
-      if (userId) {
-        console.log('✅ [DASHBOARD] User session found:', userId)
+      if (userIdFromUrl) {
+        // Set the session and clear the URL parameter
+        setCurrentUserId(userIdFromUrl)
+        
+        // Store the session in localStorage
+        localStorage.setItem('userId', userIdFromUrl)
+        console.log('✅ [DASHBOARD] User session stored:', userIdFromUrl)
+        
+        // Clear the URL parameter without causing a page reload
+        const url = new URL(window.location.href)
+        url.searchParams.delete('userId')
+        window.history.replaceState({}, '', url.toString())
       } else {
-        console.log('❌ [DASHBOARD] No user session found')
+        // Try to get user ID from session
+        const userId = await getCurrentUserId()
+        setCurrentUserId(userId)
+        if (userId) {
+          console.log('✅ [DASHBOARD] User session found:', userId)
+        } else {
+          console.log('❌ [DASHBOARD] No user session found')
+        }
       }
     }
+    
+    fetchUserId()
   }, [searchParams])
 
   // Memoize user profile fetching to prevent unnecessary API calls

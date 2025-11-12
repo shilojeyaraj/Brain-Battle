@@ -14,32 +14,47 @@ export const StatsGrid = memo(function StatsGrid() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    const fetchUserStats = async () => {
-      try {
-        const userId = getCurrentUserId()
-        if (!userId) {
-          setError("User not authenticated")
-          setLoading(false)
-          return
-        }
-
-        const result = await getUserStatsClient(userId)
-        if (result.success && result.data) {
-          setUserProfile(result.data)
-        } else {
-          setError(result.error || "Failed to fetch stats")
-        }
-      } catch (err) {
-        console.error("Error fetching user stats:", err)
-        setError("Failed to load stats")
-      } finally {
+  const fetchUserStats = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const userId = await getCurrentUserId()
+      if (!userId) {
+        setError("User not authenticated")
         setLoading(false)
+        return
+      }
+
+      const result = await getUserStatsClient(userId)
+      if (result.success && result.data) {
+        setUserProfile(result.data)
+      } else {
+        setError(result.error || "Failed to fetch stats")
+      }
+    } catch (err) {
+      console.error("Error fetching user stats:", err)
+      setError("Failed to load stats")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchUserStats()
+    
+    // Refresh stats when page becomes visible (user returns to dashboard)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchUserStats()
       }
     }
-
-    fetchUserStats()
-  }, [])
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [fetchUserStats])
 
   // 🚀 OPTIMIZATION: Memoize expensive calculations
   // Must be called unconditionally (before any early returns) to follow Rules of Hooks

@@ -29,140 +29,215 @@ export async function POST(req: NextRequest) {
       }
     }
     
-    console.log("📋 [NOTES API] Request details:")
-    console.log(`  - Topic: ${topic}`)
-    console.log(`  - Difficulty: ${difficulty}`)
-    console.log(`  - Files: ${files.length}`)
-    files.forEach((file, index) => {
-      console.log(`    ${index + 1}. ${file.name} (${file.type}, ${file.size} bytes)`)
-    })
+    if (process.env.NODE_ENV === 'development') {
+      console.log("📋 [NOTES API] Request details:")
+      console.log(`  - Topic: ${topic}`)
+      console.log(`  - Difficulty: ${difficulty}`)
+      console.log(`  - Files: ${files.length}`)
+      files.forEach((file, index) => {
+        console.log(`    ${index + 1}. ${file.name} (${file.type}, ${file.size} bytes)`)
+      })
+    }
     
     if (!files.length) {
       console.log("❌ [NOTES API] No files provided")
       return NextResponse.json({ error: "No files provided" }, { status: 400 })
     }
 
-    // 1) Process files and extract text content
+    // Deduplicate files by name + size (same file uploaded multiple times)
+    const uniqueFiles: File[] = []
+    const seenFiles = new Set<string>()
+    const duplicateFiles: string[] = []
+    
+    for (const file of files) {
+      // Create unique key: name + size (handles same file uploaded twice)
+      const fileKey = `${file.name}:${file.size}`
+      
+      if (seenFiles.has(fileKey)) {
+        duplicateFiles.push(file.name)
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`  ⚠️ [NOTES API] Skipping duplicate file: ${file.name} (${file.size} bytes)`)
+        }
+        continue
+      }
+      
+      seenFiles.add(fileKey)
+      uniqueFiles.push(file)
+    }
+    
+    if (duplicateFiles.length > 0 && process.env.NODE_ENV === 'development') {
+      console.log(`  ℹ️ [NOTES API] Removed ${duplicateFiles.length} duplicate file(s): ${duplicateFiles.join(', ')}`)
+    }
+    
+    if (uniqueFiles.length === 0) {
+      console.log("❌ [NOTES API] All files were duplicates")
+      return NextResponse.json({ 
+        error: "All uploaded files were duplicates. Please upload unique files." 
+      }, { status: 400 })
+    }
+
+    // 1) Process files in parallel - extract text and images simultaneously
     const fileContents: string[] = []
     const extractedImages: { image_data_b64: string; page: number; width?: number; height?: number }[] = []
     const fileNames: string[] = []
     
-    console.log(`📁 [NOTES API] Processing ${files.length} files for study notes generation...`)
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`📁 [NOTES API] Processing ${uniqueFiles.length} unique files in parallel...`)
+    }
     
-    // CRITICAL: Validate that we can extract content before proceeding
-    let hasValidContent = false
+    // Helper function to extract text from a single file
+    const extractTextFromFile = async (file: File, buffer: Buffer): Promise<{ textContent: string; fileName: string }> => {
+      let textContent = ""
+      
+      if (file.type === "text/plain") {
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`  📝 [NOTES API] Processing ${file.name} as plain text file`)
+        }
+        textContent = buffer.toString('utf-8')
+      } else if (file.type === "application/pdf") {
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`  📄 [NOTES API] Processing ${file.name} as PDF file`)
+        }
+        
+        try {
+          const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
+          const pdfjsLib = pdfjsModule.default || pdfjsModule
+          
+          const loadingTask = pdfjsLib.getDocument({
+            data: new Uint8Array(buffer),
+            useSystemFonts: true,
+            verbosity: 0,
+            isEvalSupported: false,
+          })
+          
+          const pdfDocument = await loadingTask.promise
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`  📄 [NOTES API] PDF ${file.name} loaded: ${pdfDocument.numPages} pages`)
+          }
+          
+          // Parallel page processing - process 3-5 pages concurrently
+          const pageNumbers = Array.from({ length: pdfDocument.numPages }, (_, i) => i + 1)
+          const CONCURRENT_PAGES = 4 // Process 4 pages at a time
+          const textParts: string[] = []
+          
+          // Process pages in batches
+          for (let i = 0; i < pageNumbers.length; i += CONCURRENT_PAGES) {
+            const batch = pageNumbers.slice(i, i + CONCURRENT_PAGES)
+            const batchResults = await Promise.all(
+              batch.map(async (pageNum) => {
+                const page = await pdfDocument.getPage(pageNum)
+                const textContent = await page.getTextContent()
+                return textContent.items.map((item: any) => item.str).join(' ')
+              })
+            )
+            textParts.push(...batchResults)
+          }
+          
+          textContent = textParts.join('\n\n')
+          
+          if (!textContent || textContent.trim().length < 100) {
+            throw new Error(`PDF parsing returned insufficient content (${textContent.length} characters).`)
+          }
+          
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`  ✅ [NOTES API] Extracted ${textContent.length} characters from ${file.name}`)
+          }
+        } catch (pdfError) {
+          throw new Error(`Failed to parse PDF "${file.name}". Error: ${pdfError instanceof Error ? pdfError.message : String(pdfError)}`)
+        }
+      } else if (file.type?.startsWith('text/')) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`  📝 [NOTES API] Processing ${file.name} as text file (${file.type})`)
+        }
+        textContent = buffer.toString('utf-8')
+        if (!textContent || textContent.trim().length < 10) {
+          throw new Error(`Text file "${file.name}" appears to be empty.`)
+        }
+      } else {
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`  ⚠️ [NOTES API] Unsupported file type for ${file.name}: ${file.type}`)
+        }
+        textContent = `[File: ${file.name} - Type: ${file.type} - Size: ${file.size} bytes]`
+      }
+      
+      return { textContent, fileName: file.name }
+    }
     
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i]
-      console.log(`\n📄 [NOTES API] Processing file ${i + 1}/${files.length}: ${file.name}`)
-      console.log(`  - Type: ${file.type}`)
-      console.log(`  - Size: ${file.size} bytes`)
+    // Helper function to extract images from a single file
+    const extractImagesFromFile = async (file: File, buffer: Buffer): Promise<{ image_data_b64: string; page: number; width?: number; height?: number }[]> => {
+      if (file.type === "application/pdf") {
+        try {
+          const images = await extractPDFImages(buffer, file.name)
+          if (process.env.NODE_ENV === 'development' && images.length > 0) {
+            console.log(`  ✅ [NOTES API] Extracted ${images.length} images from ${file.name}`)
+          }
+          return images
+        } catch (error) {
+          if (process.env.NODE_ENV === 'development') {
+            console.error(`  ⚠️ [NOTES API] Error extracting images from ${file.name}:`, error)
+          }
+          return []
+        }
+      }
+      return []
+    }
+    
+    // Process all files in parallel - extract text and images simultaneously for each file
+    const fileProcessingStart = Date.now()
+    const fileProcessingPromises = uniqueFiles.map(async (file, index) => {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`\n📄 [NOTES API] Processing file ${index + 1}/${uniqueFiles.length}: ${file.name}`)
+      }
       
       const buffer = Buffer.from(await file.arrayBuffer())
-      fileNames.push(file.name)
       
-      // Extract text content from files
-      let textContent = ""
-      try {
-        if (file.type === "text/plain") {
-          console.log(`  📝 [NOTES API] Processing as plain text file`)
-          textContent = buffer.toString('utf-8')
-          console.log(`  ✅ [NOTES API] Extracted ${textContent.length} characters from text file`)
-        } else if (file.type === "application/pdf") {
-          console.log(`  📄 [NOTES API] Processing as PDF file`)
-          // Extract text from PDF using pdf-parse
-          try {
-            console.log(`  🔍 [NOTES API] Using pdfjs-dist for PDF text extraction...`)
-            // Use dynamic import for ESM module (required by Next.js)
-            const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
-            const pdfjsLib = pdfjsModule.default || pdfjsModule
-            
-            // For server-side Node.js, we don't need to configure workerSrc
-            // pdfjs-dist will handle server-side execution automatically
-            // DO NOT set workerSrc to false - it must be a string or undefined
-            
-            console.log(`  📖 [NOTES API] Parsing PDF content...`)
-            
-            // Load the PDF document with server-side optimized settings
-            const loadingTask = pdfjsLib.getDocument({
-              data: new Uint8Array(buffer),
-              useSystemFonts: true,
-              verbosity: 0,
-              // Disable worker for server-side (runs in main thread)
-              isEvalSupported: false,
-            })
-            
-            const pdfDocument = await loadingTask.promise
-            console.log(`  📄 [NOTES API] PDF loaded: ${pdfDocument.numPages} pages`)
-            
-            // Extract text from all pages
-            const textParts: string[] = []
-            for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
-              const page = await pdfDocument.getPage(pageNum)
-              const textContent = await page.getTextContent()
-              const pageText = textContent.items
-                .map((item: any) => item.str)
-                .join(' ')
-              textParts.push(pageText)
-            }
-            
-            textContent = textParts.join('\n\n')
-            
-            // CRITICAL: Validate that we actually extracted meaningful content
-            if (!textContent || textContent.trim().length < 100) {
-              throw new Error(`PDF parsing returned insufficient content (${textContent.length} characters). The PDF may be image-based, corrupted, or password-protected.`)
-            }
-            
-            hasValidContent = true
-            console.log(`  ✅ [NOTES API] Successfully extracted ${textContent.length} characters from PDF`)
-            
-            // Log first 500 characters to verify content extraction
-            console.log(`  📄 [NOTES API] Content preview: ${textContent.substring(0, 500)}...`)
-          } catch (pdfError) {
-            console.error(`  ❌ [NOTES API] Error parsing PDF ${file.name}:`, pdfError)
-            console.error(`  ❌ [NOTES API] Error details:`, pdfError)
-            // CRITICAL: Don't use fallback - fail the request if PDF can't be parsed
-            // This prevents generating wrong content
-            throw new Error(`Failed to parse PDF "${file.name}". The document content could not be extracted. Please ensure the PDF is not corrupted or password-protected. Error: ${pdfError instanceof Error ? pdfError.message : String(pdfError)}`)
-          }
-        } else if (file.type?.startsWith('text/')) {
-          console.log(`  📝 [NOTES API] Processing as text file (${file.type})`)
-          textContent = buffer.toString('utf-8')
-          if (!textContent || textContent.trim().length < 10) {
-            throw new Error(`Text file "${file.name}" appears to be empty or contains insufficient content.`)
-          }
-          hasValidContent = true
-          console.log(`  ✅ [NOTES API] Extracted ${textContent.length} characters from text file`)
-        } else {
-          console.log(`  ⚠️ [NOTES API] Unsupported file type: ${file.type}`)
-          textContent = `[File: ${file.name} - Type: ${file.type} - Size: ${file.size} bytes]`
-        }
+      // Extract text and images in parallel for this file
+      const [textResult, images] = await Promise.all([
+        extractTextFromFile(file, buffer),
+        extractImagesFromFile(file, buffer)
+      ])
+      
+      return {
+        textContent: textResult.textContent,
+        fileName: textResult.fileName,
+        images
+      }
+    })
+    
+    // Wait for all files to be processed
+    const fileResults = await Promise.allSettled(fileProcessingPromises)
+    
+    // Process results and collect valid content
+    let hasValidContent = false
+    for (const result of fileResults) {
+      if (result.status === 'fulfilled') {
+        const { textContent, fileName, images } = result.value
         
-        // Only add if we have valid content
         if (textContent && textContent.trim().length > 0) {
           fileContents.push(textContent)
-          fileNames.push(file.name)
-          console.log(`  ✅ [NOTES API] Added content to file contents (${textContent.length} chars)`)
-        } else {
-          console.error(`  ❌ [NOTES API] Skipping file ${file.name} - no valid content extracted`)
-        }
-        
-        // Extract images from PDF files
-        if (file.type === "application/pdf") {
-          console.log(`  🖼️ [NOTES API] Attempting to extract images from PDF...`)
-          try {
-            const images = await extractImagesFromPDF(buffer, file.name)
-            extractedImages.push(...images)
-            console.log(`  ✅ [NOTES API] Extracted ${images.length} images from ${file.name}`)
-          } catch (error) {
-            console.error(`  ❌ [NOTES API] Error extracting images from PDF:`, error)
+          fileNames.push(fileName)
+          if (textContent.trim().length >= 100) {
+            hasValidContent = true
           }
         }
-      } catch (error) {
-        console.error(`  ❌ [NOTES API] Error processing file ${file.name}:`, error)
-        // Re-throw to prevent generating wrong content
-        throw error
+        
+        if (images && images.length > 0) {
+          extractedImages.push(...images)
+        }
+      } else {
+        if (process.env.NODE_ENV === 'development') {
+          console.error(`  ❌ [NOTES API] Error processing file:`, result.reason)
+        }
+        // Re-throw critical errors
+        if (result.reason instanceof Error && result.reason.message.includes('Failed to parse')) {
+          throw result.reason
+        }
       }
+    }
+    
+    const fileProcessingTime = Date.now() - fileProcessingStart
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`\n⏱️ [NOTES API] File processing completed in ${fileProcessingTime}ms (parallel processing)`)
     }
     
     // CRITICAL: Validate that we have actual document content before proceeding
@@ -179,10 +254,14 @@ export async function POST(req: NextRequest) {
     console.log(`  ✅ [NOTES API] Successfully extracted ${totalContentLength} total characters from ${fileContents.length} files`)
     
     console.log(`\n📊 [NOTES API] File processing summary:`)
-    console.log(`  - Files processed: ${fileNames.length}`)
+    console.log(`  - Files received: ${files.length}`)
+    console.log(`  - Unique files processed: ${uniqueFiles.length}`)
+    if (duplicateFiles.length > 0) {
+      console.log(`  - Duplicate files skipped: ${duplicateFiles.length} (${duplicateFiles.join(', ')})`)
+    }
     console.log(`  - File contents extracted: ${fileContents.length}`)
     console.log(`  - Images extracted: ${extractedImages.length}`)
-    console.log(`  - Total content length: ${fileContents.join('').length} characters`)
+    console.log(`  - Total content length: ${totalContentLength} characters`)
 
     // 3) Use semantic search to understand the content better (optional)
     // Note: Semantic search requires userId and searches stored documents.
@@ -224,13 +303,30 @@ HARD REQUIREMENTS (NO EXCEPTIONS):
    - NEVER use uncertain language: avoid "likely", "possibly", "may", "might", "probably", "perhaps", "appears to", "seems to"
    - Use definitive statements: "This diagram shows...", "The figure illustrates...", "This chart demonstrates..."
 
-4. FORMULA EXTRACTION:
-   - Identify and extract ALL important formulas, equations, and mathematical expressions from the documents
-   - Include formulas for: time complexity (O(n²), O(n log n), etc.), algorithms, calculations, definitions
-   - For each formula, provide: name, the actual formula as written, description, variable meanings, page reference, and example if shown
-   - Extract formulas exactly as they appear (e.g., "T(n) = n(n-1)/2", "O(n²)", "A = πr²")
-   - Include Big-O notation, algorithmic complexity formulas, mathematical equations, and any computational formulas
-   - If formulas are used in examples or traces, extract those specific instances with page references
+4. FORMULA EXTRACTION (CRITICAL - EXTRACT EVERY FORMULA):
+   - **MANDATORY**: Extract EVERY formula, equation, and mathematical expression from the documents - do not skip any
+   - Include ALL types of formulas regardless of subject:
+     * Mathematical formulas (algebra, calculus, geometry, statistics)
+     * Scientific formulas (physics, chemistry, biology, engineering)
+     * Algorithmic formulas (time complexity, space complexity, recurrence relations)
+     * Conversion formulas (unit conversions, coordinate transformations)
+     * Definition formulas (mathematical definitions, scientific laws)
+     * Test/measurement formulas (standardized tests, experimental calculations)
+     * Percentage calculations, ratios, proportions
+     * Any equation with mathematical operators (=, +, -, ×, ÷, √, ^, log, ln, ∫, Σ, ∏, etc.)
+   - Look for formulas with:
+     * Mathematical operators: =, +, -, ×, ÷, /, √, ^, ², ³, log, ln, ∫, Σ, ∏, lim, etc.
+     * Subscripts and superscripts (A₀, x², H₂O, E=mc²)
+     * Greek letters (α, β, γ, δ, ε, θ, λ, μ, π, ρ, σ, τ, φ, ω, Δ, Σ, etc.)
+     * Special notation (vectors, matrices, sets, functions)
+     * Variables and constants
+     * Percentages, ratios, and proportions
+   - For each formula, provide: name, the EXACT formula as written (preserve all notation), description, ALL variable meanings, page reference, and example calculation if shown
+   - Extract formulas from: main text, examples, diagrams, captions, side notes, footnotes, worked problems, and any mathematical expressions
+   - If a formula appears multiple times, include it with each page reference
+   - Include derived formulas, conversion formulas, and formulas used in worked examples
+   - Preserve mathematical notation exactly: subscripts, superscripts, Greek letters, special symbols, formatting
+   - **COUNT**: Before finishing, count how many formulas you found in the document and ensure ALL are in the formulas array
 
 5. CITATIONS & REFERENCES:
    - Use the format (p. N) or (pp. N–M) directly in bullets, definitions, and explanations
@@ -260,15 +356,58 @@ HARD REQUIREMENTS (NO EXCEPTIONS):
    - Application questions: use the same algorithmic steps or examples as shown in documents
    - For each question: include answer, explanation, and page references used
 
-VALIDATION & SELF-CHECK (Before returning output):
+VALIDATION & SELF-CHECK (Before returning output - CRITICAL):
 Reject and regenerate if any of these fail:
-- No page refs present in bullets/answers/examples where content is fact-heavy
-- Any placeholder phrasing like "Key point 1/2/3", "Detailed explanation…", "Important aspect…"
-- Facts/examples not found in the document text or figures
-- JSON not valid against notesSchema
-- Missing diagram references when the document shows figures for that topic
-- Generic content instead of document-specific information
-- Use of uncertain language: "likely", "possibly", "may", "might", "probably", "perhaps", "appears to", "seems to", "could be"
+
+1. **Generic outline items (MANDATORY CHECK)**:
+   - REJECT if outline contains generic phrases like:
+     * "Definition and importance of..."
+     * "Understanding... concepts"
+     * "Introduction to..."
+     * "Tensile testing and its role in..."
+     * "Elastic modulus and yield strength concepts"
+     * "Poisson's ratio and its significance..."
+   - ACCEPT only if outline items contain:
+     * Specific formulas (e.g., "Engineering stress S = F/A₀")
+     * Specific examples (e.g., "Example: D₀=12.5mm, Df=9.85mm → 37.9% RA")
+     * Specific tests or procedures (e.g., "Brinell Hardness Test: BHN = 2F/(πD[D-√(D²-Dᵢ²)])")
+     * Specific calculations or methods
+     * Page references
+     * Content that could ONLY come from this specific document
+
+2. **Missing formulas (MANDATORY CHECK)**:
+   - Scan document for ALL mathematical expressions
+   - REJECT if document contains formulas but formulas array is empty or missing key formulas
+   - Must include ALL formulas found: mathematical, scientific, algorithmic, conversion, definition, test, percentage, ratio, or ANY equation
+   - Check for: =, ÷, ×, +, -, /, √, ^, ², ³, ln, log, ∫, Σ, ∏, lim, subscripts, superscripts, Greek letters, special notation
+   - Count formulas in document vs formulas array - they should match or be very close
+
+3. **Missing concepts (MANDATORY CHECK)**:
+   - REJECT if major concepts from slide titles/headings are missing
+   - Must include ALL concepts mentioned in the document (do not skip any)
+   - Check that concepts array has detailed bullets with specific examples/formulas from the document
+   - Concepts should be specific to the document's subject matter (not generic)
+
+4. **Missing diagrams (MANDATORY CHECK)**:
+   - REJECT if diagrams are mentioned in text but not in diagrams array
+   - Must include ALL figures, charts, illustrations, and visual content
+   - Each diagram must have: title, caption, page reference
+
+5. **Other validation checks**:
+   - No page refs present in bullets/answers/examples where content is fact-heavy
+   - Any placeholder phrasing like "Key point 1/2/3", "Detailed explanation…", "Important aspect…"
+   - Facts/examples not found in the document text or figures
+   - JSON not valid against notesSchema
+   - Missing diagram references when the document shows figures for that topic
+   - Generic content instead of document-specific information
+   - Use of uncertain language: "likely", "possibly", "may", "might", "probably", "perhaps", "appears to", "seems to", "could be"
+   - Outline items that could apply to any document on the topic (must be specific to THIS document's content)
+
+**CRITICAL**: Before finalizing output, count:
+- Number of formulas in document vs formulas array (must match or be very close)
+- Number of major concepts in document vs concepts array (must match)
+- Number of diagrams mentioned vs diagrams array (must match)
+- Check that outline items are specific enough that they couldn't apply to a different document on the same topic
 
 OUTPUT REQUIREMENTS:
 - Temperature should be low (0.2–0.4) to minimize invention
@@ -325,9 +464,79 @@ STUDY INSTRUCTIONS: ${instructions || 'Analyze the uploaded documents and create
 - If the document content is about "${fileNames[0] || 'the uploaded file'}", your notes MUST be about that topic
 
 DOCUMENT CONTENT (EXTRACT THE SPECIFIC INFORMATION FROM THESE - THIS IS THE ACTUAL CONTENT):
-${fileContents.map((content, index) => `--- DOCUMENT ${index + 1}: ${fileNames[index] || `File ${index + 1}`} (${content.length} characters) ---\n${content.substring(0, 50000)}\n${content.length > 50000 ? `\n[... ${content.length - 50000} more characters ...]` : ''}\n`).join('\n\n')}
+${fileContents.map((content, index) => `--- DOCUMENT ${index + 1}: ${fileNames[index] || `File ${index + 1}`} (${content.length} characters) ---\n${content}\n`).join('\n\n')}
 
 VALIDATION: The document content above contains ${fileContents.join('').length} total characters. You MUST base all notes on this actual content, not on the topic name or generic knowledge.
+
+⚠️ CRITICAL EXTRACTION REQUIREMENTS FOR THIS DOCUMENT - DO NOT SKIP ANY:
+
+1. **FORMULAS (MANDATORY - EXTRACT EVERY SINGLE ONE)**: 
+   Scan the ENTIRE document character by character for ALL formulas, equations, and mathematical expressions. Look for:
+   
+   **Mathematical Operators & Symbols**:
+   - Basic operators: =, +, -, ×, ÷, /, ^, ², ³
+   - Advanced operators: √, ∛, log, ln, lg, ∫, Σ, ∏, lim, ∂, ∇
+   - Comparison operators: <, >, ≤, ≥, ≠, ≈, ≡
+   - Set operators: ∈, ∉, ∪, ∩, ⊂, ⊆, ∅
+   - Logic operators: ∧, ∨, ¬, →, ↔
+   
+   **Notation Types**:
+   - Subscripts: A₀, x₁, H₂O, C₆H₁₂O₆, T(n), f(x)
+   - Superscripts: x², x³, e⁻ˣ, 10⁻³, Aᵀ, xⁿ
+   - Greek letters: α, β, γ, δ, ε, θ, λ, μ, π, ρ, σ, τ, φ, ω, Δ, Σ, Ω, etc.
+   - Special symbols: ∞, ±, ∓, ∑, ∏, ∫, ∂, ∇, ∠, °, %, etc.
+   - Vectors and matrices: **v**, **A**, |x|, ||x||
+   
+   **Formula Categories** (extract ALL types):
+   - Mathematical formulas: algebra, calculus, geometry, trigonometry, statistics, probability
+   - Scientific formulas: physics (mechanics, thermodynamics, electromagnetism), chemistry (stoichiometry, kinetics), biology (growth, decay)
+   - Engineering formulas: stress/strain, fluid dynamics, heat transfer, electrical circuits
+   - Algorithmic formulas: time complexity O(n), space complexity, recurrence relations T(n) = ...
+   - Conversion formulas: unit conversions, coordinate transformations, scaling factors
+   - Definition formulas: mathematical definitions, scientific laws, physical constants
+   - Test/measurement formulas: standardized calculations, experimental formulas, test procedures
+   - Percentage/ratio formulas: percentages, ratios, proportions, rates
+   - Statistical formulas: mean, variance, standard deviation, correlation, regression
+   - Any equation that expresses a relationship between variables
+   
+   **Extraction Requirements**:
+   - Extract from: main text, examples, worked problems, diagrams, captions, side notes, footnotes, tables, charts
+   - Preserve exact notation: subscripts, superscripts, Greek letters, special symbols, formatting
+   - Include variable definitions when provided
+   - Include example calculations if shown
+   - If a formula appears multiple times, include it with each page reference
+   - Include derived formulas, conversion formulas, and formulas used in worked examples
+   - **COUNT**: Before finishing, count how many formulas you found in the document and ensure ALL are in the formulas array
+
+2. **OUTLINE**: Create outline items that are SPECIFIC to this document - MUST be identifiable to THIS document only:
+   - Use EXACT slide titles, section headings, and chapter titles from the document
+   - Include specific formulas, calculations, or examples in outline items when mentioned
+   - Include specific tests, procedures, methods, or algorithms mentioned
+   - Include specific concepts, definitions, or examples from the document
+   - Add page references to each outline item: "Specific Content (p. XX)"
+   - Make each item so specific that it could ONLY come from this document
+   - BAD (REJECT): "Definition and importance of [topic]" (too generic, could apply to any document)
+   - BAD (REJECT): "Understanding [topic] concepts" (too generic)
+   - BAD (REJECT): "[Topic] and its significance" (too generic)
+   - GOOD: Include specific formulas, examples, calculations, procedures, or unique content from the document
+   - GOOD: Reference specific examples, worked problems, or case studies shown
+   - GOOD: Include specific terminology, notation, or methods unique to this document
+   - GOOD: Add page references and make items identifiable to specific slides/sections
+
+3. **CONCEPTS**: Extract EVERY concept mentioned - do not skip any:
+   - Main concepts from headings, titles, and slide titles
+   - Concepts from examples and worked problems (include specific examples with values/calculations)
+   - Concepts shown in diagrams (describe what diagrams show in detail)
+   - Related concepts and connections
+   - Do not skip "minor" concepts - if it's mentioned, include it
+   - Extract concepts relevant to the document's subject matter (mathematics, science, engineering, computer science, etc.)
+   - For each concept, include: heading, detailed bullets with specific examples/formulas from the document, examples with actual values, connections to other concepts, page references
+
+4. **DIAGRAMS**: Reference ALL diagrams, figures, charts, and illustrations:
+   - Describe what each diagram shows
+   - Include page references
+   - Link diagrams to relevant concepts
+   - Extract formulas or data shown in diagrams
 
 ${relevantChunks.length > 0 ? `\nSEMANTIC SEARCH RESULTS (for additional context):
 ${relevantChunks.map((chunk, index) => `Chunk ${index + 1}: ${chunk.content}`).join('\n\n')}\n` : ''}
@@ -377,17 +586,39 @@ CONTENT EXTRACTION REQUIREMENTS:
    - Explain your reasoning for complexity assessment with references to document content
 
 5. DOCUMENT-SPECIFIC STUDY MATERIALS:
-   - Create an outline based on the actual structure of the documents
+   - **OUTLINE REQUIREMENTS (CRITICAL)**:
+     * Create outline items that are SPECIFIC to the actual content, not generic
+     * Use exact terminology, formulas, and concepts from the documents
+     * Include specific formulas in outline items when relevant (e.g., "Engineering stress (S = F/A₀) vs True stress (σ = F/A)")
+     * Reference specific examples, tests, or procedures mentioned (e.g., "Brinell Hardness Test: BHN = 2F/(πD[D-√(D²-Dᵢ²)])")
+     * Include page references in outline items: "Concept Name (p. XX)"
+     * BAD: "Definition and importance of stress and strain" (too generic)
+     * GOOD: "Engineering stress (S = F/A₀) and strain (e = Δl/l₀) definitions and measurement via tensile testing (p. 1)"
+     * BAD: "Understanding tensile strength concepts" (too generic)
+     * GOOD: "Tensile strength, modulus of resilience, and tensile toughness calculations with worked examples (p. 3)"
+     * Extract outline from: slide titles, section headings, chapter titles, and document structure
+     * Each outline item should be specific enough that someone could identify which slide/section it refers to
+   - **CONCEPT EXTRACTION (EXTRACT ALL CONCEPTS)**:
+     * Extract EVERY concept mentioned in the documents, not just main ones
+     * Include concepts from: definitions, examples, diagrams, side notes, captions, and worked problems
+     * Extract related concepts and connections between concepts
+     * Include concepts shown visually in diagrams (describe what diagrams show)
+     * For each concept: provide heading, detailed bullets with specific information, examples from the document, connections to other concepts, and page references
+     * Do not skip "minor" concepts - if it's in the document, include it
    - Extract key terms and definitions as they appear in the documents (with quotations and page refs)
    - Use the specific examples and explanations provided in the documents
    - Create study tips based on the actual content and learning objectives
    - Identify misconceptions based on the specific subject matter covered
-   - EXTRACT ALL FORMULAS: Identify and extract every important formula, equation, and mathematical expression
-     * Time complexity formulas (O(n²), O(n log n), etc.)
-     * Algorithmic formulas (T(n) = n(n-1)/2, etc.)
-     * Mathematical equations (A = πr², etc.)
-     * Any computational formulas or expressions
-     * For each formula: extract name, exact formula text, description, variables, page reference, and examples
+     - **EXTRACT ALL FORMULAS**: Identify and extract EVERY formula, equation, and mathematical expression
+     * Mathematical formulas (algebra, calculus, geometry, statistics, etc.)
+     * Scientific formulas (physics, chemistry, biology, engineering, etc.)
+     * Algorithmic formulas (time complexity, space complexity, recurrence relations, etc.)
+     * Conversion formulas (unit conversions, coordinate transformations, etc.)
+     * Definition formulas (mathematical definitions, scientific laws, etc.)
+     * Test/measurement formulas (standardized tests, experimental calculations, etc.)
+     * Percentage/ratio formulas, proportions, rates
+     * Any formula with mathematical notation, subscripts, superscripts, Greek letters, special symbols
+     * For each formula: extract name, exact formula text (preserve notation), description, ALL variables, page reference, and examples
 
 6. AUTOMATIC DOCUMENT ANALYSIS (when no instructions provided):
    - Analyze the document titles, headers, and content to determine the main subject
@@ -409,16 +640,72 @@ ANTI-PATTERNS TO AVOID:
 - ✅ "The algorithm uses two nested loops: outer loop runs n-1 times, inner loop runs n-i-1 times (p. 11)"
 - ❌ "Real-world application of [topic]"
 - ✅ "Example trace: [29, 10, 14, 37, 13] after pass 1 becomes [10, 14, 29, 13, 37] (p. 12)"
+- ❌ Outline: "Definition and importance of [topic]"
+- ✅ Outline: Include specific formulas, examples, calculations, or procedures from the document with page references
+- ❌ Outline: "Understanding [topic] concepts"
+- ✅ Outline: Reference specific content, formulas, examples, or methods unique to this document with page references
+- ❌ Missing formula: Document shows a formula but it's not in formulas array
+- ✅ Extract ALL formulas: Include every formula found with exact notation, variables, page reference, and example calculation if shown
+- ❌ Generic concept: "[Topic] is important in [field]"
+- ✅ Specific concept: Include detailed information with specific formulas, examples, calculations, or procedures from the document with page references
 
 REMEMBER: Every piece of content must be directly derived from the actual document content provided above. Extract specific information, examples, and details from these documents rather than generating generic educational content. If information is not in the document, omit it—do not invent.`
 
-    console.log(`\n🤖 [NOTES API] Preparing OpenAI API call...`)
-    console.log(`  - Model: gpt-4o`)
-    console.log(`  - Temperature: 0.3 (low for document-grounded output)`)
-    console.log(`  - System prompt length: ${systemPrompt.length} characters`)
-    console.log(`  - User prompt length: ${userPrompt.length} characters`)
-    console.log(`  - Using JSON schema: StudyNotes`)
+    // Start diagram analysis early (in parallel with notes generation)
+    const diagramAnalysisStart = Date.now()
+    const diagramAnalysisPromise = extractedImages.length > 0
+      ? (async () => {
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`\n🖼️ [NOTES API] Starting early diagram analysis (${extractedImages.length} images)...`)
+          }
+          try {
+            const diagramAnalyzer = new DiagramAnalyzerAgent()
+            const diagramResult = await diagramAnalyzer.execute({
+              documentContent: fileContents.join('\n'),
+              fileNames: fileNames,
+              topic: topic,
+              difficulty: difficulty,
+              instructions: instructions,
+              studyContext: studyContext,
+              extractedImages: extractedImages,
+              relevantChunks: relevantChunks,
+              metadata: {
+                contentExtraction: {
+                  // We don't have key_terms yet, but diagram analyzer can work without them
+                }
+              }
+            })
+            
+            if (diagramResult.success && diagramResult.data?.diagrams) {
+              const analysisTime = Date.now() - diagramAnalysisStart
+              if (process.env.NODE_ENV === 'development') {
+                console.log(`  ✅ [NOTES API] Early diagram analysis completed in ${analysisTime}ms: ${diagramResult.data.diagrams.length} diagrams`)
+              }
+              return diagramResult.data.diagrams
+            }
+            return []
+          } catch (error) {
+            if (process.env.NODE_ENV === 'development') {
+              console.error(`  ⚠️ [NOTES API] Early diagram analysis error:`, error)
+            }
+            return []
+          }
+        })()
+      : Promise.resolve([])
     
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`\n🤖 [NOTES API] Preparing OpenAI API call...`)
+      console.log(`  - Model: gpt-4o`)
+      console.log(`  - Temperature: 0.2 (very low for maximum document fidelity)`)
+      console.log(`  - System prompt length: ${systemPrompt.length} characters`)
+      console.log(`  - User prompt length: ${userPrompt.length} characters`)
+      console.log(`  - Total document content: ${fileContents.join('').length} characters`)
+      console.log(`  - Using JSON schema: StudyNotes`)
+      console.log(`  ⚠️ CRITICAL: Must extract ALL formulas, make outline content-specific, and include ALL concepts`)
+      console.log(`  🚀 Diagram analysis running in parallel with notes generation`)
+    }
+    
+    const notesGenerationStart = Date.now()
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
       messages: [
@@ -428,7 +715,7 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
       response_format: {
         type: "json_object"
       },
-      temperature: 0.3  // Low temperature to minimize invention and ensure document-grounded output
+      temperature: 0.2  // Very low temperature for maximum document fidelity and comprehensive extraction
     })
     
     console.log(`✅ [NOTES API] OpenAI API call successful`)
@@ -456,17 +743,98 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
       console.log(`  - Key terms: ${notesData.key_terms?.length || 0}`)
       console.log(`  - Concepts: ${notesData.concepts?.length || 0}`)
       console.log(`  - Diagrams: ${notesData.diagrams?.length || 0}`)
-      console.log(`  - Quiz questions: ${notesData.quiz?.length || 0}`)
+      console.log(`  - Formulas: ${notesData.formulas?.length || 0}`)
+      console.log(`  - Quiz questions: ${notesData.practice_questions?.length || 0}`)
+      
+      // Post-processing validation: Check for missing content and generic content
+      if (process.env.NODE_ENV === 'development') {
+        const formulaCount = notesData.formulas?.length || 0
+        const conceptCount = notesData.concepts?.length || 0
+        const diagramCount = notesData.diagrams?.length || 0
+        const outlineCount = notesData.outline?.length || 0
+        
+        console.log(`\n📊 [NOTES API] Content extraction summary:`)
+        console.log(`  - Formulas extracted: ${formulaCount}`)
+        console.log(`  - Concepts extracted: ${conceptCount}`)
+        console.log(`  - Diagrams extracted: ${diagramCount}`)
+        console.log(`  - Outline items: ${outlineCount}`)
+        
+        // Check for generic outline items (CRITICAL VALIDATION)
+        const genericPatterns = [
+          /definition and importance of/i,
+          /understanding.*concepts/i,
+          /introduction to/i,
+          /tensile testing and its role/i,
+          /elastic modulus and yield strength concepts/i,
+          /poisson's ratio and its significance/i,
+          /^[^()]*concepts?$/i,  // Items ending with just "concepts" or "concept"
+          /^[^()]*significance$/i,  // Items ending with just "significance"
+          /^[^()]*importance$/i,  // Items ending with just "importance"
+        ]
+        
+        const genericOutlineItems = notesData.outline?.filter(item => 
+          genericPatterns.some(pattern => pattern.test(item))
+        ) || []
+        
+        if (genericOutlineItems.length > 0) {
+          console.error(`  ❌ [NOTES API] CRITICAL: ${genericOutlineItems.length} generic outline items detected!`)
+          console.error(`     Generic items found:`)
+          genericOutlineItems.forEach((item, idx) => {
+            console.error(`       ${idx + 1}. "${item}"`)
+          })
+          console.error(`     Outline items MUST contain specific formulas, examples, calculations, or procedures from the document`)
+          console.error(`     Each item should be identifiable to THIS specific document only`)
+        }
+        
+        // Check if outline items have specific content (formulas, examples, page refs)
+        const outlineHasSpecifics = notesData.outline?.some(item => {
+          const hasFormula = /[=+\-×÷√lnlog∫Σ∏]|%|[\u03B1-\u03C9\u0391-\u03A9]|[\u2080-\u2089\u00B2\u00B3]|[\u2070-\u2079]|O\(|T\(|f\(|g\(|h\(|S\s*=|e\s*=|σ\s*=|ε\s*=|x\s*=|y\s*=|z\s*=/.test(item)
+          const hasExample = /\d+\.?\d*\s*(mm|cm|m|kg|g|psi|pa|%|°|rad|deg|s|min|h|Hz|J|W|V|A|Ω|F|H|C|K|mol)/i.test(item) || /example|worked|case study|trace|calculation/i.test(item)
+          const hasPageRef = /\(p\.|\(pp\.|\(page|\(pg\./i.test(item)
+          const hasSpecificProcedure = /test|procedure|method|algorithm|technique|process|step/i.test(item)
+          return hasFormula || hasExample || hasPageRef || hasSpecificProcedure
+        })
+        
+        if (!outlineHasSpecifics && (notesData.outline?.length || 0) > 0) {
+          console.warn(`  ⚠️ [NOTES API] WARNING: Outline items lack specific content (formulas, examples, page refs)`)
+        }
+        
+        // Check if formulas might be missing (generic pattern matching)
+        const documentHasMath = /[=+\-×÷√lnlog∫Σ∏]|%|[\u03B1-\u03C9\u0391-\u03A9]|[\u2080-\u2089\u00B2\u00B3]|[\u2070-\u2079]|O\(|T\(|f\(|g\(|h\(|S\s*=|e\s*=|σ\s*=|ε\s*=|x\s*=|y\s*=|z\s*=/.test(fileContents.join(''))
+        if (documentHasMath && formulaCount === 0) {
+          console.error(`  ❌ [NOTES API] CRITICAL: Document appears to contain formulas but none were extracted!`)
+          console.error(`     Document contains mathematical notation but formulas array is empty`)
+        } else if (documentHasMath && formulaCount < 3) {
+          console.warn(`  ⚠️ [NOTES API] WARNING: Document contains mathematical notation but only ${formulaCount} formula(s) were extracted`)
+          console.warn(`     Consider reviewing if more formulas should be extracted`)
+        }
+      }
     } catch (parseError) {
       console.error(`❌ [NOTES API] Failed to parse JSON response:`, parseError)
       console.log(`📄 [NOTES API] Raw content:`, content)
       throw new Error("Failed to parse OpenAI response as JSON")
     }
 
-    // 4) Analyze extracted diagrams if any were found
+    // 4) Wait for diagram analysis to complete (ran in parallel with notes generation)
+    const notesGenerationTime = Date.now() - notesGenerationStart
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`  ⏱️ [NOTES API] Notes generation completed in ${notesGenerationTime}ms`)
+    }
+    
     let analyzedDiagrams = notesData.diagrams || []
-    if (extractedImages.length > 0) {
-      console.log(`\n🖼️ [NOTES API] Analyzing ${extractedImages.length} extracted diagrams...`)
+    
+    // Wait for diagram analysis (may have already completed)
+    const diagramAnalysisResult = await diagramAnalysisPromise
+    if (diagramAnalysisResult.length > 0) {
+      analyzedDiagrams = diagramAnalysisResult
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`  ✅ [NOTES API] Diagram analysis completed: ${analyzedDiagrams.length} diagrams (ran in parallel)`)
+      }
+    } else if (extractedImages.length > 0 && analyzedDiagrams.length === 0) {
+      // Fallback: If early analysis didn't work, try again with key_terms
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`\n🖼️ [NOTES API] Retrying diagram analysis with key_terms...`)
+      }
       try {
         const diagramAnalyzer = new DiagramAnalyzerAgent()
         const diagramResult = await diagramAnalyzer.execute({
@@ -487,7 +855,39 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
         
         if (diagramResult.success && diagramResult.data?.diagrams) {
           analyzedDiagrams = diagramResult.data.diagrams
-          console.log(`✅ [NOTES API] Analyzed ${analyzedDiagrams.length} diagrams`)
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`✅ [NOTES API] Analyzed ${analyzedDiagrams.length} diagrams (fallback)`)
+          }
+          
+          // Ensure image_data_b64 is preserved from extracted images
+          // Match analyzed diagrams with extracted images by page number
+          analyzedDiagrams = analyzedDiagrams.map((diagram: any, idx: number) => {
+            if (diagram.source === 'file' && diagram.page) {
+              // Try page number matching first (most reliable)
+              let matchingImage = extractedImages.find((img) => img.page === diagram.page)
+              
+              // Fallback to index-based matching if page number doesn't match
+              if (!matchingImage && extractedImages[idx]) {
+                matchingImage = extractedImages[idx]
+                if (process.env.NODE_ENV === 'development') {
+                  console.warn(`[NOTES API] Page number mismatch for diagram ${idx + 1} (expected page ${diagram.page}, using index ${idx})`)
+                }
+              }
+              
+              if (matchingImage && matchingImage.image_data_b64) {
+                return {
+                  ...diagram,
+                  page: matchingImage.page, // Use actual page number from extracted image
+                  image_data_b64: matchingImage.image_data_b64,
+                  width: matchingImage.width,
+                  height: matchingImage.height,
+                }
+              } else if (process.env.NODE_ENV === 'development') {
+                console.warn(`[NOTES API] No matching image found for diagram ${idx + 1} (page ${diagram.page})`)
+              }
+            }
+            return diagram
+          })
         } else {
           console.log(`⚠️ [NOTES API] Diagram analysis failed, using basic diagram info`)
           // Fallback: create basic diagram entries from extracted images
@@ -514,13 +914,28 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
           height: img.height,
         }))
       }
+    } else {
+      // Image extraction failed, but we still have diagrams from OpenAI
+      // These diagrams won't have image_data_b64, but we can enrich with web images
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`⚠️ [NOTES API] No images extracted, but ${analyzedDiagrams.length} diagrams found from OpenAI analysis`)
+        console.log(`  ℹ️ [NOTES API] Will attempt to enrich with web images if keywords are available`)
+      }
     }
 
     // 5) Enrich with web images if needed (for diagrams without extracted images)
     console.log(`\n🖼️ [NOTES API] Enriching diagrams with web images if needed...`)
+    console.log(`  📊 [NOTES API] Diagram status before enrichment:`)
+    analyzedDiagrams.forEach((diagram: any, idx: number) => {
+      console.log(`    - Diagram ${idx + 1}: "${diagram.title}"`)
+      console.log(`      Source: ${diagram.source}, Page: ${diagram.page || 'N/A'}`)
+      console.log(`      Has image_data_b64: ${!!diagram.image_data_b64}`)
+      console.log(`      Has image_url: ${!!diagram.image_url}`)
+    })
     const enrichedDiagrams = await enrichWithWebImages({ diagrams: analyzedDiagrams })
     const enrichedNotes = { ...notesData, diagrams: enrichedDiagrams.diagrams || enrichedDiagrams }
     console.log(`✅ [NOTES API] Diagram enrichment completed`)
+    console.log(`  📊 [NOTES API] Final diagram count: ${enrichedNotes.diagrams.length}`)
 
     // 5) Generate and store embeddings for semantic search
     console.log(`\n🧠 [NOTES API] Generating embeddings for semantic search...`)

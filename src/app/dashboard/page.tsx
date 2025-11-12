@@ -57,7 +57,9 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <DashboardTutorial />
+      <Suspense fallback={null}>
+        <DashboardTutorial />
+      </Suspense>
       <DashboardHeader onToggleStats={toggleStats} showStats={showStats} />
 
       <main className="container mx-auto px-6 py-12">

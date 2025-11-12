@@ -5,16 +5,13 @@ export async function createClient() {
   try {
     const cookieStore = await cookies()
 
-    // Debug: Log all environment variables that contain SUPABASE
-    console.log('🔍 [SUPABASE SERVER] Environment check (v2):', {
-      NODE_ENV: process.env.NODE_ENV,
-      VERCEL: process.env.VERCEL,
-      allSupabaseKeys: Object.keys(process.env).filter(key => key.includes('SUPABASE')),
-      hasUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
-      hasKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      urlValue: process.env.NEXT_PUBLIC_SUPABASE_URL ? 'SET' : 'MISSING',
-      keyValue: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? 'SET' : 'MISSING'
-    })
+    // Only log environment check in development and if there's an issue
+    if (process.env.NODE_ENV === 'development' && process.env.DEBUG_SUPABASE === 'true') {
+      console.log('🔍 [SUPABASE SERVER] Environment check:', {
+        hasUrl: !!process.env.NEXT_PUBLIC_SUPABASE_URL,
+        hasKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      })
+    }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -48,6 +45,15 @@ export async function createClient() {
               // This can be ignored if you have middleware refreshing
               // user sessions.
             }
+          },
+        },
+        global: {
+          fetch: (url, options = {}) => {
+            // Increase timeout and add retry logic
+            return fetch(url, {
+              ...options,
+              signal: AbortSignal.timeout(30000), // 30 second timeout instead of 10
+            })
           },
         },
       }

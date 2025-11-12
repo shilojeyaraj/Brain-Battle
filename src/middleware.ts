@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
 import { rateLimit, getRateLimitIdentifier } from './middleware/rate-limit'
 import { logger } from './lib/monitoring/logger'
 import { trackApiPerformance } from './lib/monitoring/performance'
@@ -16,6 +17,46 @@ export async function middleware(request: NextRequest) {
     path === '/api/health'
   ) {
     return NextResponse.next()
+  }
+
+  // Create Supabase client for session management
+  let supabaseResponse = NextResponse.next({
+    request,
+  })
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+          supabaseResponse = NextResponse.next({
+            request,
+          })
+          cookiesToSet.forEach(({ name, value, options }) =>
+            supabaseResponse.cookies.set(name, value, options)
+          )
+        },
+      },
+    }
+  )
+
+  // Refresh session if expired (important for Supabase Auth)
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // Protect dashboard and other authenticated routes
+  const protectedRoutes = ['/dashboard', '/create-room', '/join-room', '/room', '/singleplayer']
+  const isProtectedRoute = protectedRoutes.some(route => path.startsWith(route))
+  
+  if (isProtectedRoute && !user) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/login'
+    url.searchParams.set('redirect', path)
+    return NextResponse.redirect(url)
   }
 
   // Rate limiting for API routes

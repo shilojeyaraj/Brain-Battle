@@ -37,27 +37,48 @@ const Leaderboard = memo(function Leaderboard() {
       setError(null)
 
       const supabase = createClient()
-      const currentUserId = getCurrentUserId()
+      const currentUserId = await getCurrentUserId()
 
-      // Fetch players with actual game statistics (played at least one game)
+      // Fetch all players with stats (including those with 0 games)
       const { data: playersData, error: playersError } = await supabase
         .from('player_stats')
-        .select(`
-          user_id,
-          level,
-          xp,
-          total_wins,
-          total_games,
-          users!inner(username, avatar_url)
-        `)
-        .gt('total_games', 0) // Only players who have played at least one game
+        .select('user_id, level, xp, total_wins, total_games')
         .order('xp', { ascending: false })
+        .order('total_games', { ascending: false }) // Secondary sort by games played
         .limit(10)
 
       if (playersError) {
-        console.error('Error fetching players with stats:', playersError)
+        const errorDetails = {
+          code: playersError.code,
+          message: playersError.message,
+          details: playersError.details,
+          hint: playersError.hint,
+          errorKeys: Object.keys(playersError),
+          fullError: playersError
+        }
+        console.error('Error fetching players with stats:', errorDetails)
         setError('Failed to load leaderboard')
         return
+      }
+
+      // Fetch profiles separately and join in code (more reliable than database join)
+      const userIds = playersData?.map(p => p.user_id) || []
+      let profilesMap = new Map<string, { username: string; avatar_url?: string }>()
+      
+      if (userIds.length > 0) {
+        const { data: profilesData, error: profilesError } = await supabase
+          .from('profiles')
+          .select('user_id, username, avatar_url')
+          .in('user_id', userIds)
+
+        if (profilesError) {
+          console.warn('Error fetching profiles for leaderboard:', profilesError)
+          // Continue without profiles - we'll use fallback values
+        } else {
+          profilesMap = new Map(
+            profilesData?.map(p => [p.user_id, { username: p.username || 'Unknown', avatar_url: p.avatar_url }]) || []
+          )
+        }
       }
 
       // Get current user's rank if they're not in top 10
@@ -65,58 +86,80 @@ const Leaderboard = memo(function Leaderboard() {
       if (currentUserId) {
         const { data: userStatsData, error: userStatsError } = await supabase
           .from('player_stats')
-          .select(`
-            user_id,
-            level,
-            xp,
-            total_wins,
-            total_games,
-            users!inner(username, avatar_url)
-          `)
+          .select('user_id, level, xp, total_wins, total_games')
           .eq('user_id', currentUserId)
-          .gt('total_games', 0) // Only if they have played games
           .single()
 
         if (!userStatsError && userStatsData) {
           // Get their rank by counting players with higher XP
-          const { count: higherXpCount } = await supabase
-            .from('player_stats')
-            .select('*', { count: 'exact', head: true })
-            .gt('xp', userStatsData.xp)
-            .gt('total_games', 0)
+          let rankCount = 0
+          try {
+            const { count: higherXpCount } = await supabase
+              .from('player_stats')
+              .select('*', { count: 'exact', head: true })
+              .gt('xp', userStatsData.xp)
+            rankCount = higherXpCount || 0
+            
+            // Also count players with same XP but more games
+            const { count: sameXpMoreGames } = await supabase
+              .from('player_stats')
+              .select('*', { count: 'exact', head: true })
+              .eq('xp', userStatsData.xp)
+              .gt('total_games', userStatsData.total_games || 0)
+            rankCount += (sameXpMoreGames || 0)
+          } catch (rankError) {
+            console.warn('Error calculating rank:', rankError)
+            // Fallback: just use XP-based ranking
+            const { count: simpleCount } = await supabase
+              .from('player_stats')
+              .select('*', { count: 'exact', head: true })
+              .gt('xp', userStatsData.xp)
+            rankCount = simpleCount || 0
+          }
 
+          // Fetch user's profile separately
+          const { data: userProfile } = await supabase
+            .from('profiles')
+            .select('username, avatar_url')
+            .eq('user_id', currentUserId)
+            .single()
+          
           userRank = {
-            rank: (higherXpCount || 0) + 1,
+            rank: rankCount + 1,
             user_id: userStatsData.user_id,
-            username: userStatsData.users?.[0]?.username || 'Unknown',
+            username: userProfile?.username || 'Unknown',
             level: userStatsData.level,
             xp: userStatsData.xp,
             wins: userStatsData.total_wins,
-            avatar_url: userStatsData.users?.[0]?.avatar_url
+            avatar_url: userProfile?.avatar_url
           }
         }
       }
 
-      // Get total count of players who have played games
+      // Get total count of all players with stats
       const { count: totalCount, error: countError } = await supabase
         .from('player_stats')
         .select('*', { count: 'exact', head: true })
-        .gt('total_games', 0) // Only count players who have played games
 
       if (countError) {
         console.error('Error fetching total count:', countError)
       }
 
       // Transform data and add rank numbers
-      const playersWithRank = playersData?.map((player, index) => ({
-        rank: index + 1,
-        user_id: player.user_id,
-        username: player.users?.[0]?.username || 'Unknown',
-        level: player.level,
-        xp: player.xp,
-        wins: player.total_wins,
-        avatar_url: player.users?.[0]?.avatar_url
-      })) || []
+      // Join with profiles data we fetched separately
+      const playersWithRank = playersData?.map((player, index) => {
+        const profile = profilesMap.get(player.user_id)
+        
+        return {
+          rank: index + 1,
+          user_id: player.user_id,
+          username: profile?.username || 'Unknown',
+          level: player.level,
+          xp: player.xp,
+          wins: player.total_wins,
+          avatar_url: profile?.avatar_url
+        }
+      }) || []
 
       setTopPlayers(playersWithRank)
       setCurrentUserRank(userRank)

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, memo } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Clock, Target, Trophy, Zap, AlertTriangle, EyeOff, X, Star, TrendingUp, FileText, Image } from "lucide-react"
+import { ArrowLeft, Clock, Target, Trophy, Zap, AlertTriangle, EyeOff, X, Star, TrendingUp, FileText, Image, CheckCircle } from "lucide-react"
 import Link from "next/link"
 import { useAntiCheat, CheatEvent } from "@/hooks/use-anti-cheat"
 import { calculateXP, getXPExplanation, checkLevelUp } from "@/lib/xp-calculator"
@@ -167,14 +167,62 @@ export default function BattlePage() {
     
     setShowResult(true)
     
-    // Check if answer is correct (case-insensitive, trimmed)
-    const userAnswer = textAnswer.trim().toLowerCase()
-    const expectedAnswers = question.expected_answers?.map((ans: string) => ans.toLowerCase().trim()) || []
-    const isCorrect = expectedAnswers.some((expected: string) => 
-      userAnswer === expected || 
-      userAnswer.includes(expected) || 
-      expected.includes(userAnswer)
-    )
+    // Check if answer is correct with improved validation
+    const userAnswer = textAnswer.trim()
+    const expectedAnswers = question.expected_answers || []
+    
+    let isCorrect = false
+    
+    if (expectedAnswers.length > 0) {
+      // For numerical answers, extract and compare numbers
+      if (question.answer_format === "number" || question.answer_format === "numeric") {
+        // Extract numeric value from user answer (handles "350", "350 MPa", "350.5", etc.)
+        const userNumberMatch = userAnswer.match(/-?\d+\.?\d*/)
+        const userNumber = userNumberMatch ? parseFloat(userNumberMatch[0]) : null
+        
+        if (userNumber !== null) {
+          // Check against each expected answer
+          isCorrect = expectedAnswers.some((expected: string) => {
+            const expectedNumberMatch = expected.toString().match(/-?\d+\.?\d*/)
+            if (expectedNumberMatch) {
+              const expectedNumber = parseFloat(expectedNumberMatch[0])
+              // Allow 1% tolerance for floating point comparisons
+              const tolerance = Math.abs(expectedNumber * 0.01)
+              return Math.abs(userNumber - expectedNumber) <= tolerance
+            }
+            return false
+          })
+        }
+      } else {
+        // For text answers, do normalized comparison (case-insensitive, trimmed)
+        const userAnswerNormalized = userAnswer.toLowerCase().trim()
+        const expectedAnswersNormalized = expectedAnswers.map((ans: string) => ans.toLowerCase().trim())
+        
+        // Exact match or normalized match (remove extra spaces, punctuation)
+        isCorrect = expectedAnswersNormalized.some((expected: string) => {
+          const expectedNormalized = expected.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ')
+          const userNormalized = userAnswerNormalized.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ')
+          
+          // Exact match
+          if (userNormalized === expectedNormalized) return true
+          
+          // For short answers, require exact match
+          if (expectedNormalized.length < 10) {
+            return userNormalized === expectedNormalized
+          }
+          
+          // For longer answers, allow if user answer contains the key parts
+          // But be more strict - check if major words match
+          const expectedWords = expectedNormalized.split(' ').filter(w => w.length > 3)
+          const userWords = userNormalized.split(' ').filter(w => w.length > 3)
+          if (expectedWords.length > 0) {
+            return expectedWords.every(word => userWords.includes(word))
+          }
+          
+          return false
+        })
+      }
+    }
     
     if (isCorrect) {
       setScore(prev => prev + 1)
@@ -217,7 +265,7 @@ export default function BattlePage() {
       })
 
       // Submit results to API
-      const userId = getCurrentUserId()
+      const userId = await getCurrentUserId()
       if (userId) {
         const response = await fetch('/api/quiz-results', {
           method: 'POST',
@@ -623,17 +671,26 @@ export default function BattlePage() {
               <h3 className="font-black text-foreground mb-2">Explanation:</h3>
               <p className="text-muted-foreground font-bold mb-3">{question.explanation || question.a}</p>
               
-              {/* Show correct answers for open-ended questions */}
-              {question.type === "open_ended" && question.expected_answers && (
+              {/* Always show correct answers for open-ended questions */}
+              {question.type === "open_ended" && (
                 <div className="mt-3 p-3 rounded-lg bg-chart-3/10 cartoon-border">
-                  <h4 className="font-black text-chart-3 mb-2">✅ Correct Answer(s):</h4>
-                  <div className="flex flex-wrap gap-2">
-                    {question.expected_answers.map((answer: string, index: number) => (
-                      <Badge key={index} className="cartoon-border bg-chart-3 text-foreground font-black">
-                        {answer}
-                      </Badge>
-                    ))}
-                  </div>
+                  <h4 className="font-black text-chart-3 mb-2 flex items-center gap-2">
+                    <CheckCircle className="h-5 w-5 text-chart-3" strokeWidth={3} />
+                    Correct Answer(s):
+                  </h4>
+                  {question.expected_answers && question.expected_answers.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {question.expected_answers.map((answer: string, index: number) => (
+                        <Badge key={index} className="cartoon-border bg-chart-3 text-foreground font-black text-base px-3 py-1.5">
+                          {answer}
+                        </Badge>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground font-bold">
+                      {question.answer || question.a || "See explanation above for the correct answer"}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -872,11 +929,45 @@ function BattleResultsScreen({
           <div className="space-y-4">
             {questions.map((question, index) => {
               const userAnswer = userAnswers[index]
+              
+              // Get the display text for user's answer
+              let userAnswerText = ""
+              if (question.type === "multiple_choice") {
+                // Convert index to option text
+                const answerIndex = typeof userAnswer === 'number' ? userAnswer : parseInt(userAnswer as string)
+                if (question.options && answerIndex >= 0 && answerIndex < question.options.length) {
+                  userAnswerText = question.options[answerIndex]
+                } else {
+                  userAnswerText = `Option ${String.fromCharCode(65 + (answerIndex || 0))}`
+                }
+              } else {
+                // Open-ended: use the string directly
+                userAnswerText = (userAnswer as string) || "No answer provided"
+              }
+              
               const isCorrect = question.type === "multiple_choice" 
                 ? userAnswer === (question.correct !== undefined ? question.correct : 0)
                 : question.expected_answers?.some((ans: string) => 
                     ans.toLowerCase().trim() === (userAnswer as string)?.toLowerCase().trim()
                   )
+              
+              // Get correct answer text
+              let correctAnswerText = ""
+              if (question.type === "multiple_choice") {
+                const correctIndex = question.correct !== undefined ? question.correct : 0
+                if (question.options && correctIndex >= 0 && correctIndex < question.options.length) {
+                  correctAnswerText = question.options[correctIndex]
+                } else {
+                  correctAnswerText = question.a || `Option ${String.fromCharCode(65 + correctIndex)}`
+                }
+              } else {
+                // Open-ended: show expected answers
+                if (question.expected_answers && question.expected_answers.length > 0) {
+                  correctAnswerText = question.expected_answers.join(", ")
+                } else {
+                  correctAnswerText = question.answer || question.a || "See explanation"
+                }
+              }
               
               return (
                 <div key={index} className={`p-4 rounded-xl border-2 ${
@@ -885,7 +976,7 @@ function BattleResultsScreen({
                     : "bg-destructive/10 border-destructive"
                 }`}>
                   <div className="flex items-start gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black ${
                       isCorrect ? "bg-chart-3 text-foreground" : "bg-destructive text-destructive-foreground"
                     }`}>
                       {isCorrect ? "✓" : "✗"}
@@ -894,13 +985,13 @@ function BattleResultsScreen({
                       <p className="font-bold text-foreground mb-2">
                         {question.question || question.q}
                       </p>
-                      <div className="text-sm text-muted-foreground">
-                        <p><strong>Your answer:</strong> {userAnswer}</p>
-                        <p><strong>Correct answer:</strong> {
-                          question.type === "multiple_choice" 
-                            ? question.options?.[question.correct !== undefined ? question.correct : 0] || question.a
-                            : question.expected_answers?.join(", ") || question.a
-                        }</p>
+                      <div className="text-sm space-y-1">
+                        <p className="text-muted-foreground">
+                          <strong className="text-foreground">Your answer:</strong> <span className="font-bold">{userAnswerText}</span>
+                        </p>
+                        <p className="text-muted-foreground">
+                          <strong className="text-foreground">Correct answer:</strong> <span className="font-bold">{correctAnswerText}</span>
+                        </p>
                       </div>
                     </div>
                   </div>

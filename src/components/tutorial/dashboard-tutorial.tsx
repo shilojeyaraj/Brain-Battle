@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { TutorialOverlay, TutorialStep } from './tutorial-overlay'
 import { useSearchParams } from 'next/navigation'
+import { TutorialOverlay, TutorialStep } from './tutorial-overlay'
 
 const DASHBOARD_TUTORIAL_STEPS: TutorialStep[] = [
   {

@@ -20,7 +20,9 @@ export async function extractImagesFromPDF(
   buffer: Buffer,
   filename: string
 ): Promise<ExtractedImage[]> {
-  console.log(`🖼️ [PDF EXTRACTOR] Starting image extraction from: ${filename}`)
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`🖼️ [PDF EXTRACTOR] Starting image extraction from: ${filename}`)
+  }
   
   try {
     // Use canvas rendering approach - most reliable for capturing all visual content
@@ -30,16 +32,15 @@ export async function extractImagesFromPDF(
     
     try {
       // Use dynamic import for ESM module (pdfjs-dist/legacy/build/pdf.mjs)
-      // Fallback to require for canvas (CommonJS)
-      try {
-        const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
-        pdfjsLib = pdfjsModule.default || pdfjsModule
-      } catch (pdfjsError) {
-        // Fallback: try require with .js extension
-        try {
-          pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js')
-        } catch (requireError) {
-          throw new Error(`Failed to import pdfjs-dist: ${pdfjsError instanceof Error ? pdfjsError.message : String(pdfjsError)}`)
+      // This is the correct path for pdfjs-dist v4.x
+      const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
+      pdfjsLib = pdfjsModule.default || pdfjsModule
+      
+      // Check version and warn if v5+ (compatibility issues)
+      const version = pdfjsLib.version || 'unknown'
+      if (version.startsWith('5.')) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`  ⚠️ [PDF EXTRACTOR] Detected pdfjs-dist v5 (${version}). Using compatibility mode for node-canvas.`)
         }
       }
       
@@ -63,7 +64,9 @@ export async function extractImagesFromPDF(
     })
     
     const pdfDocument = await loadingTask.promise
-    console.log(`  📄 [PDF EXTRACTOR] PDF loaded: ${pdfDocument.numPages} pages`)
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`  📄 [PDF EXTRACTOR] PDF loaded: ${pdfDocument.numPages} pages`)
+    }
     
     const extractedImages: ExtractedImage[] = []
     
@@ -84,20 +87,64 @@ export async function extractImagesFromPDF(
         context.fillStyle = 'white'
         context.fillRect(0, 0, width, height)
         
-        // Render page to canvas
-        // pdfjs-dist v5+ may have compatibility issues with node-canvas
-        // Try to ensure the context has all required properties
-        // The error "Image or Canvas expected" suggests pdfjs-dist is checking for something specific
+        // Fix for pdfjs-dist compatibility with node-canvas
+        // Apply compatibility layer regardless of version to ensure it works
+        // This handles both v4.x edge cases and v5+ strict type checking
         
-        // Create render context - pdfjs-dist expects canvasContext to be a valid 2D context
+        const canvasElement = canvas as any
+        const canvasContext = context as any
+        
+        // Always add DOM-like properties to ensure compatibility
+        // This is safe even for v4.x and ensures v5+ compatibility
+        const canvasProps = {
+          nodeName: 'CANVAS',
+          tagName: 'CANVAS',
+          nodeType: 1, // ELEMENT_NODE
+          localName: 'canvas',
+          namespaceURI: 'http://www.w3.org/1999/xhtml',
+        }
+        
+        for (const [key, value] of Object.entries(canvasProps)) {
+          if (!(key in canvasElement)) {
+            Object.defineProperty(canvasElement, key, {
+              value: value,
+              writable: false,
+              enumerable: true,
+              configurable: true
+            })
+          }
+        }
+        
+        // Ensure context has canvas reference (required by pdfjs-dist)
+        if (!canvasContext.canvas) {
+          Object.defineProperty(canvasContext, 'canvas', {
+            value: canvasElement,
+            writable: false,
+            enumerable: true,
+            configurable: true
+          })
+        }
+        
+        // Additional compatibility: ensure canvas has proper prototype chain
+        // This helps with instanceof checks in pdfjs-dist
+        if (!canvasElement.constructor || canvasElement.constructor.name !== 'Canvas') {
+          Object.defineProperty(canvasElement, 'constructor', {
+            value: { name: 'Canvas' },
+            writable: false,
+            enumerable: false,
+            configurable: true
+          })
+        }
+        
+        // Create render context
+        // For pdfjs-dist v4.x, use standard format
+        // For v5+, the canvas should now pass validation
         const renderContext = {
-          canvasContext: context,
+          canvasContext: canvasContext,
           viewport: viewport,
         }
         
         // Render the page
-        // Note: If this fails with "Image or Canvas expected", it's likely a pdfjs-dist v5+ 
-        // compatibility issue with node-canvas. The text extraction still works fine.
         const renderTask = page.render(renderContext as any)
         await renderTask.promise
         
@@ -112,22 +159,37 @@ export async function extractImagesFromPDF(
           type: 'png',
         })
         
-        console.log(`  ✅ [PDF EXTRACTOR] Extracted page ${pageNum} as image (${viewport.width}x${viewport.height}px)`)
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`  ✅ [PDF EXTRACTOR] Extracted page ${pageNum} as image (${viewport.width}x${viewport.height}px)`)
+        }
       } catch (pageError: any) {
         // Log the error but continue processing other pages
         // This is often a compatibility issue between pdfjs-dist v5+ and node-canvas
         if (pageError.message && pageError.message.includes('Image or Canvas expected')) {
-          console.log(`  ⚠️ [PDF EXTRACTOR] Page ${pageNum}: Compatibility issue with pdfjs-dist v5+ and node-canvas. Skipping image extraction for this page.`)
-          console.log(`  ℹ️ [PDF EXTRACTOR] Text extraction is working fine - this only affects diagram/image capture.`)
+          // Log detailed error information for debugging
+          console.error(`  ❌ [PDF EXTRACTOR] Page ${pageNum}: Canvas rendering failed`)
+          console.error(`     Error: ${pageError.message}`)
+          console.error(`     pdfjs-dist version: ${pdfjsLib.version || 'unknown'}`)
+          console.error(`     Canvas type: ${typeof canvas}`)
+          console.error(`     Canvas constructor: ${canvas?.constructor?.name || 'unknown'}`)
+          console.error(`     Has nodeName: ${!!(canvas as any)?.nodeName}`)
+          console.error(`     Has tagName: ${!!(canvas as any)?.tagName}`)
+          console.error(`  ℹ️ [PDF EXTRACTOR] Text extraction is working fine - this only affects diagram/image capture.`)
         } else {
+          // Always log real errors
           console.error(`  ❌ [PDF EXTRACTOR] Error processing page ${pageNum}:`, pageError.message)
+          if (pageError.stack) {
+            console.error(`     Stack: ${pageError.stack}`)
+          }
         }
         continue
       }
     }
     
-    console.log(`  ✅ [PDF EXTRACTOR] Extracted ${extractedImages.length} page images from ${pdfDocument.numPages} pages`)
-    console.log(`  ℹ️ [PDF EXTRACTOR] Note: Each page is captured as a full image, including all diagrams and figures`)
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`  ✅ [PDF EXTRACTOR] Extracted ${extractedImages.length} page images from ${pdfDocument.numPages} pages`)
+      console.log(`  ℹ️ [PDF EXTRACTOR] Note: Each page is captured as a full image, including all diagrams and figures`)
+    }
     
     return extractedImages
     
