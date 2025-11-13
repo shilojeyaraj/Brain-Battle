@@ -4,18 +4,19 @@ import { authenticateUser } from '@/lib/actions/custom-auth'
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
+    // Treat UI 'email' field as username to preserve layout
     const email = formData.get("email") as string
     const password = formData.get("password") as string
 
     if (!email || !password) {
       return NextResponse.json(
-        { success: false, error: "Email and password are required" },
+        { success: false, error: "Username and password are required" },
         { status: 400 }
       )
     }
 
     try {
-      // Authenticate user with custom auth
+      // Authenticate user with custom auth (using username)
       const result = await authenticateUser(email, password)
       
       if (!result.success) {

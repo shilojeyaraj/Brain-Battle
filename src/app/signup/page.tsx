@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { Sparkles, Mail, Lock, User, ArrowLeft, Loader2, AlertCircle, CheckCircle2 } from "lucide-react"
 import Link from "next/link"
-import { signup } from "@/lib/auth/supabase-auth"
+import { signup } from "@/lib/actions/custom-auth"
 import { useTransition, useEffect, useState, Suspense } from "react"
 import { useSearchParams } from "next/navigation"
 
@@ -82,7 +82,6 @@ function SignupForm() {
                   type="email"
                   placeholder="Enter your email"
                   className="pl-10 h-12 text-lg font-bold cartoon-border bg-card"
-                  required
                 />
               </div>
             </div>

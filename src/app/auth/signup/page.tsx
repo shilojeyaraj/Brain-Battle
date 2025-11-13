@@ -133,7 +133,6 @@ function SignupForm() {
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   placeholder="Enter your email"
-                  required
                 />
               </div>
             </div>
