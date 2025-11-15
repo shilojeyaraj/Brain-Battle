@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useEffect, Suspense, useCallback } from "react"
+import { useState, useEffect, Suspense, useCallback, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Brain, Trophy, Star, Settings, LogOut, User, RotateCw } from "lucide-react"
+import { Brain, Trophy, Star, Settings, LogOut, User, RotateCw, Crown, Sparkles } from "lucide-react"
 import { logout } from "@/lib/actions/custom-auth"
 import { getUserStatsClient, UserProfile } from "@/lib/actions/user-stats-client"
 import { UserProfileModal } from "@/components/ui/user-profile-modal"
@@ -22,6 +22,8 @@ interface DashboardHeaderContentProps {
 function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderContentProps) {
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const menuRef = useRef<HTMLDivElement | null>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
@@ -83,10 +85,19 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
   }, [currentUserId, fetchUserProfile])
 
   const handleAvatarClick = useCallback(() => {
-    if (userProfile) {
-      setIsProfileModalOpen(true)
+    setIsMenuOpen(prev => !prev)
+  }, [])
+
+  useEffect(() => {
+    function onDocClick(e: MouseEvent) {
+      if (!menuRef.current) return
+      if (!menuRef.current.contains(e.target as Node)) {
+        setIsMenuOpen(false)
+      }
     }
-  }, [userProfile])
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [])
   return (
     <header className="border-b-4 border-slate-700/50 bg-gradient-to-br from-slate-800/95 to-slate-900/95 backdrop-blur-sm sticky top-0 z-50 shadow-lg" data-tutorial="dashboard-header">
       <div className="container mx-auto px-4 py-4">
@@ -126,56 +137,67 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
               </div>
             </div>
 
-            <Button 
-              className="bg-card hover:bg-muted rounded-xl cartoon-border cartoon-shadow cartoon-hover text-foreground"
-              onClick={() => {
-                localStorage.removeItem('dashboard_tutorial_completed')
-                window.location.reload()
-              }}
-              title="Restart Tutorial"
-            >
-              <RotateCw className="h-5 w-5 text-foreground" strokeWidth={3} />
-            </Button>
-
-            <Button 
-              className="bg-card hover:bg-muted rounded-xl cartoon-border cartoon-shadow cartoon-hover text-foreground"
-              onClick={() => setIsSettingsOpen(true)}
-              title="Sound & Motion Settings"
-            >
-              <Settings className="h-5 w-5 text-foreground" strokeWidth={3} />
-            </Button>
-
-            <Button 
-              onClick={() => {
-                // Clear localStorage client-side
-                localStorage.removeItem('user')
-                localStorage.removeItem('userId')
-                // Call server action to redirect
-                logout()
-              }}
-              className="bg-card hover:bg-muted rounded-xl cartoon-border cartoon-shadow cartoon-hover text-foreground"
-              title="Logout"
-            >
-              <LogOut className="h-5 w-5 text-foreground" strokeWidth={3} />
-            </Button>
-
-            <button
-              onClick={handleAvatarClick}
-              disabled={isLoading || !currentUserId}
-              className="hover:scale-105 transition-transform duration-200 disabled:opacity-50 disabled:cursor-not-allowed relative"
-            >
-              <Avatar className="h-12 w-12 cartoon-border cartoon-shadow cursor-pointer hover:shadow-lg transition-shadow">
-                <AvatarImage src="/placeholder.svg?height=48&width=48" />
-                <AvatarFallback className="bg-primary text-primary-foreground font-black text-lg">
-                  <User className="h-6 w-6" strokeWidth={3} />
-                </AvatarFallback>
-              </Avatar>
-              {isLoading && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-full">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={handleAvatarClick}
+                disabled={isLoading || !currentUserId}
+                className="hover:scale-105 transition-transform duration-200 disabled:opacity-50 disabled:cursor-not-allowed relative"
+              >
+                <Avatar className="h-12 w-12 cartoon-border cartoon-shadow cursor-pointer hover:shadow-lg transition-shadow">
+                  <AvatarImage src="/placeholder.svg?height=48&width=48" />
+                  <AvatarFallback className="bg-primary text-primary-foreground font-black text-lg">
+                    <User className="h-6 w-6" strokeWidth={3} />
+                  </AvatarFallback>
+                </Avatar>
+                {isLoading && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-full">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                )}
+              </button>
+              {isMenuOpen && (
+                <div className="absolute right-0 mt-2 w-56 bg-card cartoon-border rounded-xl cartoon-shadow p-1 z-50">
+                  <Link
+                    href="/pro"
+                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted rounded-lg text-left"
+                    onClick={() => setIsMenuOpen(false)}
+                    title="Brain Battle Pro"
+                  >
+                    <Crown className="h-4 w-4 text-yellow-500" strokeWidth={3} />
+                    <span className="font-bold text-foreground">Brain Battle Pro</span>
+                  </Link>
+                  <button
+                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted rounded-lg text-left"
+                    onClick={() => { setIsSettingsOpen(true); setIsMenuOpen(false) }}
+                    title="Sound & Motion Settings"
+                  >
+                    <Settings className="h-4 w-4 text-foreground" strokeWidth={3} />
+                    <span className="font-bold text-foreground">Settings</span>
+                  </button>
+                  <button
+                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted rounded-lg text-left"
+                    onClick={() => { localStorage.removeItem('dashboard_tutorial_completed'); window.location.reload() }}
+                    title="Restart Tutorial"
+                  >
+                    <RotateCw className="h-4 w-4 text-foreground" strokeWidth={3} />
+                    <span className="font-bold text-foreground">Restart Tutorial</span>
+                  </button>
+                  <button
+                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted rounded-lg text-left"
+                    onClick={() => {
+                      localStorage.removeItem('user')
+                      localStorage.removeItem('userId')
+                      logout()
+                      setIsMenuOpen(false)
+                    }}
+                    title="Logout"
+                  >
+                    <LogOut className="h-4 w-4 text-foreground" strokeWidth={3} />
+                    <span className="font-bold text-foreground">Logout</span>
+                  </button>
                 </div>
               )}
-            </button>
+            </div>
           </div>
         </div>
       </div>

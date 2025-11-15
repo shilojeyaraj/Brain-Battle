@@ -9,7 +9,6 @@ import { registerUser } from "@/lib/actions/custom-auth"
 import { useEffect, useState, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { motion } from "framer-motion"
-import Image from "next/image"
 
 function SignupForm() {
   const [isPending, setIsPending] = useState(false)

@@ -8,7 +8,7 @@ import bcrypt from "bcryptjs"
 
 export interface User {
   id: string
-  email: string
+  email?: string | null
   username: string
   created_at: string
   updated_at: string
@@ -34,41 +34,38 @@ const isNextRedirectError = (err: unknown): boolean => {
 
 // Register a new user
 export async function registerUser(
-  email: string, 
+  email: string | undefined, 
   password: string, 
   username: string
 ): Promise<AuthResponse> {
   try {
     // Use admin client to bypass RLS for registration
     const supabase = createAdminClient()
-    
-    // Normalize email (trim whitespace and convert to lowercase)
-    const normalizedEmail = email.trim().toLowerCase()
-    console.log('🚀 [AUTH] Starting registration for:', normalizedEmail)
-    
-    // Check if user already exists
-    const { data: existingUser, error: checkError } = await supabase
-      .from('users')
-      .select('id, email, username')
-      .eq('email', normalizedEmail)
-      .single()
-    
-    if (existingUser) {
-      console.log('❌ [AUTH] User already exists with this email:', existingUser)
-      return { success: false, error: 'User already exists with this email' }
+
+    // Normalize optional email (trim and lowercase)
+    const normalizedEmail = (email ?? '').trim().toLowerCase()
+    console.log('🚀 [AUTH] Starting registration - username:', username)
+
+    // If email provided, check if user already exists with that email (optional)
+    if (normalizedEmail) {
+      const { data: existingUser, error: checkError } = await supabase
+        .from('users')
+        .select('id, email, username')
+        .eq('email', normalizedEmail)
+        .single()
+      
+      if (existingUser) {
+        console.log('❌ [AUTH] User already exists with this email:', existingUser)
+        return { success: false, error: 'User already exists with this email' }
+      }
+      
+      if (checkError && checkError.code !== 'PGRST116') {
+        console.error('❌ [AUTH] Error checking existing user by email:', checkError)
+        return { success: false, error: `Database error: ${checkError.message}` }
+      }
     }
-    
-    if (checkError && checkError.code !== 'PGRST116') {
-      console.error('❌ [AUTH] Error checking existing user:', checkError)
-      return { success: false, error: `Database error: ${checkError.message}` }
-    }
-    
-    // PGRST116 means no rows found, which is expected for new users
-    if (checkError && checkError.code === 'PGRST116') {
-      console.log('✅ [AUTH] No existing user found (expected for new registration)')
-    }
-    
-    console.log('✅ [AUTH] No existing user found, proceeding with registration')
+
+    console.log('✅ [AUTH] Proceeding with registration')
     
     // Check if username is taken
     const { data: existingUsername, error: usernameError } = await supabase
@@ -97,22 +94,43 @@ export async function registerUser(
     const passwordHash = await bcrypt.hash(password, saltRounds)
     console.log('🔐 [AUTH] Password hashed successfully')
     
-    // Create user in database
-    const { data: userData, error: userError } = await supabase
-      .from('users')
-      .insert({
-        email: normalizedEmail,
-        username: username,
-        password_hash: passwordHash,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .select()
-      .single()
+    // Create user in database (email optional). Try null first; if NOT NULL constraint, fallback to empty string.
+    let userData: any | null = null
+    let userError: any | null = null
+
+    const attemptInsert = async (emailValue: string | null) => {
+      return await supabase
+        .from('users')
+        .insert({
+          email: emailValue,
+          username: username,
+          password_hash: passwordHash,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single()
+    }
+
+    let attempt = await attemptInsert(normalizedEmail || null)
+    userData = attempt.data
+    userError = attempt.error
+
+    if (userError && userError.code === '23502') {
+      console.warn('⚠️ [AUTH] Email column appears NOT NULL; retrying with empty string')
+      const retry = await attemptInsert(normalizedEmail || '')
+      userData = retry.data
+      userError = retry.error
+    }
     
     if (userError) {
       console.error('❌ [AUTH] User creation failed:', userError)
       return { success: false, error: `Registration failed: ${userError.message}` }
+    }
+    
+    if (!userData) {
+      console.error('❌ [AUTH] No user returned after insert')
+      return { success: false, error: 'Registration failed' }
     }
     
     console.log('✅ [AUTH] User created successfully:', userData.id)
@@ -147,7 +165,7 @@ export async function registerUser(
     
     const user: User = {
       id: userData.id,
-      email: userData.email,
+      email: userData.email ?? null,
       username: userData.username,
       created_at: userData.created_at,
       updated_at: userData.updated_at
@@ -182,41 +200,30 @@ export async function authenticateUser(
       }
     }
     
-    // Normalize email (trim whitespace and convert to lowercase)
-    const normalizedEmail = email.trim().toLowerCase()
-    console.log('🔐 [AUTH] Authenticating user:', normalizedEmail)
+    // Treat the first parameter as username (trim and lowercase for consistency)
+    const normalizedUsername = email.trim().toLowerCase()
+    console.log('🔐 [AUTH] Authenticating user (by username):', normalizedUsername)
     
-    // Get user from database
-    console.log('🔍 [AUTH] Looking for user with email:', normalizedEmail)
-    
-    // First, verify we can query the users table (diagnostic)
-    const { count: userCount } = await supabase
-      .from('users')
-      .select('*', { count: 'exact', head: true })
-    console.log('📊 [AUTH] Total users in database:', userCount)
-    
+    // Get user from database by username
+    console.log('🔍 [AUTH] Looking for user with username:', normalizedUsername)
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('*')
-      .eq('email', normalizedEmail)
+      .eq('username', normalizedUsername)
       .single()
     
     if (userError) {
       console.error('❌ [AUTH] Database error:', userError)
       if (userError.code === 'PGRST116') {
-        console.log('❌ [AUTH] No user found with this email:', normalizedEmail)
-        console.log('💡 [AUTH] This means:')
-        console.log('   - Admin client is working (bypassing RLS)')
-        console.log('   - The user does not exist in the database')
-        console.log('   - Please register first or check the email address')
-        return { success: false, error: 'Invalid email or password' }
+        console.log('❌ [AUTH] No user found with this username')
+        return { success: false, error: 'Invalid username or password' }
       }
       return { success: false, error: `Database error: ${userError.message}` }
     }
     
     if (!userData) {
       console.error('❌ [AUTH] No user data returned')
-      return { success: false, error: 'Invalid email or password' }
+      return { success: false, error: 'Invalid username or password' }
     }
     
     console.log('✅ [AUTH] User found:', userData.username)
@@ -225,7 +232,7 @@ export async function authenticateUser(
     const isValidPassword = await bcrypt.compare(password, userData.password_hash)
     if (!isValidPassword) {
       console.error('❌ [AUTH] Invalid password')
-      return { success: false, error: 'Invalid email or password' }
+      return { success: false, error: 'Invalid username or password' }
     }
     
     // Note: MFA is now handled by Supabase Auth
@@ -243,7 +250,7 @@ export async function authenticateUser(
     
     const user: User = {
       id: userData.id,
-      email: userData.email,
+      email: userData.email ?? null,
       username: userData.username,
       created_at: userData.created_at,
       updated_at: userData.updated_at,
@@ -261,13 +268,13 @@ export async function authenticateUser(
 
 export async function signup(formData: FormData) {
   const username = formData.get("username") as string
-  const email = formData.get("email") as string
+  const email = (formData.get("email") as string) || undefined
   const password = formData.get("password") as string
   const confirmPassword = formData.get("confirmPassword") as string
 
   // Basic validation
-  if (!username || !email || !password || !confirmPassword) {
-    redirect("/signup?error=All fields are required")
+  if (!username || !password || !confirmPassword) {
+    redirect("/signup?error=Username, password and confirm password are required")
   }
 
   if (password !== confirmPassword) {
@@ -282,14 +289,8 @@ export async function signup(formData: FormData) {
     redirect("/signup?error=Username must be at least 3 characters")
   }
 
-  // Basic email validation
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  if (!emailRegex.test(email)) {
-    redirect("/signup?error=Please enter a valid email address")
-  }
-
   // Register user with custom auth
-  console.log("🚀 [SIGNUP] Starting registration process...")
+  console.log("🚀 [SIGNUP] Starting registration process (email optional)...")
   const result = await registerUser(email, password, username)
   
   if (!result.success) {
@@ -310,15 +311,16 @@ export async function signup(formData: FormData) {
 }
 
 export async function login(formData: FormData) {
+  // Treat UI 'email' field as username to preserve layout
   const email = formData.get("email") as string
   const password = formData.get("password") as string
 
   if (!email || !password) {
-    redirect("/login?error=Email and password are required")
+    redirect("/login?error=Username and password are required")
   }
 
   try {
-    // Authenticate user with custom auth
+    // Authenticate user with custom auth (by username)
     const result = await authenticateUser(email, password)
     
     if (!result.success) {

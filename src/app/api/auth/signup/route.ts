@@ -5,14 +5,14 @@ export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
     const username = formData.get("username") as string
-    const email = formData.get("email") as string
+    const email = (formData.get("email") as string) || undefined
     const password = formData.get("password") as string
     const confirmPassword = formData.get("confirmPassword") as string
 
     // Basic validation
-    if (!username || !email || !password || !confirmPassword) {
+    if (!username || !password || !confirmPassword) {
       return NextResponse.json(
-        { success: false, error: "All fields are required" },
+        { success: false, error: "Username, password and confirm password are required" },
         { status: 400 }
       )
     }
@@ -34,15 +34,6 @@ export async function POST(request: NextRequest) {
     if (username.length < 3) {
       return NextResponse.json(
         { success: false, error: "Username must be at least 3 characters" },
-        { status: 400 }
-      )
-    }
-
-    // Basic email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(email)) {
-      return NextResponse.json(
-        { success: false, error: "Please enter a valid email address" },
         { status: 400 }
       )
     }

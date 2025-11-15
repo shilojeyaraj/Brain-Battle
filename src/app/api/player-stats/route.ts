@@ -19,18 +19,78 @@ export async function POST(request: NextRequest) {
     }
 
     // First, verify the user exists in the users table
-    const { data: userExists } = await adminClient
+    let { data: userExists } = await adminClient
       .from('users')
       .select('id')
       .eq('id', user_id)
       .single()
 
+    // If user doesn't exist in users table, try to create them
     if (!userExists) {
-      console.error('❌ [STATS API] User does not exist in users table:', user_id)
-      return NextResponse.json(
-        { error: 'User does not exist. Please register first.' },
-        { status: 404 }
-      )
+      console.log('⚠️ [STATS API] User not found in users table, attempting to create:', user_id)
+      
+      let authUserEmail = ''
+      let authUserCreatedAt: string | null = null
+      
+      // Try to get user from auth.users (Supabase Auth)
+      try {
+        const { data: authUser, error: authError } = await adminClient.auth.admin.getUserById(user_id)
+        
+        if (authUser?.user) {
+          console.log('✅ [STATS API] User found in auth.users')
+          authUserEmail = authUser.user.email || ''
+          authUserCreatedAt = authUser.user.created_at || null
+        } else if (authError) {
+          console.log('⚠️ [STATS API] Could not fetch from auth.users (may be using custom auth):', authError.message)
+        }
+      } catch (error: any) {
+        console.log('⚠️ [STATS API] Error checking auth.users (may be using custom auth):', error.message)
+        // Continue - we'll create user anyway with defaults
+      }
+      
+      // Create user in users table (works for both Supabase Auth and custom auth)
+      const generatedUsername = `user_${user_id.slice(0, 8)}`
+      const { data: newUser, error: createError } = await adminClient
+        .from('users')
+        .insert({
+          id: user_id,
+          email: authUserEmail || '',
+          username: generatedUsername,
+          password_hash: 'supabase_auth', // Placeholder since auth may be handled by Supabase or custom
+          created_at: authUserCreatedAt || new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single()
+      
+      if (createError) {
+        console.error('❌ [STATS API] Failed to create user in users table:', createError)
+        // If it's a unique constraint error, user might have been created between checks
+        if (createError.code === '23505') {
+          console.log('⚠️ [STATS API] User may have been created concurrently, retrying check...')
+          const { data: retryUser } = await adminClient
+            .from('users')
+            .select('id')
+            .eq('id', user_id)
+            .single()
+          if (retryUser) {
+            userExists = retryUser
+          } else {
+            return NextResponse.json(
+              { error: 'Failed to create user. Please try again.' },
+              { status: 500 }
+            )
+          }
+        } else {
+          return NextResponse.json(
+            { error: `Failed to create user: ${createError.message}` },
+            { status: 500 }
+          )
+        }
+      } else {
+        userExists = newUser
+        console.log('✅ [STATS API] User created in users table successfully')
+      }
     }
 
     // Check if stats exist
