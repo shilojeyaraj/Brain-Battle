@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { createClient } from '@/lib/supabase/server'
+import { checkQuizQuestionLimit } from '@/lib/subscription/limits'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -10,7 +11,7 @@ export async function POST(request: NextRequest) {
   try {
     // Check if this is a JSON request (multiplayer) or form data (singleplayer)
     const contentType = request.headers.get('content-type')
-    let topic, difficulty, totalQuestions, sessionId, instructions, notes, studyContextStr
+    let topic, difficulty, totalQuestions, sessionId, instructions, notes, studyContextStr, userId
     let files: File[] = []
     let studyContext = null
 
@@ -19,8 +20,9 @@ export async function POST(request: NextRequest) {
       const body = await request.json()
       topic = body.topic
       difficulty = body.difficulty
-      totalQuestions = body.totalQuestions
+      totalQuestions = body.totalQuestions || 10
       sessionId = body.sessionId
+      userId = body.userId
       notes = body.studyNotes ? JSON.stringify(body.studyNotes) : body.notes
       studyContextStr = body.studyContext ? JSON.stringify(body.studyContext) : null
       files = []
@@ -39,6 +41,8 @@ export async function POST(request: NextRequest) {
       files = form.getAll("files") as File[]
       topic = form.get("topic") as string
       difficulty = form.get("difficulty") as string
+      totalQuestions = parseInt(form.get("totalQuestions") as string) || 10
+      userId = form.get("userId") as string
       instructions = form.get("instructions") as string
       notes = form.get("notes") as string
       studyContextStr = form.get("studyContext") as string
@@ -68,6 +72,23 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'Topic and difficulty are required' },
         { status: 400 }
       )
+    }
+
+    // Check subscription limits for quiz questions
+    if (userId && totalQuestions) {
+      const questionLimit = await checkQuizQuestionLimit(userId, totalQuestions)
+      if (!questionLimit.allowed) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: `Free users are limited to ${questionLimit.limit} questions per quiz. Upgrade to Pro for unlimited questions.`,
+            requiresPro: questionLimit.requiresPro,
+            limit: questionLimit.limit,
+            requested: totalQuestions
+          },
+          { status: 403 }
+        )
+      }
     }
 
     // Semantic search is optional and only useful if searching previously uploaded documents

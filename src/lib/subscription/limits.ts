@@ -1,0 +1,199 @@
+/**
+ * Subscription Limits and Feature Gating
+ * 
+ * This module provides utilities for checking subscription limits and feature access.
+ * It enforces Free vs Pro tier restrictions throughout the application.
+ * 
+ * @module subscription/limits
+ */
+
+import { hasProSubscription, getUserSubscription } from '@/lib/stripe/utils'
+import { createAdminClient } from '@/lib/supabase/server-admin'
+import type { SubscriptionInfo } from '@/lib/stripe/utils'
+
+/**
+ * Feature limits based on subscription tier
+ */
+export interface FeatureLimits {
+  maxDocumentsPerMonth: number
+  maxQuestionsPerQuiz: number
+  maxPlayersPerRoom: number
+  canExport: boolean
+  hasPriorityProcessing: boolean
+  hasAdvancedAnalytics: boolean
+  hasCustomThemes: boolean
+  hasAdvancedStudyNotes: boolean
+}
+
+/**
+ * Document limit check result
+ */
+export interface DocumentLimitResult {
+  allowed: boolean
+  count: number
+  limit: number
+  remaining: number
+}
+
+/**
+ * Room size limit check result
+ */
+export interface RoomSizeLimitResult {
+  allowed: boolean
+  requestedSize: number
+  maxAllowed: number
+  requiresPro: boolean
+}
+
+/**
+ * Get feature limits for a user based on their subscription tier
+ * 
+ * @param userId - The user's ID
+ * @returns Feature limits object
+ */
+export async function getUserLimits(userId: string): Promise<FeatureLimits> {
+  const isPro = await hasProSubscription(userId)
+  
+  if (isPro) {
+    return {
+      maxDocumentsPerMonth: Infinity,
+      maxQuestionsPerQuiz: Infinity,
+      maxPlayersPerRoom: 20,
+      canExport: true,
+      hasPriorityProcessing: true,
+      hasAdvancedAnalytics: true,
+      hasCustomThemes: true,
+      hasAdvancedStudyNotes: true,
+    }
+  }
+  
+  // Free tier limits
+  return {
+    maxDocumentsPerMonth: 5,
+    maxQuestionsPerQuiz: 10,
+    maxPlayersPerRoom: 4,
+    canExport: false,
+    hasPriorityProcessing: false,
+    hasAdvancedAnalytics: false,
+    hasCustomThemes: false,
+    hasAdvancedStudyNotes: false,
+  }
+}
+
+/**
+ * Check if user has reached their document upload limit for the current month
+ * 
+ * @param userId - The user's ID
+ * @returns Document limit check result
+ */
+export async function checkDocumentLimit(userId: string): Promise<DocumentLimitResult> {
+  const limits = await getUserLimits(userId)
+  
+  // Pro users have unlimited documents
+  if (limits.maxDocumentsPerMonth === Infinity) {
+    return { 
+      allowed: true, 
+      count: 0, 
+      limit: Infinity,
+      remaining: Infinity
+    }
+  }
+  
+  const adminClient = createAdminClient()
+  const startOfMonth = new Date()
+  startOfMonth.setDate(1)
+  startOfMonth.setHours(0, 0, 0, 0)
+  
+  const { count, error } = await adminClient
+    .from('documents')
+    .select('*', { count: 'exact', head: true })
+    .eq('uploaded_by', userId)
+    .gte('created_at', startOfMonth.toISOString())
+  
+  if (error) {
+    console.error('❌ [LIMITS] Error checking document limit:', error)
+    // Fail open - allow upload if we can't check
+    return {
+      allowed: true,
+      count: 0,
+      limit: limits.maxDocumentsPerMonth,
+      remaining: limits.maxDocumentsPerMonth
+    }
+  }
+  
+  const documentCount = count || 0
+  const remaining = Math.max(0, limits.maxDocumentsPerMonth - documentCount)
+  
+  return {
+    allowed: documentCount < limits.maxDocumentsPerMonth,
+    count: documentCount,
+    limit: limits.maxDocumentsPerMonth,
+    remaining
+  }
+}
+
+/**
+ * Check if user can create a room with the requested number of players
+ * 
+ * @param userId - The user's ID
+ * @param requestedSize - The requested max players for the room
+ * @returns Room size limit check result
+ */
+export async function checkRoomSizeLimit(
+  userId: string, 
+  requestedSize: number
+): Promise<RoomSizeLimitResult> {
+  const limits = await getUserLimits(userId)
+  const maxAllowed = limits.maxPlayersPerRoom
+  
+  return {
+    allowed: requestedSize <= maxAllowed,
+    requestedSize,
+    maxAllowed,
+    requiresPro: requestedSize > 4 && limits.maxPlayersPerRoom === 4
+  }
+}
+
+/**
+ * Check if user can generate a quiz with the requested number of questions
+ * 
+ * @param userId - The user's ID
+ * @param requestedQuestions - The requested number of questions
+ * @returns Whether the user can generate the quiz
+ */
+export async function checkQuizQuestionLimit(
+  userId: string,
+  requestedQuestions: number
+): Promise<{ allowed: boolean; limit: number; requiresPro: boolean }> {
+  const limits = await getUserLimits(userId)
+  const maxAllowed = limits.maxQuestionsPerQuiz
+  
+  return {
+    allowed: requestedQuestions <= maxAllowed,
+    limit: maxAllowed,
+    requiresPro: requestedQuestions > 10 && limits.maxQuestionsPerQuiz === 10
+  }
+}
+
+/**
+ * Get comprehensive subscription status and limits for a user
+ * 
+ * @param userId - The user's ID
+ * @returns Subscription info with limits
+ */
+export async function getSubscriptionStatusWithLimits(userId: string): Promise<{
+  subscription: SubscriptionInfo | null
+  limits: FeatureLimits
+  isPro: boolean
+}> {
+  const subscription = await getUserSubscription(userId)
+  const limits = await getUserLimits(userId)
+  const isPro = subscription?.isActive && subscription.tier === 'pro'
+  
+  return {
+    subscription,
+    limits,
+    isPro
+  }
+}
+

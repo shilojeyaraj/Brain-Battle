@@ -1,51 +1,25 @@
 "use client"
 
 import { createClient } from "@/lib/supabase/client"
-import { User } from "./supabase-auth"
 
-/**
- * Get current user session using Supabase Auth
- * Replaces the old localStorage-based session
- */
-export async function getCurrentUser(): Promise<User | null> {
-  try {
-    const supabase = createClient()
-    const { data: { user }, error } = await supabase.auth.getUser()
-
-    if (error || !user) {
-      return null
-    }
-
-    // Get profile from profiles table
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('user_id', user.id)
-      .single()
-
-    return {
-      id: user.id,
-      email: user.email!,
-      username: profile?.username || user.user_metadata?.username || 'user',
-      avatar_url: profile?.avatar_url,
-      created_at: profile?.created_at || user.created_at,
-      updated_at: profile?.updated_at || new Date().toISOString(),
-      last_login: profile?.last_login
-    }
-  } catch (error) {
-    console.error('Error getting current user:', error)
-    return null
-  }
+export interface User {
+  id: string
+  email: string
+  username: string
+  avatar_url?: string
+  created_at: string
+  updated_at: string
+  last_login?: string
 }
 
 /**
- * Get current user ID
+ * Get current user ID from localStorage (client-side)
  */
 export async function getCurrentUserId(): Promise<string | null> {
   try {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    return user?.id || null
+    if (typeof window === 'undefined') return null
+    const userId = localStorage.getItem('userId')
+    return userId || null
   } catch (error) {
     console.error('Error getting current user ID:', error)
     return null
@@ -53,25 +27,30 @@ export async function getCurrentUserId(): Promise<string | null> {
 }
 
 /**
- * Check if user is logged in
+ * Check if user is logged in (client-side)
  */
 export async function isUserLoggedIn(): Promise<boolean> {
   try {
-    const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    return !!user
+    if (typeof window === 'undefined') return false
+    const userId = localStorage.getItem('userId')
+    return !!userId
   } catch (error) {
     return false
   }
 }
 
 /**
- * Sign out user
+ * Sign out user (client-side)
  */
 export async function signOut() {
-  const supabase = createClient()
-  await supabase.auth.signOut()
-  // Redirect handled by component
+  try {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('userId')
+      window.location.href = '/'
+    }
+  } catch (error) {
+    console.error('Error signing out:', error)
+  }
 }
 
 /**

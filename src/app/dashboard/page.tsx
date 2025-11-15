@@ -56,18 +56,28 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <Suspense fallback={null}>
-        <DashboardTutorial />
-      </Suspense>
-      <DashboardHeader onToggleStats={toggleStats} showStats={showStats} />
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
+        <div
+          className="absolute -bottom-40 -left-40 w-80 h-80 bg-orange-500/10 rounded-full blur-3xl animate-float"
+          style={{ animationDelay: "1s" }}
+        />
+      </div>
 
-      <main className="container mx-auto px-6 py-12">
+      <div className="relative z-10">
+        <Suspense fallback={null}>
+          <DashboardTutorial />
+        </Suspense>
+        <DashboardHeader onToggleStats={toggleStats} showStats={showStats} />
+
+        <main className="container mx-auto px-6 py-12">
         {/* Stats Toggle Button */}
         <div className="flex items-center justify-between mb-4">
           <Button
             onClick={toggleStats}
-            className="bg-chart-5 hover:bg-chart-5/90 text-foreground font-black cartoon-border cartoon-shadow cartoon-hover"
+            className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black border-2 border-orange-400"
           >
             <BarChart3 className="h-5 w-5 mr-2" strokeWidth={3} />
             {showStats ? 'Hide' : 'Show'} Stats
@@ -120,7 +130,8 @@ export default function DashboardPage() {
             </Suspense>
           </div>
         </div>
-      </main>
+        </main>
+      </div>
     </div>
   )
 }

@@ -81,13 +81,13 @@ export function LobbySection() {
 
   if (!mounted) {
     return (
-      <Card className="p-6 bg-card cartoon-border cartoon-shadow">
+      <Card className="p-6 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg">
         <div className="animate-pulse">
-          <div className="h-8 bg-muted rounded mb-4"></div>
-          <div className="h-10 bg-muted rounded mb-6"></div>
+          <div className="h-8 bg-slate-700/50 rounded mb-4"></div>
+          <div className="h-10 bg-slate-700/50 rounded mb-6"></div>
           <div className="space-y-4">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-20 bg-muted rounded"></div>
+              <div key={i} className="h-20 bg-slate-700/50 rounded"></div>
             ))}
           </div>
         </div>
@@ -96,13 +96,13 @@ export function LobbySection() {
   }
 
   return (
-    <Card className="p-8 bg-card cartoon-border cartoon-shadow" data-tutorial="lobby-section">
+    <Card className="p-8 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg" data-tutorial="lobby-section">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h2 className="text-4xl font-black text-foreground mb-2" style={{ fontFamily: "var(--font-display)" }}>
+          <h2 className="text-4xl font-black text-white mb-2" style={{ fontFamily: "var(--font-display)" }}>
             Battle Lobbies
           </h2>
-          <p className="text-base text-muted-foreground font-bold">Join or create a study battle</p>
+          <p className="text-base text-blue-100/70 font-bold">Join or create a study battle</p>
         </div>
         <div className="flex gap-4">
           <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
@@ -142,66 +142,44 @@ export function LobbySection() {
       </div>
 
       <div className="relative mb-8">
-        <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-6 w-6 text-muted-foreground" strokeWidth={3} />
+        <Search className="absolute left-5 top-1/2 -translate-y-1/2 h-6 w-6 text-blue-100/70" strokeWidth={3} />
         <Input
           placeholder="Search lobbies..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-14 h-14 text-xl font-bold cartoon-border bg-card"
+          className="pl-14 h-14 text-xl font-bold border-4 border-slate-600/50 bg-slate-700/50 text-white placeholder:text-blue-100/50"
         />
       </div>
 
       <div className="space-y-6">
         {activeLobbies.length === 0 ? (
           <div className="text-center py-16">
-            <div className="w-20 h-20 rounded-xl bg-muted flex items-center justify-center mx-auto mb-6 cartoon-border">
-              <Users className="w-10 h-10 text-muted-foreground" strokeWidth={3} />
+            <div className="w-20 h-20 rounded-xl bg-slate-700/50 border-4 border-slate-600/50 flex items-center justify-center mx-auto mb-6">
+              <Users className="w-10 h-10 text-blue-300/50" strokeWidth={3} />
             </div>
-                <h3 className="text-2xl font-black text-foreground mb-3">No active lobbies!</h3>
-                <p className="text-lg text-muted-foreground font-bold mb-8">Be the first to create a study battle and invite your friends.</p>
-                <div className="flex gap-4 justify-center">
-                  <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-                    <Button 
-                      onClick={handleJoinLobby}
-                      className="bg-secondary hover:bg-secondary/90 text-secondary-foreground font-black text-xl px-8 py-4 cartoon-border cartoon-shadow cartoon-hover cursor-pointer"
-                      type="button"
-                    >
-                      <LogIn className="h-6 w-6 mr-3" strokeWidth={3} />
-                      Join Lobby
-                    </Button>
-                  </motion.div>
-                  <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-                    <Button 
-                      onClick={handleCreateLobby}
-                      className="bg-primary hover:bg-primary/90 text-primary-foreground font-black text-xl px-8 py-4 cartoon-border cartoon-shadow cartoon-hover cursor-pointer"
-                      type="button"
-                    >
-                      <Plus className="h-6 w-6 mr-3" strokeWidth={3} />
-                      Create First Lobby
-                    </Button>
-                  </motion.div>
-                </div>
+            <h3 className="text-2xl font-black text-white mb-3">No active lobbies!</h3>
+            <p className="text-lg text-blue-100/70 font-bold">Be the first to create a study battle and invite your friends.</p>
           </div>
         ) : (
           activeLobbies.map((lobby) => (
           <div
             key={lobby.id}
-            className="p-6 rounded-xl bg-card border-4 border-border hover:border-primary transition-all duration-300 cartoon-hover group"
+            className="p-6 rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 hover:border-blue-400/50 transition-all duration-300 shadow-lg group"
           >
             <div className="flex items-start justify-between mb-4">
               <div className="flex-1">
                 <div className="flex items-center gap-3 mb-3">
-                  <h3 className="font-black text-foreground text-xl group-hover:text-primary transition-colors">
+                  <h3 className="font-black text-white text-xl group-hover:text-blue-300 transition-colors">
                     {lobby.name}
                   </h3>
                   {lobby.isPrivate ? (
-                    <Lock className="h-5 w-5 text-muted-foreground" strokeWidth={3} />
+                    <Lock className="h-5 w-5 text-blue-100/70" strokeWidth={3} />
                   ) : (
-                    <Globe className="h-5 w-5 text-accent" strokeWidth={3} />
+                    <Globe className="h-5 w-5 text-orange-400" strokeWidth={3} />
                   )}
                 </div>
-                <p className="text-sm text-muted-foreground font-bold">
-                  Hosted by <span className="text-foreground font-black">{lobby.host}</span>
+                <p className="text-sm text-blue-100/70 font-bold">
+                  Hosted by <span className="text-white font-black">{lobby.host}</span>
                 </p>
               </div>
               <Button
@@ -227,9 +205,9 @@ export function LobbySection() {
               >
                 {lobby.difficulty}
               </Badge>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground ml-auto">
+              <div className="flex items-center gap-2 text-sm text-blue-100/70 ml-auto">
                 <Users className="h-5 w-5" strokeWidth={3} />
-                <span className="font-black text-foreground">
+                <span className="font-black text-white">
                   {lobby.players}/{lobby.maxPlayers}
                 </span>
               </div>

@@ -66,10 +66,13 @@ export default function StudyNotesPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground font-bold">Loading study notes...</p>
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 flex items-center justify-center">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
+        </div>
+        <div className="relative z-10 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400 mx-auto mb-4"></div>
+          <p className="text-blue-100/70 font-bold">Loading study notes...</p>
         </div>
       </div>
     )
@@ -77,24 +80,27 @@ export default function StudyNotesPage() {
 
   if (!notes) {
     return (
-      <div className="min-h-screen bg-background p-6">
-        <div className="max-w-2xl mx-auto text-center">
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
+        </div>
+        <div className="relative z-10 max-w-2xl mx-auto text-center">
           <div className="mb-8">
             <Link href="/singleplayer">
-              <Button variant="outline" className="cartoon-border cartoon-shadow mb-4">
+              <Button variant="outline" className="border-2 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70 mb-4">
                 <ArrowLeft className="h-4 w-4 mr-2" strokeWidth={3} />
                 Back to Setup
               </Button>
             </Link>
           </div>
           
-          <div className="p-8 rounded-xl bg-card cartoon-border cartoon-shadow">
-            <h1 className="text-2xl font-black text-foreground mb-4">No Study Notes Found</h1>
-            <p className="text-muted-foreground font-bold mb-6">
+          <div className="p-8 rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg">
+            <h1 className="text-2xl font-black text-white mb-4">No Study Notes Found</h1>
+            <p className="text-blue-100/70 font-bold mb-6">
               It looks like you haven't generated study notes yet. Please go back and upload a document to create study notes.
             </p>
             <Link href="/singleplayer">
-              <Button className="bg-primary hover:bg-primary/90 text-primary-foreground font-black cartoon-border cartoon-shadow cartoon-hover">
+              <Button className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-black border-2 border-blue-400">
                 Create Study Notes
               </Button>
             </Link>
@@ -105,11 +111,19 @@ export default function StudyNotesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="p-6">
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
+        <div
+          className="absolute -bottom-40 -left-40 w-80 h-80 bg-orange-500/10 rounded-full blur-3xl animate-float"
+          style={{ animationDelay: "1s" }}
+        />
+      </div>
+      <div className="relative z-10 p-6">
         <div className="mb-6">
           <Link href="/singleplayer">
-            <Button variant="outline" className="cartoon-border cartoon-shadow">
+            <Button variant="outline" className="border-2 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70">
               <ArrowLeft className="h-4 w-4 mr-2" strokeWidth={3} />
               Back to Setup
             </Button>

@@ -30,18 +30,16 @@ export async function getUserStatsClient(userId: string): Promise<{ success: boo
   try {
     const supabase = createClient()
     
-    // Get authenticated user first (for fallback data)
-    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
-    
-    if (authError || !authUser || authUser.id !== userId) {
-      console.error('Error getting auth user:', authError)
-      return { success: false, error: 'User not authenticated' }
+    // Validate userId is provided
+    if (!userId) {
+      console.error('Error: userId is required')
+      return { success: false, error: 'User ID is required' }
     }
     
-    // Get user profile from profiles table (after Supabase Auth migration)
+    // Get user profile from profiles table (profiles table doesn't have email column)
     const { data: profileData, error: profileError } = await supabase
       .from('profiles')
-      .select('user_id, username, email, created_at, last_login')
+      .select('user_id, username, created_at, last_login')
       .eq('user_id', userId)
       .single()
     
@@ -62,68 +60,41 @@ export async function getUserStatsClient(userId: string): Promise<{ success: boo
     
     let finalProfileData = profileData
     
-    // If profile doesn't exist, create it
-    if (profileNotFound && authUser) {
+    // If profile doesn't exist, create it via API route (uses admin client to bypass RLS)
+    if (profileNotFound) {
       console.log('📝 [USER STATS] Profile not found, creating one for user:', userId)
       
-      const username = authUser.user_metadata?.username || authUser.email?.split('@')[0] || 'user'
+      // Generate a default username from userId (first 8 chars or "user" + timestamp)
+      const username = `user_${userId.slice(0, 8)}`
       
-      // Try to create profile - handle potential errors
-      const { data: newProfile, error: createError } = await supabase
-        .from('profiles')
-        .insert({
-          user_id: userId,
-          username: username,
-          email: authUser.email || null,
-          created_at: authUser.created_at || new Date().toISOString(),
-          updated_at: new Date().toISOString()
+      // Use API route to create profile (bypasses RLS)
+      try {
+        const response = await fetch('/api/user-profile', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: userId,
+            username: username
+            // Note: profiles table doesn't have email column
+          })
         })
-        .select('user_id, username, email, created_at, last_login')
-        .single()
-      
-      if (createError) {
-        // Log detailed error information
-        const errorDetails = {
-          code: createError.code,
-          message: createError.message,
-          details: createError.details,
-          hint: createError.hint,
-          errorKeys: Object.keys(createError),
-          fullError: createError
-        }
-        console.error('❌ [USER STATS] Error creating profile:', errorDetails)
         
-        // If it's a unique constraint violation (username already taken), try with a different username
-        if (createError.code === '23505' || createError.message?.includes('unique') || createError.message?.includes('duplicate')) {
-          console.log('🔄 [USER STATS] Username conflict, trying with timestamp suffix')
-          const uniqueUsername = `${username}_${Date.now().toString().slice(-6)}`
-          
-          const { data: retryProfile, error: retryError } = await supabase
-            .from('profiles')
-            .insert({
-              user_id: userId,
-              username: uniqueUsername,
-              email: authUser.email || null,
-              created_at: authUser.created_at || new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            })
-            .select('user_id, username, email, created_at, last_login')
-            .single()
-          
-          if (retryError) {
-            console.error('❌ [USER STATS] Retry also failed:', retryError)
-            // Continue with auth user data as fallback
-          } else {
-            console.log('✅ [USER STATS] Profile created with unique username')
-            finalProfileData = retryProfile
+        if (response.ok) {
+          const result = await response.json()
+          if (result.success && result.data) {
+            console.log('✅ [USER STATS] Profile created successfully via API')
+            finalProfileData = {
+              user_id: result.data.user_id,
+              username: result.data.username,
+              created_at: result.data.created_at,
+              last_login: result.data.last_login
+            }
           }
         } else {
-          // For other errors (like RLS), continue with auth user data as fallback
-          console.log('⚠️ [USER STATS] Profile creation failed, using auth user data as fallback')
+          console.error('❌ [USER STATS] Failed to create profile via API:', await response.text())
         }
-      } else {
-        console.log('✅ [USER STATS] Profile created successfully')
-        finalProfileData = newProfile
+      } catch (apiError) {
+        console.error('❌ [USER STATS] Error calling profile API:', apiError)
       }
     } else if (hasProfileError && !isEmptyError && !isNotFoundError) {
       // Real error (not just "not found" or empty) - only log meaningful errors
@@ -134,18 +105,19 @@ export async function getUserStatsClient(userId: string): Promise<{ success: boo
       // Continue with auth user data as fallback
     }
     
-    // Use profile data if available, otherwise use auth user data
+    // Use profile data if available, otherwise create default user data
+    // Note: profiles table doesn't store email, get it from users table if needed
     const userData = finalProfileData ? {
       id: finalProfileData.user_id,
-      username: finalProfileData.username || 'user',
-      email: finalProfileData.email || authUser.email || '',
-      created_at: finalProfileData.created_at || authUser.created_at || new Date().toISOString(),
+      username: finalProfileData.username || `user_${userId.slice(0, 8)}`,
+      email: '', // Email is stored in users table, not profiles
+      created_at: finalProfileData.created_at || new Date().toISOString(),
       last_login: finalProfileData.last_login || null
     } : {
-      id: authUser.id,
-      username: authUser.user_metadata?.username || authUser.email?.split('@')[0] || 'user',
-      email: authUser.email || '',
-      created_at: authUser.created_at || new Date().toISOString(),
+      id: userId,
+      username: `user_${userId.slice(0, 8)}`,
+      email: '', // Email is stored in users table, not profiles
+      created_at: new Date().toISOString(),
       last_login: null
     }
     
@@ -157,38 +129,49 @@ export async function getUserStatsClient(userId: string): Promise<{ success: boo
       .single()
     
     if (statsError || !statsData) {
-      // Create default stats if none exist
-      const { data: newStats, error: createError } = await supabase
-        .from('player_stats')
-        .insert({
-          user_id: userId,
-          level: 1,
-          xp: 0,
-          total_wins: 0,
-          total_losses: 0,
-          total_games: 0,
-          win_streak: 0,
-          best_streak: 0,
-          total_questions_answered: 0,
-          correct_answers: 0,
-          accuracy: 0.00,
-          average_response_time: 0.00,
-          favorite_subject: null
+      // Create default stats if none exist via API route (bypasses RLS)
+      try {
+        const response = await fetch('/api/player-stats', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: userId,
+            stats: {
+              level: 1,
+              xp: 0,
+              total_wins: 0,
+              total_losses: 0,
+              total_games: 0,
+              win_streak: 0,
+              best_streak: 0,
+              total_questions_answered: 0,
+              correct_answers: 0,
+              accuracy: 0.00,
+              average_response_time: 0.00,
+              favorite_subject: null
+            }
+          })
         })
-        .select()
-        .single()
-      
-      if (createError || !newStats) {
-        console.error('Error creating stats:', createError)
-        return { success: false, error: 'Failed to create user stats' }
-      }
-      
-      return {
-        success: true,
-        data: {
-          ...userData,
-          stats: newStats
+        
+        if (response.ok) {
+          const result = await response.json()
+          if (result.success && result.data) {
+            console.log('✅ [USER STATS] Stats created successfully via API')
+            return {
+              success: true,
+              data: {
+                ...userData,
+                stats: result.data
+              }
+            }
+          }
         }
+        
+        console.error('❌ [USER STATS] Failed to create stats via API')
+        return { success: false, error: 'Failed to create user stats' }
+      } catch (apiError) {
+        console.error('❌ [USER STATS] Error calling stats API:', apiError)
+        return { success: false, error: 'Failed to create user stats' }
       }
     }
     

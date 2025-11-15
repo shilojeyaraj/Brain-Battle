@@ -26,6 +26,10 @@ dist/
 .idea/
 *.swp
 *.swo
+# Cursor MCP config (uncomment if you add sensitive API keys)
+# .cursor/mcp.json
+# Cursor memory storage
+.cursor/memory/
 
 # OS
 .DS_Store

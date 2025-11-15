@@ -12,6 +12,7 @@ import { UserProfileModal } from "@/components/ui/user-profile-modal"
 import { getCurrentUserId, setUserSession } from "@/lib/auth/session"
 import Link from "next/link"
 import { SettingsModal } from "@/components/ui/settings-modal"
+import Image from "next/image"
 
 interface DashboardHeaderContentProps {
   onToggleStats?: () => void
@@ -87,22 +88,26 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
     }
   }, [userProfile])
   return (
-    <header className="cartoon-border border-b bg-card sticky top-0 z-50 cartoon-shadow" data-tutorial="dashboard-header">
+    <header className="border-b-4 border-slate-700/50 bg-gradient-to-br from-slate-800/95 to-slate-900/95 backdrop-blur-sm sticky top-0 z-50 shadow-lg" data-tutorial="dashboard-header">
       <div className="container mx-auto px-4 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-14 h-14 bg-primary rounded-2xl flex items-center justify-center cartoon-border cartoon-shadow">
-                <Brain className="w-8 h-8 text-primary-foreground" strokeWidth={3} />
-              </div>
+              <Image 
+                src="/brain-battle-logo.png" 
+                alt="Brain Battle Logo" 
+                width={56} 
+                height={56} 
+                className="w-14 h-14 object-contain"
+              />
               <h1
-                className="text-4xl font-black tracking-tight text-foreground"
+                className="text-4xl font-black tracking-tight bg-gradient-to-r from-blue-300 to-orange-400 bg-clip-text text-transparent"
                 style={{ fontFamily: "var(--font-display)" }}
               >
-                Brain<span className="text-primary">Battle</span>
+                BRAIN BATTLE
               </h1>
             </div>
-            <Badge className="cartoon-border bg-accent text-accent-foreground font-black text-xs px-3 py-1 cartoon-shadow">
+            <Badge className="border-2 border-orange-400/50 bg-orange-500/20 text-orange-300 font-black text-xs px-3 py-1">
               DASHBOARD
             </Badge>
           </div>
@@ -203,9 +208,13 @@ export function DashboardHeader({ onToggleStats, showStats }: DashboardHeaderPro
         <div className="container mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-primary flex items-center justify-center">
-                <Brain className="w-6 h-6 text-primary-foreground" strokeWidth={3} />
-              </div>
+              <Image 
+                src="/brain-battle-logo.png" 
+                alt="Brain Battle Logo" 
+                width={48} 
+                height={48} 
+                className="w-12 h-12 object-contain"
+              />
               <div>
                 <h1 className="text-2xl font-black text-foreground">Brain Battle</h1>
                 <p className="text-sm text-muted-foreground font-bold">Loading...</p>

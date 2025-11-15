@@ -11,6 +11,7 @@ import { generateQuizQuestions, extractTextFromFile } from "@/lib/actions/quiz-g
 import { StudyNotesViewer } from "@/components/study-notes/study-notes-viewer"
 import { StudyContextChatbot } from "@/components/study-assistant/study-context-chatbot"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
+import { motion } from "framer-motion"
 
 export default function SingleplayerPage() {
   const [step, setStep] = useState(1)
@@ -257,14 +258,28 @@ export default function SingleplayerPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-5xl mx-auto">
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
+        <div
+          className="absolute -bottom-40 -left-40 w-80 h-80 bg-orange-500/10 rounded-full blur-3xl animate-float"
+          style={{ animationDelay: "1s" }}
+        />
+      </div>
+
+      <div className="relative z-10 max-w-5xl mx-auto">
         {/* Header */}
-        <div className="relative mb-8">
+        <motion.div
+          className="relative mb-8"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
           {/* Back button in top right corner */}
           <div className="absolute right-0 top-0">
             <Link href="/dashboard">
-              <Button className="bg-chart-5 hover:bg-chart-5/90 text-foreground font-black cartoon-border cartoon-shadow cartoon-hover">
+              <Button className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black border-2 border-orange-400">
                 <ArrowLeft className="h-4 w-4 mr-2" strokeWidth={3} />
                 Back to Dashboard
               </Button>
@@ -272,39 +287,47 @@ export default function SingleplayerPage() {
           </div>
           {/* Title and description centered */}
           <div className="text-center">
-            <h1 className="text-4xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
+            <h1 className="text-4xl font-black bg-gradient-to-r from-blue-300 to-orange-400 bg-clip-text text-transparent">
               Singleplayer Battle
             </h1>
-            <p className="text-muted-foreground font-bold">Test your knowledge with AI-generated questions</p>
+            <p className="text-blue-100/70 font-bold">Test your knowledge with AI-generated questions</p>
           </div>
-        </div>
+        </motion.div>
 
         {/* Progress Steps */}
         <div className="flex items-center justify-center mb-8">
           <div className="flex items-center gap-4">
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-full cartoon-border ${
-              step >= 1 ? "bg-primary text-primary-foreground" : "bg-card"
+            <div className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${
+              step >= 1 
+                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white border-blue-400" 
+                : "bg-gradient-to-br from-slate-800 to-slate-900 text-blue-100/70 border-slate-600/50"
             }`}>
               <Upload className="h-5 w-5" strokeWidth={3} />
               <span className="font-black">1. Upload</span>
             </div>
-            <div className="w-8 h-1 bg-border rounded"></div>
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-full cartoon-border ${
-              step >= 2 ? "bg-primary text-primary-foreground" : "bg-card"
+            <div className="w-8 h-1 bg-slate-700/50 rounded"></div>
+            <div className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${
+              step >= 2 
+                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white border-blue-400" 
+                : "bg-gradient-to-br from-slate-800 to-slate-900 text-blue-100/70 border-slate-600/50"
             }`}>
               <BookOpen className="h-5 w-5" strokeWidth={3} />
               <span className="font-black">2. Topic</span>
             </div>
-            <div className="w-8 h-1 bg-border rounded"></div>
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-full cartoon-border ${
-              step >= 3 ? "bg-primary text-primary-foreground" : "bg-card"
+            <div className="w-8 h-1 bg-slate-700/50 rounded"></div>
+            <div className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${
+              step >= 3 
+                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white border-blue-400" 
+                : "bg-gradient-to-br from-slate-800 to-slate-900 text-blue-100/70 border-slate-600/50"
             }`}>
               <Brain className="h-5 w-5" strokeWidth={3} />
               <span className="font-black">3. Notes</span>
             </div>
-            <div className="w-8 h-1 bg-border rounded"></div>
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-full cartoon-border ${
-              step >= 4 ? "bg-primary text-primary-foreground" : "bg-card"
+            <div className="w-8 h-1 bg-slate-700/50 rounded"></div>
+            <div className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${
+              step >= 4 
+                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white border-blue-400" 
+                : "bg-gradient-to-br from-slate-800 to-slate-900 text-blue-100/70 border-slate-600/50"
             }`}>
               <Zap className="h-5 w-5" strokeWidth={3} />
               <span className="font-black">4. Battle</span>
@@ -315,8 +338,8 @@ export default function SingleplayerPage() {
         {/* Step 1: Document Upload */}
         {step === 1 && (
           <Card 
-            className={`p-8 bg-card cartoon-border cartoon-shadow transition-all duration-200 hover:shadow-lg ${
-              isDragOver ? 'border-primary bg-primary/5 scale-[1.02]' : ''
+            className={`p-8 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg transition-all duration-200 hover:shadow-xl ${
+              isDragOver ? 'border-blue-400 bg-blue-500/10 scale-[1.02]' : ''
             }`}
             onDragOver={handleDragOver}
             onDragEnter={handleDragEnter}
@@ -324,31 +347,31 @@ export default function SingleplayerPage() {
             onDrop={handleDrop}
           >
             <div className="text-center mb-8">
-              <div className="w-16 h-16 rounded-xl bg-primary flex items-center justify-center mx-auto mb-4 cartoon-border cartoon-shadow">
-                <Upload className="w-8 h-8 text-primary-foreground" strokeWidth={3} />
+              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center mx-auto mb-4 border-2 border-blue-400">
+                <Upload className="w-8 h-8 text-white" strokeWidth={3} />
               </div>
-              <h2 className="text-3xl font-black text-foreground mb-2">Upload Your Study Materials</h2>
-              <p className="text-muted-foreground font-bold">Drag & drop files anywhere on this card, or click to browse</p>
+              <h2 className="text-3xl font-black text-white mb-2">Upload Your Study Materials</h2>
+              <p className="text-blue-100/70 font-bold">Drag & drop files anywhere on this card, or click to browse</p>
             </div>
 
             <div className="max-w-2xl mx-auto space-y-6">
               {/* Success message */}
               {showUploadSuccess && (
-                <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/20 text-center">
-                  <p className="text-green-600 font-black">✅ Files uploaded successfully!</p>
+                <div className="p-4 rounded-xl bg-green-500/10 border-2 border-green-500/50 text-center">
+                  <p className="text-green-400 font-black">✅ Files uploaded successfully!</p>
                 </div>
               )}
 
               {/* Error messages */}
               {uploadErrors.length > 0 && (
-                <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20">
+                <div className="p-4 rounded-xl bg-red-500/10 border-2 border-red-500/50">
                   <div className="flex items-center gap-2 mb-2">
-                    <AlertCircle className="h-5 w-5 text-red-600" />
-                    <p className="text-red-600 font-black">Upload Errors:</p>
+                    <AlertCircle className="h-5 w-5 text-red-400" />
+                    <p className="text-red-400 font-black">Upload Errors:</p>
                   </div>
                   <ul className="space-y-1">
                     {uploadErrors.map((error, index) => (
-                      <li key={index} className="text-red-600 text-sm font-bold">• {error}</li>
+                      <li key={index} className="text-red-400 text-sm font-bold">• {error}</li>
                     ))}
                   </ul>
                 </div>
@@ -356,10 +379,10 @@ export default function SingleplayerPage() {
 
               {/* Upload progress */}
               {isUploading && (
-                <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-center">
+                <div className="p-4 rounded-xl bg-blue-500/10 border-2 border-blue-500/50 text-center">
                   <div className="flex items-center justify-center gap-2">
-                    <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />
-                    <p className="text-blue-600 font-black">Processing files...</p>
+                    <Loader2 className="h-5 w-5 text-blue-400 animate-spin" />
+                    <p className="text-blue-400 font-black">Processing files...</p>
                   </div>
                 </div>
               )}
@@ -367,8 +390,8 @@ export default function SingleplayerPage() {
               {/* Large drag and drop area */}
               <div className={`border-4 border-dashed rounded-xl p-12 text-center transition-all duration-200 cursor-pointer group ${
                 isDragOver 
-                  ? 'border-primary bg-primary/10 scale-[1.01]' 
-                  : 'border-border hover:border-primary hover:bg-primary/5'
+                  ? 'border-blue-400 bg-blue-500/10 scale-[1.01]' 
+                  : 'border-slate-600/50 hover:border-blue-400 hover:bg-blue-500/5'
               }`}>
                 <input
                   ref={fileInputRef}
@@ -383,22 +406,22 @@ export default function SingleplayerPage() {
                   onClick={triggerFileInput}
                   className="cursor-pointer block"
                 >
-                  <div className="w-20 h-20 rounded-xl bg-muted group-hover:bg-primary/10 flex items-center justify-center mx-auto mb-6 cartoon-border transition-colors">
-                    <Plus className="w-10 h-10 text-muted-foreground group-hover:text-primary" strokeWidth={3} />
+                  <div className="w-20 h-20 rounded-xl bg-slate-700/50 group-hover:bg-blue-500/20 flex items-center justify-center mx-auto mb-6 border-2 border-slate-600/50 group-hover:border-blue-400 transition-colors">
+                    <Plus className="w-10 h-10 text-blue-300/70 group-hover:text-blue-300" strokeWidth={3} />
                   </div>
-                  <p className="text-2xl font-black text-foreground mb-3">Drop your files here</p>
-                  <p className="text-lg text-muted-foreground font-bold mb-4">
+                  <p className="text-2xl font-black text-white mb-3">Drop your files here</p>
+                  <p className="text-lg text-blue-100/70 font-bold mb-4">
                     Or click to browse your computer
                   </p>
                   <div className="flex flex-wrap justify-center gap-2 text-sm">
-                    <Badge className="cartoon-border bg-secondary text-secondary-foreground font-bold">PDF</Badge>
-                    <Badge className="cartoon-border bg-secondary text-secondary-foreground font-bold">DOC</Badge>
-                    <Badge className="cartoon-border bg-secondary text-secondary-foreground font-bold">DOCX</Badge>
-                    <Badge className="cartoon-border bg-secondary text-secondary-foreground font-bold">TXT</Badge>
-                    <Badge className="cartoon-border bg-secondary text-secondary-foreground font-bold">PPT</Badge>
-                    <Badge className="cartoon-border bg-secondary text-secondary-foreground font-bold">PPTX</Badge>
+                    <Badge className="border-2 border-blue-400/50 bg-blue-500/20 text-blue-300 font-bold">PDF</Badge>
+                    <Badge className="border-2 border-blue-400/50 bg-blue-500/20 text-blue-300 font-bold">DOC</Badge>
+                    <Badge className="border-2 border-blue-400/50 bg-blue-500/20 text-blue-300 font-bold">DOCX</Badge>
+                    <Badge className="border-2 border-blue-400/50 bg-blue-500/20 text-blue-300 font-bold">TXT</Badge>
+                    <Badge className="border-2 border-blue-400/50 bg-blue-500/20 text-blue-300 font-bold">PPT</Badge>
+                    <Badge className="border-2 border-blue-400/50 bg-blue-500/20 text-blue-300 font-bold">PPTX</Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground font-bold mt-4">
+                  <p className="text-sm text-blue-100/60 font-bold mt-4">
                     Multiple files supported • Max 10MB per file
                   </p>
                 </div>
@@ -407,12 +430,12 @@ export default function SingleplayerPage() {
               {uploadedFiles.length > 0 && (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-black text-foreground text-xl">Uploaded Documents ({uploadedFiles.length})</h3>
+                    <h3 className="font-black text-white text-xl">Uploaded Documents ({uploadedFiles.length})</h3>
                     <Button
                       onClick={() => setUploadedFiles([])}
                       variant="outline"
                       size="sm"
-                      className="text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
+                      className="text-red-400 border-red-500/50 hover:bg-red-500/20 hover:text-red-300"
                     >
                       <X className="h-4 w-4 mr-1" strokeWidth={3} />
                       Clear All
@@ -420,14 +443,14 @@ export default function SingleplayerPage() {
                   </div>
                   <div className="grid gap-3">
                     {uploadedFiles.map((file, index) => (
-                      <div key={index} className="p-4 rounded-xl bg-secondary/50 cartoon-border hover:bg-secondary/70 transition-colors">
+                      <div key={index} className="p-4 rounded-xl bg-slate-700/50 border-2 border-slate-600/50 hover:bg-slate-700/70 transition-colors">
                         <div className="flex items-center gap-4">
-                          <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center cartoon-border">
+                          <div className="w-12 h-12 rounded-lg bg-blue-500/20 flex items-center justify-center border-2 border-blue-400/30">
                             <span className="text-2xl">{getFileIcon(file)}</span>
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-black text-foreground truncate">{file.name}</p>
-                            <p className="text-sm text-muted-foreground font-bold">
+                            <p className="font-black text-white truncate">{file.name}</p>
+                            <p className="text-sm text-blue-100/60 font-bold">
                               {formatFileSize(file.size)} • {file.type || 'Unknown type'}
                             </p>
                           </div>
@@ -435,7 +458,7 @@ export default function SingleplayerPage() {
                             onClick={() => removeFile(index)}
                             variant="ghost"
                             size="sm"
-                            className="text-destructive hover:text-destructive-foreground hover:bg-destructive shrink-0"
+                            className="text-red-400 hover:text-red-300 hover:bg-red-500/20 shrink-0"
                           >
                             <X className="h-4 w-4" strokeWidth={3} />
                           </Button>
@@ -448,7 +471,7 @@ export default function SingleplayerPage() {
 
               <Button
                 onClick={() => setStep(2)}
-                className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg cartoon-border cartoon-shadow cartoon-hover"
+                className="w-full h-12 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-black text-lg border-2 border-blue-400"
               >
                 Next: Choose Study Focus
               </Button>
@@ -466,24 +489,24 @@ export default function SingleplayerPage() {
 
         {/* Step 2: Topic Selection */}
         {step === 2 && (
-          <Card className="p-8 bg-card cartoon-border cartoon-shadow">
+          <Card className="p-8 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg">
             <div className="text-center mb-8">
-              <div className="w-16 h-16 rounded-xl bg-secondary flex items-center justify-center mx-auto mb-4 cartoon-border cartoon-shadow">
-                <BookOpen className="w-8 h-8 text-secondary-foreground" strokeWidth={3} />
+              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center mx-auto mb-4 border-2 border-green-400">
+                <BookOpen className="w-8 h-8 text-white" strokeWidth={3} />
               </div>
-              <h2 className="text-3xl font-black text-foreground mb-2">What do you want to study?</h2>
-              <p className="text-muted-foreground font-bold">Choose what to focus on from your uploaded materials</p>
+              <h2 className="text-3xl font-black text-white mb-2">What do you want to study?</h2>
+              <p className="text-blue-100/70 font-bold">Choose what to focus on from your uploaded materials</p>
             </div>
 
             <div className="max-w-md mx-auto space-y-6">
               {uploadedFiles.length > 0 && (
-                <div className="p-4 rounded-xl bg-secondary/50 cartoon-border mb-6">
-                  <h3 className="font-black text-foreground mb-2">Your Materials:</h3>
+                <div className="p-4 rounded-xl bg-slate-700/50 border-2 border-slate-600/50 mb-6">
+                  <h3 className="font-black text-white mb-2">Your Materials:</h3>
                   <div className="space-y-1">
                     {uploadedFiles.map((file, index) => (
                       <div key={index} className="flex items-center gap-2 text-sm">
-                        <FileText className="h-4 w-4 text-secondary" strokeWidth={3} />
-                        <span className="text-muted-foreground font-bold">{file.name}</span>
+                        <FileText className="h-4 w-4 text-blue-300" strokeWidth={3} />
+                        <span className="text-blue-100/70 font-bold">{file.name}</span>
                       </div>
                     ))}
                   </div>
@@ -491,22 +514,22 @@ export default function SingleplayerPage() {
               )}
 
               <div>
-                <label className="block text-sm font-black text-foreground mb-2">
+                <label className="block text-sm font-black text-blue-100 mb-2">
                   Study Focus / Topic
                 </label>
                 <Input
                   placeholder="e.g., Photosynthesis, World War II, Calculus derivatives..."
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
-                  className="h-12 text-lg font-bold cartoon-border"
+                  className="h-12 text-lg font-bold border-2 border-slate-600/50 bg-slate-900/50 text-white placeholder:text-blue-100/50 focus:border-blue-400"
                 />
-                <p className="text-xs text-muted-foreground font-bold mt-1">
+                <p className="text-xs text-blue-100/60 font-bold mt-1">
                   What specific topic or concept do you want to study from your materials?
                 </p>
               </div>
 
               <div>
-                <label className="block text-sm font-black text-foreground mb-3">
+                <label className="block text-sm font-black text-blue-100 mb-3">
                   Difficulty Level
                 </label>
                 <div className="flex gap-3">
@@ -515,10 +538,10 @@ export default function SingleplayerPage() {
                       key={level}
                       variant={difficulty === level ? "default" : "outline"}
                       onClick={() => setDifficulty(level)}
-                      className={`flex-1 h-12 font-black cartoon-border ${
+                      className={`flex-1 h-12 font-black border-2 ${
                         difficulty === level
-                          ? "bg-primary text-primary-foreground"
-                          : "bg-card hover:bg-muted"
+                          ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white border-blue-400"
+                          : "bg-slate-700/50 text-blue-100/70 border-slate-600/50 hover:bg-slate-700/70"
                       }`}
                     >
                       {level.charAt(0).toUpperCase() + level.slice(1)}
@@ -531,14 +554,14 @@ export default function SingleplayerPage() {
                 <Button
                   onClick={() => setStep(1)}
                   variant="outline"
-                  className="flex-1 h-12 font-black cartoon-border cartoon-shadow"
+                  className="flex-1 h-12 font-black border-2 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70"
                 >
                   Back
                 </Button>
                 <Button
                   onClick={() => setStep(3)}
                   disabled={!topic.trim()}
-                  className="flex-1 h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg cartoon-border cartoon-shadow cartoon-hover"
+                  className="flex-1 h-12 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-black text-lg border-2 border-blue-400 disabled:opacity-50"
                 >
                   Next: Generate Notes
                 </Button>
@@ -549,38 +572,38 @@ export default function SingleplayerPage() {
 
         {/* Step 3: Study Notes Generation */}
         {step === 3 && (
-          <Card className="p-8 bg-card cartoon-border cartoon-shadow">
+          <Card className="p-8 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg">
             <div className="text-center mb-8">
-              <div className="w-16 h-16 rounded-xl bg-chart-3 flex items-center justify-center mx-auto mb-4 cartoon-border cartoon-shadow">
-                <Brain className="w-8 h-8 text-foreground" strokeWidth={3} />
+              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center mx-auto mb-4 border-2 border-orange-400">
+                <Brain className="w-8 h-8 text-white" strokeWidth={3} />
               </div>
-              <h2 className="text-3xl font-black text-foreground mb-2">Generate Study Notes!</h2>
-              <p className="text-muted-foreground font-bold">AI will create comprehensive study notes with diagrams from your document</p>
+              <h2 className="text-3xl font-black text-white mb-2">Generate Study Notes!</h2>
+              <p className="text-blue-100/70 font-bold">AI will create comprehensive study notes with diagrams from your document</p>
             </div>
 
             <div className="max-w-md mx-auto space-y-6">
-              <div className="p-6 rounded-xl bg-secondary/50 cartoon-border">
-                <h3 className="font-black text-foreground mb-3">Study Notes Settings</h3>
+              <div className="p-6 rounded-xl bg-slate-700/50 border-2 border-slate-600/50">
+                <h3 className="font-black text-white mb-3">Study Notes Settings</h3>
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground font-bold">Topic:</span>
-                    <span className="font-black text-foreground">{topic}</span>
+                    <span className="text-blue-100/70 font-bold">Topic:</span>
+                    <span className="font-black text-white">{topic}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground font-bold">Difficulty:</span>
-                    <Badge className={`cartoon-border font-black ${
+                    <span className="text-blue-100/70 font-bold">Difficulty:</span>
+                    <Badge className={`border-2 font-black ${
                       difficulty === "hard"
-                        ? "bg-destructive text-destructive-foreground"
+                        ? "bg-red-500/20 text-red-300 border-red-500/50"
                         : difficulty === "medium"
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-chart-3 text-foreground"
+                        ? "bg-blue-500/20 text-blue-300 border-blue-500/50"
+                        : "bg-green-500/20 text-green-300 border-green-500/50"
                     }`}>
                       {difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}
                     </Badge>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground font-bold">Sources:</span>
-                    <span className="font-black text-foreground">
+                    <span className="text-blue-100/70 font-bold">Sources:</span>
+                    <span className="font-black text-white">
                       {uploadedFiles.length > 0 
                         ? `${uploadedFiles.length} document${uploadedFiles.length > 1 ? 's' : ''}`
                         : 'No documents uploaded'
@@ -594,18 +617,18 @@ export default function SingleplayerPage() {
                 <Button
                   onClick={() => setStep(2)}
                   variant="outline"
-                  className="flex-1 h-12 font-black cartoon-border cartoon-shadow"
+                  className="flex-1 h-12 font-black border-2 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70"
                 >
                   Back
                 </Button>
                 <Button
                   onClick={handleGenerateNotes}
                   disabled={isGenerating}
-                  className="flex-1 h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg cartoon-border cartoon-shadow cartoon-hover disabled:opacity-50"
+                  className="flex-1 h-12 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-black text-lg border-2 border-blue-400 disabled:opacity-50"
                 >
                   {isGenerating ? (
                     <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary-foreground mr-2"></div>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
                       Generating Notes...
                     </>
                   ) : (

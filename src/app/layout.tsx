@@ -22,8 +22,9 @@ const fredoka = Fredoka({
 });
 
 export const metadata: Metadata = {
-  title: "BrainBattle - Study Battles Made Fun!",
-  description: "The ultimate multiplayer study game",
+  title: "Brain Battle - AI-Powered Study Battles",
+  description:
+    "Upload your study materials, generate personalized questions with AI, and compete with friends in real-time battles.",
   generator: "v0.app",
 };
 

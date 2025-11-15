@@ -1,0 +1,153 @@
+# Brain-Brawl Project Rules
+
+## Project Context
+This is a Next.js 15.5.4 study application with multiplayer quiz functionality, AI-powered question generation, and real-time features.
+
+## Tech Stack
+- **Framework**: Next.js 15.5.4 (App Router)
+- **Language**: TypeScript (strict mode)
+- **Database**: Supabase (PostgreSQL with pgvector)
+- **Auth**: Better Auth with WebAuthn MFA support
+- **AI**: OpenAI GPT-4o for content generation
+- **Styling**: Tailwind CSS 4.0
+- **UI**: Radix UI components
+- **Animations**: Framer Motion
+- **State**: React Hooks (useState, useEffect, useCallback, useMemo)
+
+## Code Style Guidelines
+
+### TypeScript
+- Use strict TypeScript types
+- Prefer interfaces for object shapes
+- Use type guards for runtime type checking
+- Avoid `any` - use `unknown` when necessary
+
+### React Components
+- Use functional components with hooks
+- Prefer composition over inheritance
+- Use React.memo for expensive components
+- Extract custom hooks for reusable logic
+- Follow the component structure: imports → types → component → exports
+
+### File Organization
+- Components in `src/components/`
+- API routes in `src/app/api/`
+- Database schemas in `src/db/`
+- Utilities in `src/lib/`
+- Hooks in `src/hooks/`
+
+### Naming Conventions
+- Components: PascalCase (e.g., `StudyNotesViewer.tsx`)
+- Files: kebab-case for utilities, PascalCase for components
+- Functions: camelCase
+- Constants: UPPER_SNAKE_CASE
+- Types/Interfaces: PascalCase with descriptive names
+
+### Database
+- Use Drizzle ORM for type-safe queries
+- Always use RLS (Row Level Security) policies
+- Prefer parameterized queries to prevent SQL injection
+- Use transactions for multi-step operations
+
+### API Routes
+- Use Next.js App Router API routes
+- Return proper HTTP status codes
+- Include error handling with try-catch
+- Validate input with Zod schemas
+- Use server-only imports for server-side code
+
+### Performance
+- Use `Promise.all()` for parallel operations when possible
+- Implement proper loading states
+- Use React Suspense for code splitting
+- Optimize images and assets
+- Consider memoization for expensive computations
+
+### Security
+- Never expose API keys in client-side code
+- Validate all user inputs
+- Use environment variables for secrets
+- Implement proper authentication checks
+- Follow Supabase RLS best practices
+
+### Testing
+- Write unit tests for utilities and hooks
+- Test API routes with proper mocking
+- Use Jest and React Testing Library
+- Test error cases and edge cases
+
+## Common Patterns
+
+### Error Handling
+```typescript
+try {
+  // operation
+} catch (error) {
+  console.error('Operation failed:', error)
+  return NextResponse.json(
+    { error: 'User-friendly message' },
+    { status: 500 }
+  )
+}
+```
+
+### Database Queries
+```typescript
+const result = await db
+  .select()
+  .from(table)
+  .where(eq(table.column, value))
+```
+
+### API Route Structure
+```typescript
+export async function POST(request: Request) {
+  try {
+    // Validate input
+    // Perform operation
+    // Return success response
+  } catch (error) {
+    // Handle error
+  }
+}
+```
+
+## Project-Specific Notes
+
+### Authentication
+- Uses Better Auth with custom implementation
+- Supports WebAuthn MFA (device PIN/biometric)
+- Session management via Supabase
+
+### AI Features
+- OpenAI GPT-4o for study notes generation
+- Vector embeddings for semantic search
+- Diagram analysis with Vision API
+
+### Real-time Features
+- Supabase Realtime for multiplayer rooms
+- Live progress tracking
+- Real-time score updates
+
+### File Processing
+- PDF text extraction with pdfjs-dist
+- Image extraction from PDFs
+- Parallel processing recommended for performance
+
+## When Making Changes
+
+1. **Check existing patterns** - Look for similar implementations
+2. **Maintain consistency** - Follow established code style
+3. **Update types** - Keep TypeScript types in sync
+4. **Test thoroughly** - Verify changes work as expected
+5. **Update documentation** - Keep docs current if needed
+
+## Avoid
+
+- ❌ Using `any` type
+- ❌ Client-side API key exposure
+- ❌ Skipping input validation
+- ❌ Ignoring TypeScript errors
+- ❌ Breaking existing functionality
+- ❌ Hardcoding values that should be configurable
+

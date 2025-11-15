@@ -132,6 +132,24 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Check document upload limit based on subscription
+    const { checkDocumentLimit } = await import('@/lib/subscription/limits')
+    const docLimit = await checkDocumentLimit(userId)
+    
+    if (!docLimit.allowed) {
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: `You've reached your monthly limit of ${docLimit.limit} documents. Upgrade to Pro for unlimited uploads.`,
+          requiresPro: true,
+          count: docLimit.count,
+          limit: docLimit.limit,
+          remaining: docLimit.remaining
+        },
+        { status: 403 }
+      )
+    }
+
     // Chunk the text
     const textChunks = chunkText(text)
     

@@ -1,6 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server-admin"
 import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import bcrypt from "bcryptjs"
@@ -138,7 +139,9 @@ export async function authenticateUser(
   password: string
 ): Promise<AuthResponse> {
   try {
-    const supabase = await createClient()
+    // Use admin client to bypass RLS for authentication
+    // This is necessary because custom auth doesn't set auth.uid()
+    const supabase = createAdminClient()
     
     // Normalize email (trim whitespace and convert to lowercase)
     const normalizedEmail = email.trim().toLowerCase()

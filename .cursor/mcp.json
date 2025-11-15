@@ -1,0 +1,136 @@
+{
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": ""
+      }
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem"],
+      "env": {
+        "ALLOWED_DIRECTORIES": "."
+      }
+    },
+    "postgres": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres"],
+      "env": {
+        "POSTGRES_CONNECTION_STRING": ""
+      }
+    },
+    "brave-search": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+      "env": {
+        "BRAVE_API_KEY": ""
+      }
+    },
+    "sqlite": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sqlite"],
+      "env": {
+        "SQLITE_DB_PATH": ""
+      }
+    },
+    "puppeteer": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-puppeteer"]
+    },
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "env": {
+        "MEMORY_PATH": ".cursor/memory"
+      }
+    },
+    "git": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-git"],
+      "env": {
+        "GIT_REPO_PATH": "."
+      }
+    },
+    "fetch": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-fetch"]
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]
+    },
+    "cursor-db": {
+      "command": "npx",
+      "args": ["-y", "@ubos-tech/mcp-cursor-db"]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-playwright"]
+    },
+    "everart": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-everart"],
+      "env": {
+        "EVERART_API_KEY": ""
+      }
+    },
+    "gcp-storage": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-gcp-storage"],
+      "env": {
+        "GCP_PROJECT_ID": "",
+        "GCP_STORAGE_BUCKET": "",
+        "GOOGLE_APPLICATION_CREDENTIALS": ""
+      }
+    },
+    "aws-s3": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-aws-s3"],
+      "env": {
+        "AWS_ACCESS_KEY_ID": "",
+        "AWS_SECRET_ACCESS_KEY": "",
+        "AWS_REGION": "",
+        "AWS_S3_BUCKET": ""
+      }
+    },
+    "slack": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-slack"],
+      "env": {
+        "SLACK_BOT_TOKEN": "",
+        "SLACK_TEAM_ID": ""
+      }
+    },
+    "linear": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-linear"],
+      "env": {
+        "LINEAR_API_KEY": ""
+      }
+    },
+    "notion": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-notion"],
+      "env": {
+        "NOTION_API_KEY": ""
+      }
+    },
+    "gmail": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-gmail"],
+      "env": {
+        "GMAIL_CREDENTIALS_PATH": ""
+      }
+    },
+    "google-drive": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-google-drive"],
+      "env": {
+        "GOOGLE_DRIVE_CREDENTIALS_PATH": ""
+      }
+    }
+  }
+}
+

@@ -1,21 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server-admin'
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    
-    // Get the authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+    // Use admin client to bypass RLS for reading stats
+    // Custom auth doesn't set auth.uid(), so we need admin client
+    const supabase = createAdminClient()
 
     const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId') || user.id
+    const userId = searchParams.get('userId')
+    
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'userId parameter is required' },
+        { status: 400 }
+      )
+    }
 
     console.log('📊 [USER STATS] Fetching stats for user:', userId)
 

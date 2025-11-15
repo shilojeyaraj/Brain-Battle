@@ -1,6 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server-admin"
 import { redirect } from "next/navigation"
 import { revalidatePath } from "next/cache"
 import bcrypt from "bcryptjs"
@@ -38,7 +39,8 @@ export async function registerUser(
   username: string
 ): Promise<AuthResponse> {
   try {
-    const supabase = await createClient()
+    // Use admin client to bypass RLS for registration
+    const supabase = createAdminClient()
     
     // Normalize email (trim whitespace and convert to lowercase)
     const normalizedEmail = email.trim().toLowerCase()
@@ -167,7 +169,18 @@ export async function authenticateUser(
   totpCode?: string
 ): Promise<AuthResponse> {
   try {
-    const supabase = await createClient()
+    // Use admin client to bypass RLS for authentication
+    // This is necessary because custom auth doesn't set auth.uid()
+    let supabase
+    try {
+      supabase = createAdminClient()
+    } catch (adminError: any) {
+      console.error('❌ [AUTH] Failed to create admin client:', adminError.message)
+      return { 
+        success: false, 
+        error: 'Server configuration error. Please check SUPABASE_SERVICE_ROLE_KEY environment variable.' 
+      }
+    }
     
     // Normalize email (trim whitespace and convert to lowercase)
     const normalizedEmail = email.trim().toLowerCase()
@@ -175,6 +188,13 @@ export async function authenticateUser(
     
     // Get user from database
     console.log('🔍 [AUTH] Looking for user with email:', normalizedEmail)
+    
+    // First, verify we can query the users table (diagnostic)
+    const { count: userCount } = await supabase
+      .from('users')
+      .select('*', { count: 'exact', head: true })
+    console.log('📊 [AUTH] Total users in database:', userCount)
+    
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('*')
@@ -184,7 +204,11 @@ export async function authenticateUser(
     if (userError) {
       console.error('❌ [AUTH] Database error:', userError)
       if (userError.code === 'PGRST116') {
-        console.log('❌ [AUTH] No user found with this email')
+        console.log('❌ [AUTH] No user found with this email:', normalizedEmail)
+        console.log('💡 [AUTH] This means:')
+        console.log('   - Admin client is working (bypassing RLS)')
+        console.log('   - The user does not exist in the database')
+        console.log('   - Please register first or check the email address')
         return { success: false, error: 'Invalid email or password' }
       }
       return { success: false, error: `Database error: ${userError.message}` }

@@ -352,16 +352,19 @@ export default function BattlePage() {
   // Loading state
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-background p-6">
-        <div className="max-w-2xl mx-auto">
-          <Card className="p-8 bg-card cartoon-border cartoon-shadow text-center">
-            <div className="w-20 h-20 rounded-xl bg-primary flex items-center justify-center mx-auto mb-6 cartoon-border cartoon-shadow">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-foreground"></div>
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
+        </div>
+        <div className="relative z-10 max-w-2xl mx-auto">
+          <Card className="p-8 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg text-center">
+            <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center mx-auto mb-6 border-2 border-blue-400">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-white"></div>
             </div>
-            <h1 className="text-3xl font-black text-foreground mb-4" style={{ fontFamily: "var(--font-display)" }}>
+            <h1 className="text-3xl font-black bg-gradient-to-r from-blue-300 to-orange-400 bg-clip-text text-transparent mb-4">
               Loading Quiz...
             </h1>
-            <p className="text-muted-foreground font-bold">Preparing your questions</p>
+            <p className="text-blue-100/70 font-bold">Preparing your questions</p>
           </Card>
         </div>
       </div>
@@ -371,27 +374,30 @@ export default function BattlePage() {
   // Error state
   if (hasError || questions.length === 0) {
     return (
-      <div className="min-h-screen bg-background p-6">
-        <div className="max-w-2xl mx-auto">
-          <Card className="p-8 bg-card cartoon-border cartoon-shadow text-center">
-            <div className="w-20 h-20 rounded-xl bg-destructive flex items-center justify-center mx-auto mb-6 cartoon-border cartoon-shadow">
-              <Zap className="w-10 h-10 text-destructive-foreground" strokeWidth={3} />
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
+        </div>
+        <div className="relative z-10 max-w-2xl mx-auto">
+          <Card className="p-8 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg text-center">
+            <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-red-500 to-red-600 flex items-center justify-center mx-auto mb-6 border-2 border-red-400">
+              <Zap className="w-10 h-10 text-white" strokeWidth={3} />
             </div>
-            <h1 className="text-3xl font-black text-foreground mb-4" style={{ fontFamily: "var(--font-display)" }}>
+            <h1 className="text-3xl font-black text-white mb-4">
               No Quiz Available
             </h1>
-            <p className="text-muted-foreground font-bold mb-6">
+            <p className="text-blue-100/70 font-bold mb-6">
               No quiz questions were found. Please go back and generate a quiz first.
             </p>
             <div className="space-y-4">
               <Link href="/singleplayer">
-                <Button className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg cartoon-border cartoon-shadow cartoon-hover">
+                <Button className="w-full h-12 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-black text-lg border-2 border-blue-400">
                   <Zap className="h-5 w-5 mr-2" strokeWidth={3} />
                   Generate New Quiz
                 </Button>
               </Link>
               <Link href="/dashboard">
-                <Button variant="outline" className="w-full h-12 font-black cartoon-border cartoon-shadow">
+                <Button variant="outline" className="w-full h-12 font-black border-2 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70">
                   <ArrowLeft className="h-5 w-5 mr-2" strokeWidth={3} />
                   Back to Dashboard
                 </Button>
@@ -420,14 +426,17 @@ export default function BattlePage() {
   // Guard clause to prevent rendering when question is not available
   if (!question) {
     return (
-      <div className="min-h-screen bg-background p-6">
-        <div className="max-w-2xl mx-auto">
-          <Card className="p-8 bg-card cartoon-border cartoon-shadow text-center">
-            <div className="w-20 h-20 rounded-xl bg-primary flex items-center justify-center mx-auto mb-6 cartoon-border cartoon-shadow">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-primary-foreground"></div>
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
+        </div>
+        <div className="relative z-10 max-w-2xl mx-auto">
+          <Card className="p-8 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg text-center">
+            <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center mx-auto mb-6 border-2 border-blue-400">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-white"></div>
             </div>
-            <h2 className="text-2xl font-black text-foreground mb-2">Loading Quiz...</h2>
-            <p className="text-muted-foreground font-bold">Preparing your questions</p>
+            <h2 className="text-2xl font-black text-white mb-2">Loading Quiz...</h2>
+            <p className="text-blue-100/70 font-bold">Preparing your questions</p>
           </Card>
         </div>
       </div>
@@ -435,8 +444,16 @@ export default function BattlePage() {
   }
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-4xl mx-auto">
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
+        <div
+          className="absolute -bottom-40 -left-40 w-80 h-80 bg-orange-500/10 rounded-full blur-3xl animate-float"
+          style={{ animationDelay: "1s" }}
+        />
+      </div>
+      <div className="relative z-10 max-w-4xl mx-auto">
         {/* Cheat Warning Banner */}
         {showCheatWarning && (
           <div className="mb-6 p-4 bg-yellow-50 border-2 border-yellow-200 rounded-xl shadow-lg animate-in slide-in-from-top-2 duration-300">

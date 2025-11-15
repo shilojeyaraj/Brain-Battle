@@ -191,22 +191,22 @@ const Leaderboard = memo(function Leaderboard() {
 
   if (loading) {
     return (
-      <Card className="p-6 bg-card cartoon-border cartoon-shadow sticky top-24">
+      <Card className="p-6 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg sticky top-24">
         <div className="flex items-center gap-2 mb-6">
-          <Crown className="h-6 w-6 text-primary" strokeWidth={3} />
-          <h2 className="text-3xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
+          <Crown className="h-6 w-6 text-blue-400" strokeWidth={3} />
+          <h2 className="text-3xl font-black text-white" style={{ fontFamily: "var(--font-display)" }}>
             Leaderboard
           </h2>
         </div>
         <div className="space-y-4">
           {[...Array(5)].map((_, i) => (
-            <div key={i} className="flex items-center gap-4 p-4 rounded-xl bg-muted/50 cartoon-border cartoon-shadow">
-              <div className="w-10 h-10 bg-muted rounded-full flex items-center justify-center">
-                <Loader2 className="h-5 w-5 text-muted-foreground animate-spin" />
+            <div key={i} className="flex items-center gap-4 p-4 rounded-xl bg-slate-700/50 border-4 border-slate-600/50 shadow-lg">
+              <div className="w-10 h-10 bg-slate-600/50 rounded-full flex items-center justify-center">
+                <Loader2 className="h-5 w-5 text-blue-300/50 animate-spin" />
               </div>
               <div className="flex-1">
-                <div className="h-4 bg-muted rounded w-24 mb-2"></div>
-                <div className="h-3 bg-muted rounded w-16"></div>
+                <div className="h-4 bg-slate-600/50 rounded w-24 mb-2"></div>
+                <div className="h-3 bg-slate-600/50 rounded w-16"></div>
               </div>
             </div>
           ))}
@@ -217,10 +217,10 @@ const Leaderboard = memo(function Leaderboard() {
 
   if (error) {
     return (
-      <Card className="p-6 bg-card cartoon-border cartoon-shadow sticky top-24">
+      <Card className="p-6 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg sticky top-24">
         <div className="text-center">
-          <p className="text-sm text-muted-foreground font-bold">Failed to load leaderboard</p>
-          <p className="text-foreground mb-4">{error}</p>
+          <p className="text-sm text-blue-100/70 font-bold">Failed to load leaderboard</p>
+          <p className="text-white mb-4">{error}</p>
           <button
             onClick={handleRefresh}
             className="bg-primary text-primary-foreground px-4 py-2 rounded-lg hover:bg-primary/90 transition-colors"
@@ -233,18 +233,18 @@ const Leaderboard = memo(function Leaderboard() {
   }
 
   return (
-    <Card className="p-6 bg-card cartoon-border cartoon-shadow sticky top-24" data-tutorial="leaderboard">
+    <Card className="p-6 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg sticky top-24" data-tutorial="leaderboard">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-2">
-          <Crown className="h-6 w-6 text-primary" strokeWidth={3} />
-          <h2 className="text-3xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
+          <Crown className="h-6 w-6 text-blue-400" strokeWidth={3} />
+          <h2 className="text-3xl font-black text-white" style={{ fontFamily: "var(--font-display)" }}>
             Leaderboard
           </h2>
         </div>
         <button
           onClick={handleRefresh}
           disabled={refreshing}
-          className="p-2 hover:bg-muted rounded-lg transition-colors disabled:opacity-50"
+          className="p-2 hover:bg-slate-700/50 rounded-lg transition-colors disabled:opacity-50 text-blue-100/70 hover:text-white"
         >
           <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
         </button>
@@ -253,9 +253,9 @@ const Leaderboard = memo(function Leaderboard() {
       <div className="space-y-6">
         {topPlayers.length === 0 ? (
           <div className="text-center py-8">
-            <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" strokeWidth={1} />
-            <h3 className="text-lg font-bold text-foreground mb-2">No Players Yet</h3>
-            <p className="text-sm text-muted-foreground">
+            <Users className="h-12 w-12 text-blue-300/50 mx-auto mb-4" strokeWidth={1} />
+            <h3 className="text-lg font-bold text-white mb-2">No Players Yet</h3>
+            <p className="text-sm text-blue-100/70">
               Be the first to complete a battle and appear on the leaderboard!
             </p>
           </div>
@@ -267,53 +267,53 @@ const Leaderboard = memo(function Leaderboard() {
             return (
               <div
                 key={player.rank}
-                className={`p-6 rounded-xl border-4 transition-all duration-300 cartoon-hover ${
+                className={`p-6 rounded-xl border-4 transition-all duration-300 shadow-lg ${
                   player.rank === 1
-                    ? "bg-primary/10 border-primary cartoon-shadow"
+                    ? "bg-gradient-to-br from-blue-500/20 to-blue-600/20 border-blue-400/50"
                     : player.rank === 2
-                    ? "bg-accent/10 border-accent cartoon-shadow"
+                    ? "bg-gradient-to-br from-orange-500/20 to-orange-600/20 border-orange-400/50"
                     : player.rank === 3
-                    ? "bg-chart-3/10 border-chart-3 cartoon-shadow"
+                    ? "bg-gradient-to-br from-green-500/20 to-green-600/20 border-green-400/50"
                     : isCurrentUser
-                    ? "bg-secondary/30 border-secondary"
-                    : "bg-secondary/30 border-border hover:border-primary"
+                    ? "bg-gradient-to-br from-slate-700/50 to-slate-800/50 border-blue-400/50"
+                    : "bg-gradient-to-br from-slate-700/50 to-slate-800/50 border-slate-600/50 hover:border-blue-400/50"
                 }`}
               >
                 <div className="flex items-center gap-6">
                   <div className="relative">
                     <div
-                      className={`text-2xl font-black w-12 h-12 rounded-full flex items-center justify-center cartoon-border ${
+                      className={`text-2xl font-black w-12 h-12 rounded-full flex items-center justify-center border-4 ${
                         player.rank === 1
-                          ? "bg-primary text-primary-foreground"
+                          ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white border-blue-400"
                           : player.rank === 2
-                          ? "bg-accent text-accent-foreground"
+                          ? "bg-gradient-to-br from-orange-500 to-orange-600 text-white border-orange-400"
                           : player.rank === 3
-                          ? "bg-chart-3 text-foreground"
-                          : "bg-secondary text-secondary-foreground"
+                          ? "bg-gradient-to-br from-green-500 to-green-600 text-white border-green-400"
+                          : "bg-gradient-to-br from-slate-600 to-slate-700 text-blue-100/70 border-slate-500/50"
                       }`}
                     >
                       {player.rank}
                     </div>
                     {player.rank === 1 && (
-                      <Crown className="absolute -top-2 -right-2 h-6 w-6 text-primary" strokeWidth={3} />
+                      <Crown className="absolute -top-2 -right-2 h-6 w-6 text-blue-400" strokeWidth={3} />
                     )}
                   </div>
 
-                  <Avatar className="h-14 w-14 cartoon-border">
+                  <Avatar className="h-14 w-14 border-4 border-slate-600/50">
                     <AvatarImage src={player.avatar_url || "/placeholder.svg"} />
-                    <AvatarFallback className="bg-secondary text-secondary-foreground font-black">
+                    <AvatarFallback className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 text-blue-300 border-2 border-blue-400/50 font-black">
                       {player.username.slice(0, 2).toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3">
-                      <p className="font-black text-foreground truncate text-xl">{player.username}</p>
+                      <p className="font-black text-white truncate text-xl">{player.username}</p>
                       {isCurrentUser && (
-                        <Badge className="bg-secondary text-secondary-foreground text-sm px-2 py-1">You</Badge>
+                        <Badge className="bg-blue-500/20 text-blue-300 border-2 border-blue-400/50 text-sm px-2 py-1">You</Badge>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 text-base text-muted-foreground font-bold">
+                    <div className="flex items-center gap-3 text-base text-blue-100/70 font-bold">
                       <span>{formatXP(player.xp)} XP</span>
                       <span>•</span>
                       <span>{player.wins} wins</span>
@@ -337,14 +337,14 @@ const Leaderboard = memo(function Leaderboard() {
 
       {/* Show current user's rank if not in top 10 */}
       {currentUserRank && currentUserRank.rank > 10 && (
-        <div className="mt-4 p-4 rounded-xl bg-secondary/20 border-2 border-secondary/40 cartoon-border">
+        <div className="mt-4 p-4 rounded-xl bg-gradient-to-br from-slate-700/50 to-slate-800/50 border-4 border-blue-400/50 shadow-lg">
           <div className="flex items-center gap-4">
-            <div className="text-lg font-black w-8 h-8 rounded-full flex items-center justify-center bg-secondary text-secondary-foreground">
+            <div className="text-lg font-black w-8 h-8 rounded-full flex items-center justify-center bg-blue-500/20 text-blue-300 border-2 border-blue-400/50">
               {currentUserRank.rank}
             </div>
             <div className="flex-1">
-              <p className="font-bold text-foreground">Your Rank</p>
-              <p className="text-sm text-muted-foreground">
+              <p className="font-bold text-white">Your Rank</p>
+              <p className="text-sm text-blue-100/70">
                 {formatXP(currentUserRank.xp)} XP • {currentUserRank.wins} wins
               </p>
             </div>
@@ -352,13 +352,13 @@ const Leaderboard = memo(function Leaderboard() {
         </div>
       )}
 
-      <div className="mt-6 p-6 rounded-xl bg-secondary/50 cartoon-border cartoon-shadow">
+      <div className="mt-6 p-6 rounded-xl bg-gradient-to-br from-slate-700/50 to-slate-800/50 border-4 border-slate-600/50 shadow-lg">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-secondary" strokeWidth={3} />
-            <span className="text-sm text-muted-foreground font-bold">Total Players</span>
+            <Users className="h-4 w-4 text-orange-400" strokeWidth={3} />
+            <span className="text-sm text-blue-100/70 font-bold">Total Players</span>
           </div>
-          <Badge className="bg-secondary text-secondary-foreground font-black">
+          <Badge className="bg-orange-500/20 text-orange-300 border-2 border-orange-400/50 font-black">
             {totalPlayers.toLocaleString()}
           </Badge>
         </div>

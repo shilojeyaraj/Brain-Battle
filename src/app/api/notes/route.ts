@@ -4,6 +4,7 @@ import { notesSchema } from "@/lib/schemas/notes-schema"
 import { createClient } from "@/lib/supabase/server"
 import { extractImagesFromPDF as extractPDFImages } from "@/lib/pdf-image-extractor"
 import { DiagramAnalyzerAgent } from "@/lib/agents/diagram-analyzer-agent"
+import { validateAndFilterVideos } from "@/lib/utils/youtube-validator"
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -933,9 +934,35 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
       console.log(`      Has image_url: ${!!diagram.image_url}`)
     })
     const enrichedDiagrams = await enrichWithWebImages({ diagrams: analyzedDiagrams })
-    const enrichedNotes = { ...notesData, diagrams: enrichedDiagrams.diagrams || enrichedDiagrams }
+    let enrichedNotes = { ...notesData, diagrams: enrichedDiagrams.diagrams || enrichedDiagrams }
     console.log(`✅ [NOTES API] Diagram enrichment completed`)
     console.log(`  📊 [NOTES API] Final diagram count: ${enrichedNotes.diagrams.length}`)
+
+    // 6) Validate and filter YouTube videos
+    console.log(`\n🎥 [NOTES API] Validating YouTube video URLs...`)
+    if (enrichedNotes.resources?.videos && Array.isArray(enrichedNotes.resources.videos)) {
+      const originalVideoCount = enrichedNotes.resources.videos.length
+      console.log(`  📹 [NOTES API] Found ${originalVideoCount} video(s) to validate`)
+      
+      const validatedVideos = await validateAndFilterVideos(enrichedNotes.resources.videos)
+      const removedCount = originalVideoCount - validatedVideos.length
+      
+      if (removedCount > 0) {
+        console.log(`  ⚠️ [NOTES API] Removed ${removedCount} invalid or inaccessible video(s)`)
+      } else {
+        console.log(`  ✅ [NOTES API] All ${validatedVideos.length} video(s) are valid`)
+      }
+      
+      enrichedNotes = {
+        ...enrichedNotes,
+        resources: {
+          ...enrichedNotes.resources,
+          videos: validatedVideos
+        }
+      }
+    } else {
+      console.log(`  ℹ️ [NOTES API] No videos to validate`)
+    }
 
     // 5) Generate and store embeddings for semantic search
     console.log(`\n🧠 [NOTES API] Generating embeddings for semantic search...`)

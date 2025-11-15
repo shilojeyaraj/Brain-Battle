@@ -1,54 +1,47 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { generateRoomCode } from '@/lib/utils'
-import { Brain, Users, ArrowLeft } from 'lucide-react'
+import { Brain, Users, ArrowLeft, Crown } from 'lucide-react'
 import Link from 'next/link'
 import { getCurrentUserId } from '@/lib/auth/session'
+import { useSubscription } from '@/hooks/use-subscription'
+import { UpgradePrompt } from '@/components/subscription/upgrade-prompt'
 
 // Force dynamic rendering to avoid SSR issues
 export const dynamic = 'force-dynamic'
 
 export default function CreateRoomPage() {
   const [roomName, setRoomName] = useState('')
+  const [maxPlayers, setMaxPlayers] = useState(4)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [showUpgradePrompt, setShowUpgradePrompt] = useState(false)
   const [userId, setUserId] = useState<string | null>(null)
   const router = useRouter()
-  
-  // Create Supabase client inside component to avoid SSR issues
-  const supabase = typeof window !== 'undefined' ? createClient() : null
+  const { isPro, limits, loading: subscriptionLoading } = useSubscription(userId)
 
   useEffect(() => {
     const currentUserId = getCurrentUserId()
-    console.log('🔍 [CREATE-ROOM] Checking for user session...')
-    console.log('🔍 [CREATE-ROOM] Current userId from localStorage:', currentUserId)
-    console.log('🔍 [CREATE-ROOM] localStorage contents:', {
-      userId: localStorage.getItem('userId'),
-      user: localStorage.getItem('user')
-    })
-    
     if (!currentUserId) {
-      console.log('❌ [CREATE-ROOM] No user session found, redirecting to login')
       router.push('/login')
       return
     }
-    console.log('✅ [CREATE-ROOM] User session found:', currentUserId)
     setUserId(currentUserId)
   }, [router])
+
+  // Set max players based on subscription when limits load
+  useEffect(() => {
+    if (!subscriptionLoading && limits) {
+      setMaxPlayers(limits.maxPlayersPerRoom)
+    }
+  }, [limits, subscriptionLoading])
 
   const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
-
-    if (!supabase) {
-      setError('Application is loading, please try again.')
-      setLoading(false)
-      return
-    }
+    setShowUpgradePrompt(false)
 
     try {
       if (!userId) {
@@ -57,86 +50,49 @@ export default function CreateRoomPage() {
         return
       }
 
-      const roomCode = generateRoomCode()
-      
-      console.log('🏗️ [CREATE-ROOM] Creating room with data:', {
-        name: roomName,
-        room_code: roomCode,
-        host_id: userId,
-        max_players: 4,
-        current_players: 1,
-        status: 'waiting',
-        is_private: false,
-        time_limit: 30,
-        total_questions: 10
-      })
-      
-      const { data: room, error: roomError } = await supabase
-        .from('game_rooms')
-        .insert({
+      // Check if requested room size exceeds free tier limit
+      if (!isPro && maxPlayers > 4) {
+        setShowUpgradePrompt(true)
+        setError('Free users can create rooms with up to 4 players. Upgrade to Pro for rooms with up to 20 players.')
+        setLoading(false)
+        return
+      }
+
+      const response = await fetch('/api/rooms/create', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId,
           name: roomName,
-          room_code: roomCode,
-          host_id: userId,
-          max_players: 4,
-          current_players: 1,
-          status: 'waiting',
-          is_private: false,
-          time_limit: 30,
-          total_questions: 10,
-          created_at: new Date().toISOString()
-        })
-        .select()
-        .single()
-
-      if (roomError) {
-        console.error('❌ [CREATE-ROOM] Room creation error:', roomError)
-        console.error('❌ [CREATE-ROOM] Error details:', {
-          message: roomError.message,
-          details: roomError.details,
-          hint: roomError.hint,
-          code: roomError.code
-        })
-        setError(`Room creation failed: ${roomError.message}`)
-        return
-      }
-      
-      console.log('✅ [CREATE-ROOM] Room created successfully:', room)
-
-      // Add creator as a member
-      console.log('👥 [CREATE-ROOM] Adding creator as room member:', {
-        room_id: room.id,
-        user_id: userId,
-        joined_at: new Date().toISOString(),
-        is_ready: true
+          maxPlayers,
+          isPrivate: false,
+          timeLimit: 30,
+          totalQuestions: 10,
+        }),
       })
-      
-      const { error: memberError } = await supabase
-        .from('room_members')
-        .insert({
-          room_id: room.id,
-          user_id: userId,
-          joined_at: new Date().toISOString(),
-          is_ready: true
-        })
 
-      if (memberError) {
-        console.error('❌ [CREATE-ROOM] Member creation error:', memberError)
-        console.error('❌ [CREATE-ROOM] Member error details:', {
-          message: memberError.message,
-          details: memberError.details,
-          hint: memberError.hint,
-          code: memberError.code
-        })
-        setError(`Failed to add creator to room: ${memberError.message}`)
+      const data = await response.json()
+
+      if (!response.ok) {
+        if (data.requiresPro) {
+          setShowUpgradePrompt(true)
+        }
+        setError(data.error || 'Failed to create room')
+        setLoading(false)
         return
       }
-      
-      console.log('✅ [CREATE-ROOM] Creator added as room member successfully')
 
-      router.push(`/room/${room.id}`)
+      if (data.success && data.room) {
+        router.push(`/room/${data.room.id}`)
+      } else {
+        setError('Failed to create room')
+        setLoading(false)
+      }
     } catch (err) {
+      console.error('Error creating room:', err)
       setError('An unexpected error occurred')
-    } finally {
       setLoading(false)
     }
   }
@@ -195,9 +151,56 @@ export default function CreateRoomPage() {
                 />
               </div>
 
+              <div>
+                <label htmlFor="maxPlayers" className="block text-sm font-medium text-gray-700 mb-2">
+                  Maximum Players
+                  {!isPro && (
+                    <span className="ml-2 text-xs text-orange-600 font-semibold">
+                      (Free: Max 4)
+                    </span>
+                  )}
+                  {isPro && (
+                    <span className="ml-2 text-xs text-yellow-600 font-semibold flex items-center gap-1">
+                      <Crown className="w-3 h-3" />
+                      Pro: Up to 20
+                    </span>
+                  )}
+                </label>
+                <input
+                  id="maxPlayers"
+                  type="number"
+                  min="2"
+                  max={limits?.maxPlayersPerRoom || 4}
+                  value={maxPlayers}
+                  onChange={(e) => {
+                    const value = parseInt(e.target.value, 10)
+                    if (value >= 2 && value <= (limits?.maxPlayersPerRoom || 4)) {
+                      setMaxPlayers(value)
+                    }
+                  }}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  disabled={subscriptionLoading}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  {isPro 
+                    ? 'Pro users can create rooms with up to 20 players'
+                    : 'Upgrade to Pro to create rooms with up to 20 players'
+                  }
+                </p>
+              </div>
+
+              {showUpgradePrompt && (
+                <div className="mt-4">
+                  <UpgradePrompt 
+                    feature="room size" 
+                    variant="compact"
+                  />
+                </div>
+              )}
+
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || subscriptionLoading}
                 className="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
               >
                 {loading ? (

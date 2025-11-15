@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { Brain, ArrowLeft, Users, Key } from 'lucide-react'
 import Link from 'next/link'
@@ -16,9 +15,6 @@ export default function JoinRoomPage() {
   const [error, setError] = useState('')
   const [userId, setUserId] = useState<string | null>(null)
   const router = useRouter()
-  
-  // Create Supabase client inside component to avoid SSR issues
-  const supabase = typeof window !== 'undefined' ? createClient() : null
 
   useEffect(() => {
     const currentUserId = getCurrentUserId()
@@ -36,12 +32,6 @@ export default function JoinRoomPage() {
     setLoading(true)
     setError('')
 
-    if (!supabase) {
-      setError('Application is loading, please try again.')
-      setLoading(false)
-      return
-    }
-
     try {
       if (!userId) {
         setError('You must be logged in to join a room')
@@ -49,90 +39,34 @@ export default function JoinRoomPage() {
         return
       }
 
-      console.log('🔍 [JOIN-ROOM] Looking for room with code:', roomCode.toUpperCase())
+      const response = await fetch('/api/rooms/join', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId,
+          roomCode: roomCode.toUpperCase(),
+        }),
+      })
 
-      // Find room by code
-      const { data: room, error: roomError } = await supabase
-        .from('game_rooms')
-        .select('*')
-        .eq('room_code', roomCode.toUpperCase())
-        .single()
+      const data = await response.json()
 
-      if (roomError || !room) {
-        console.error('❌ [JOIN-ROOM] Room not found:', roomError)
-        setError('Room not found. Please check the code and try again.')
+      if (!response.ok) {
+        setError(data.error || 'Failed to join room')
+        setLoading(false)
         return
       }
 
-      console.log('✅ [JOIN-ROOM] Room found:', room.name)
-
-      // Check if room is full
-      if (room.current_players >= room.max_players) {
-        setError('This room is full. Maximum players reached.')
-        return
-      }
-
-      // Check if user is already a member
-      const { data: existingMember } = await supabase
-        .from('room_members')
-        .select('*')
-        .eq('room_id', room.id)
-        .eq('user_id', userId)
-        .single()
-
-      if (existingMember) {
-        console.log('✅ [JOIN-ROOM] User is already a member, redirecting to room')
-        router.push(`/room/${room.id}`)
-        return
-      }
-
-      console.log('👥 [JOIN-ROOM] Adding user as room member...')
-
-      // Add user as a member
-      const { error: memberError } = await supabase
-        .from('room_members')
-        .insert({
-          room_id: room.id,
-          user_id: userId,
-          joined_at: new Date().toISOString(),
-          is_ready: false
-        })
-
-      if (memberError) {
-        console.error('❌ [JOIN-ROOM] Member creation error:', memberError)
-        setError(`Failed to join room: ${memberError.message}`)
-        return
-      }
-
-      console.log('✅ [JOIN-ROOM] Successfully joined room, updating player count...')
-
-      // Update current_players count
-      const { error: updateError } = await supabase
-        .from('game_rooms')
-        .update({ 
-          current_players: room.current_players + 1
-        })
-        .eq('id', room.id)
-
-      if (updateError) {
-        console.error('⚠️ [JOIN-ROOM] Failed to update player count:', updateError)
-        console.error('⚠️ [JOIN-ROOM] Update error details:', {
-          message: updateError.message,
-          details: updateError.details,
-          hint: updateError.hint,
-          code: updateError.code
-        })
-        // Don't fail the join process for this
+      if (data.success && data.room) {
+        router.push(`/room/${data.room.id}`)
       } else {
-        console.log('✅ [JOIN-ROOM] Player count updated successfully')
+        setError('Failed to join room')
+        setLoading(false)
       }
-
-      console.log('🎉 [JOIN-ROOM] Successfully joined room, redirecting...')
-      router.push(`/room/${room.id}`)
     } catch (err) {
-      console.error('❌ [JOIN-ROOM] Unexpected error:', err)
+      console.error('Error joining room:', err)
       setError('An unexpected error occurred')
-    } finally {
       setLoading(false)
     }
   }
