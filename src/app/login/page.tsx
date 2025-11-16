@@ -3,7 +3,6 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
-<<<<<<< HEAD
 import { Sparkles, Mail, Lock, ArrowLeft, AlertCircle, Loader2, Brain } from "lucide-react"
 import Link from "next/link"
 import { useSearchParams, useRouter } from "next/navigation"
@@ -11,12 +10,6 @@ import { useEffect, useState, Suspense } from "react"
 import { authenticateUser } from "@/lib/actions/custom-auth"
 import { motion } from "framer-motion"
 import Image from "next/image"
-=======
-import { Sparkles, User, Lock, ArrowLeft, AlertCircle, Loader2 } from "lucide-react"
-import Link from "next/link"
-import { useSearchParams, useRouter } from "next/navigation"
-import { useEffect, useState, Suspense } from "react"
->>>>>>> 07dd73b1ffe2e98d7ee655aa60cfb835f494ffa0
 
 function LoginForm() {
   const searchParams = useSearchParams()
@@ -42,7 +35,6 @@ function LoginForm() {
 
     try {
       const formData = new FormData(e.currentTarget)
-<<<<<<< HEAD
       const emailValue = formData.get('email') as string
       const passwordValue = formData.get('password') as string
 
@@ -67,27 +59,6 @@ function LoginForm() {
         setError('Login failed')
         setIsPending(false)
       }
-=======
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        body: formData,
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        if (result.success) {
-          // Store user in localStorage for client-side access
-          localStorage.setItem('user', JSON.stringify(result.user))
-          localStorage.setItem('userId', result.user.id)
-          router.push('/dashboard')
-        } else {
-          setError(result.error || 'Login failed')
-        }
-      } else {
-        const result = await response.json()
-        setError(result.error || 'Login failed')
-      }
->>>>>>> 07dd73b1ffe2e98d7ee655aa60cfb835f494ffa0
     } catch (err: any) {
       setError(err.message || 'Login failed')
     } finally {
@@ -139,7 +110,6 @@ function LoginForm() {
           </p>
         </motion.div>
 
-<<<<<<< HEAD
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -171,35 +141,8 @@ function LoginForm() {
                     onChange={clearError}
                   />
                 </div>
-=======
-        <Card className="p-8 bg-card cartoon-border cartoon-shadow">
-          {error && (
-            <div className="mb-6 p-4 rounded-xl bg-destructive/10 border border-destructive/20 flex items-center gap-3">
-              <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0" strokeWidth={3} />
-              <p className="text-destructive font-bold text-sm">{error}</p>
-            </div>
-          )}
-
-            <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="space-y-2">
-              <label htmlFor="username" className="text-sm font-black text-foreground">
-                Username
-              </label>
-              <div className="relative">
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" strokeWidth={3} />
-                <Input
-                  id="username"
-                  name="email"
-                  type="text"
-                  placeholder="Enter your username"
-                  className="pl-10 h-12 text-lg font-bold cartoon-border bg-card disabled:opacity-50"
-                  disabled={isPending}
-                  onChange={clearError}
-                />
->>>>>>> 07dd73b1ffe2e98d7ee655aa60cfb835f494ffa0
               </div>
 
-<<<<<<< HEAD
               <div className="space-y-2">
                 <label htmlFor="password" className="text-sm font-black text-blue-100">
                   Password
@@ -216,22 +159,6 @@ function LoginForm() {
                     onChange={clearError}
                   />
                 </div>
-=======
-            <div className="space-y-2">
-              <label htmlFor="password" className="text-sm font-black text-foreground">
-                Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" strokeWidth={3} />
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  placeholder="Enter your password"
-                  className="pl-10 h-12 text-lg font-bold cartoon-border bg-card"
-                  onChange={clearError}
-                />
->>>>>>> 07dd73b1ffe2e98d7ee655aa60cfb835f494ffa0
               </div>
 
               <div className="flex items-center justify-between">
@@ -268,47 +195,8 @@ function LoginForm() {
                 </Link>
               </p>
             </div>
-<<<<<<< HEAD
           </Card>
         </motion.div>
-=======
-
-            <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2">
-                <input type="checkbox" className="w-4 h-4 rounded cartoon-border" />
-                <span className="text-sm font-bold text-muted-foreground">Remember me</span>
-              </label>
-              <Link href="/forgot-password" className="text-sm font-bold text-primary hover:text-primary/80 transition-colors">
-                Forgot password?
-              </Link>
-            </div>
-
-            <Button
-              type="submit"
-              disabled={isPending}
-              className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg cartoon-border cartoon-shadow cartoon-hover disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isPending ? (
-                <>
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" strokeWidth={3} />
-                  Signing In...
-                </>
-              ) : (
-                "Sign In"
-              )}
-            </Button>
-          </form>
-
-          <div className="mt-6 text-center">
-            <p className="text-sm text-muted-foreground font-bold">
-              Don't have an account?{" "}
-              <Link href="/signup" className="text-primary hover:text-primary/80 transition-colors font-black">
-              Sign up here
-            </Link>
-          </p>
-          </div>
-        </Card>
->>>>>>> 07dd73b1ffe2e98d7ee655aa60cfb835f494ffa0
       </div>
     </div>
   )

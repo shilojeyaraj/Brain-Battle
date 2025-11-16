@@ -10,14 +10,28 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const userId = searchParams.get('userId')
     
-    if (!userId) {
+    if (!userId || typeof userId !== 'string' || userId.trim() === '') {
+      console.error('❌ [USER STATS] Invalid userId:', userId)
       return NextResponse.json(
-        { error: 'userId parameter is required' },
+        { error: 'Valid userId parameter is required' },
         { status: 400 }
       )
     }
 
-    console.log('📊 [USER STATS] Fetching stats for user:', userId)
+    // Ensure userId is a string (not a Promise or object)
+    const userIdString = String(userId).trim()
+    
+    // Validate UUID format
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    if (!uuidRegex.test(userIdString)) {
+      console.error('❌ [USER STATS] Invalid userId format:', userIdString)
+      return NextResponse.json(
+        { error: 'Invalid userId format' },
+        { status: 400 }
+      )
+    }
+
+    console.log('📊 [USER STATS] Fetching stats for user:', userIdString)
 
     // 🚀 OPTIMIZATION: Parallelize all database queries for 60-70% faster response
     const [
@@ -28,13 +42,13 @@ export async function GET(request: NextRequest) {
     ] = await Promise.all([
       supabase
         .from('profiles')
-        .select('user_id, display_name, username, email, avatar_url, created_at')
-        .eq('user_id', userId)
+        .select('user_id, username, email, avatar_url, created_at')
+        .eq('user_id', userIdString)
         .single(),
       supabase
         .from('player_stats')
         .select('level, xp, total_games, total_wins, win_streak, best_streak, total_questions_answered, correct_answers, accuracy, updated_at')
-        .eq('user_id', userId)
+        .eq('user_id', userIdString)
         .single(),
       supabase
         .from('game_results')
@@ -52,13 +66,13 @@ export async function GET(request: NextRequest) {
             session_name
           )
         `)
-        .eq('user_id', userId)
+        .eq('user_id', userIdString)
         .order('completed_at', { ascending: false })
         .limit(10),
       supabase
         .from('achievements')
         .select('*')
-        .eq('user_id', userId)
+        .eq('user_id', userIdString)
         .order('earned_at', { ascending: false })
     ])
 

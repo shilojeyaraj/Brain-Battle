@@ -54,11 +54,24 @@ export function TutorialOverlay({
   useEffect(() => {
     if (!step) return
 
+    let elementRef: HTMLElement | null = null
+    let originalZIndex: string = ''
+    let originalPosition: string = ''
+
     const findTarget = () => {
       const element = document.querySelector(step.targetSelector) as HTMLElement
       if (element) {
+        elementRef = element
         setTargetElement(element)
         updateTargetRect(element)
+        
+        // Ensure target element is visible above overlay
+        originalZIndex = element.style.zIndex
+        originalPosition = element.style.position
+        element.style.zIndex = '10001'
+        if (getComputedStyle(element).position === 'static') {
+          element.style.position = 'relative'
+        }
         
         // Scroll element into view
         element.scrollIntoView({ 
@@ -98,6 +111,12 @@ export function TutorialOverlay({
       clearTimeout(timer)
       window.removeEventListener('scroll', handleUpdate, true)
       window.removeEventListener('resize', handleUpdate)
+      
+      // Restore target element styles
+      if (elementRef) {
+        elementRef.style.zIndex = originalZIndex
+        elementRef.style.position = originalPosition
+      }
     }
   }, [step, currentStep])
 
@@ -134,6 +153,7 @@ export function TutorialOverlay({
   }
 
   // Calculate card position based on step position preference
+  // Ensures card is always outside the target element's bounds
   const getCardPosition = () => {
     if (!targetRect) {
       return {
@@ -143,9 +163,9 @@ export function TutorialOverlay({
       }
     }
     
-    const padding = 20
-    const cardWidth = 500  // Increased from 400 for better readability
-    const cardHeight = 300  // Increased from 250 to accommodate wider text
+    const padding = 30 // Increased padding for better separation
+    const cardWidth = 500
+    const cardHeight = 300
     const viewportWidth = viewportSize.width || window.innerWidth
     const viewportHeight = viewportSize.height || window.innerHeight
     
@@ -153,14 +173,39 @@ export function TutorialOverlay({
     const clampLeft = (left: number) => Math.max(padding, Math.min(left, viewportWidth - cardWidth - padding))
     const clampTop = (top: number) => Math.max(padding, Math.min(top, viewportHeight - cardHeight - padding))
     
+    // Helper to check if card overlaps with target
+    const checkOverlap = (cardTop: number, cardLeft: number) => {
+      const cardRight = cardLeft + cardWidth
+      const cardBottom = cardTop + cardHeight
+      
+      return !(
+        cardRight < targetRect.left - padding ||
+        cardLeft > targetRect.right + padding ||
+        cardBottom < targetRect.top - padding ||
+        cardTop > targetRect.bottom + padding
+      )
+    }
+    
     switch (step.position) {
       case 'top': {
-        const top = targetRect.top - cardHeight - padding
-        const left = clampLeft(targetRect.left + (targetRect.width / 2) - (cardWidth / 2))
+        let top = targetRect.top - cardHeight - padding
+        let left = clampLeft(targetRect.left + (targetRect.width / 2) - (cardWidth / 2))
+        
+        // Ensure no overlap
+        if (checkOverlap(top, left)) {
+          top = targetRect.top - cardHeight - padding - 10
+        }
+        
         // If card would be above viewport, position it below instead
         if (top < padding) {
+          top = targetRect.bottom + padding
+          left = clampLeft(targetRect.left + (targetRect.width / 2) - (cardWidth / 2))
+          // Ensure still no overlap when repositioned
+          if (checkOverlap(top, left)) {
+            top = targetRect.bottom + padding + 10
+          }
           return {
-            top: `${clampTop(targetRect.bottom + padding)}px`,
+            top: `${clampTop(top)}px`,
             left: `${left}px`,
           }
         }
@@ -170,12 +215,24 @@ export function TutorialOverlay({
         }
       }
       case 'bottom': {
-        const top = targetRect.bottom + padding
-        const left = clampLeft(targetRect.left + (targetRect.width / 2) - (cardWidth / 2))
+        let top = targetRect.bottom + padding
+        let left = clampLeft(targetRect.left + (targetRect.width / 2) - (cardWidth / 2))
+        
+        // Ensure no overlap
+        if (checkOverlap(top, left)) {
+          top = targetRect.bottom + padding + 10
+        }
+        
         // If card would be below viewport, position it above instead
         if (top + cardHeight > viewportHeight - padding) {
+          top = targetRect.top - cardHeight - padding
+          left = clampLeft(targetRect.left + (targetRect.width / 2) - (cardWidth / 2))
+          // Ensure still no overlap when repositioned
+          if (checkOverlap(top, left)) {
+            top = targetRect.top - cardHeight - padding - 10
+          }
           return {
-            top: `${clampTop(targetRect.top - cardHeight - padding)}px`,
+            top: `${clampTop(top)}px`,
             left: `${left}px`,
           }
         }
@@ -185,13 +242,25 @@ export function TutorialOverlay({
         }
       }
       case 'left': {
-        const left = targetRect.left - cardWidth - padding
-        const top = clampTop(targetRect.top + (targetRect.height / 2) - (cardHeight / 2))
+        let left = targetRect.left - cardWidth - padding
+        let top = clampTop(targetRect.top + (targetRect.height / 2) - (cardHeight / 2))
+        
+        // Ensure no overlap
+        if (checkOverlap(top, left)) {
+          left = targetRect.left - cardWidth - padding - 10
+        }
+        
         // If card would be off left edge, position it to the right instead
         if (left < padding) {
+          left = targetRect.right + padding
+          top = clampTop(targetRect.top + (targetRect.height / 2) - (cardHeight / 2))
+          // Ensure still no overlap when repositioned
+          if (checkOverlap(top, left)) {
+            left = targetRect.right + padding + 10
+          }
           return {
             top: `${top}px`,
-            left: `${clampLeft(targetRect.right + padding)}px`,
+            left: `${clampLeft(left)}px`,
           }
         }
         return {
@@ -200,13 +269,25 @@ export function TutorialOverlay({
         }
       }
       case 'right': {
-        const left = targetRect.right + padding
-        const top = clampTop(targetRect.top + (targetRect.height / 2) - (cardHeight / 2))
+        let left = targetRect.right + padding
+        let top = clampTop(targetRect.top + (targetRect.height / 2) - (cardHeight / 2))
+        
+        // Ensure no overlap
+        if (checkOverlap(top, left)) {
+          left = targetRect.right + padding + 10
+        }
+        
         // If card would be off right edge, position it to the left instead
         if (left + cardWidth > viewportWidth - padding) {
+          left = targetRect.left - cardWidth - padding
+          top = clampTop(targetRect.top + (targetRect.height / 2) - (cardHeight / 2))
+          // Ensure still no overlap when repositioned
+          if (checkOverlap(top, left)) {
+            left = targetRect.left - cardWidth - padding - 10
+          }
           return {
             top: `${top}px`,
-            left: `${clampLeft(targetRect.left - cardWidth - padding)}px`,
+            left: `${clampLeft(left)}px`,
           }
         }
         return {
@@ -215,12 +296,33 @@ export function TutorialOverlay({
         }
       }
       case 'center':
-      default:
-        return {
-          top: '50%',
-          left: '50%',
-          transform: 'translate(-50%, -50%)',
+      default: {
+        // For center, position outside the target area - prefer bottom right
+        let left = targetRect.right + padding
+        let top = targetRect.bottom + padding
+        
+        // If doesn't fit, try other positions
+        if (left + cardWidth > viewportWidth - padding) {
+          left = targetRect.left - cardWidth - padding
+          if (left < padding) {
+            // Center horizontally if both sides don't work
+            left = Math.max(padding, (viewportWidth - cardWidth) / 2)
+            top = targetRect.bottom + padding
+          }
         }
+        
+        if (top + cardHeight > viewportHeight - padding) {
+          top = targetRect.top - cardHeight - padding
+          if (top < padding) {
+            top = Math.max(padding, (viewportHeight - cardHeight) / 2)
+          }
+        }
+        
+        return {
+          top: `${clampTop(top)}px`,
+          left: `${clampLeft(left)}px`,
+        }
+      }
     }
   }
 
@@ -228,14 +330,57 @@ export function TutorialOverlay({
 
   return (
     <>
-      {/* Dark overlay */}
-      <div
-        ref={overlayRef}
-        className="fixed inset-0 z-[9998] bg-black/60"
-        onClick={handleSkip}
-      />
+      {/* Dark overlay with spotlight cutout - using multiple divs for better performance */}
+      {targetRect && (
+        <>
+          {/* Top dimmed area */}
+          <div
+            className="fixed z-[9998] bg-black/70 pointer-events-auto transition-all duration-300"
+            onClick={handleSkip}
+            style={{
+              top: 0,
+              left: 0,
+              right: 0,
+              height: `${targetRect.top}px`,
+            }}
+          />
+          {/* Bottom dimmed area */}
+          <div
+            className="fixed z-[9998] bg-black/70 pointer-events-auto transition-all duration-300"
+            onClick={handleSkip}
+            style={{
+              top: `${targetRect.bottom}px`,
+              left: 0,
+              right: 0,
+              bottom: 0,
+            }}
+          />
+          {/* Left dimmed area */}
+          <div
+            className="fixed z-[9998] bg-black/70 pointer-events-auto transition-all duration-300"
+            onClick={handleSkip}
+            style={{
+              top: `${targetRect.top}px`,
+              left: 0,
+              width: `${targetRect.left}px`,
+              height: `${targetRect.height}px`,
+            }}
+          />
+          {/* Right dimmed area */}
+          <div
+            className="fixed z-[9998] bg-black/70 pointer-events-auto transition-all duration-300"
+            onClick={handleSkip}
+            style={{
+              top: `${targetRect.top}px`,
+              left: `${targetRect.right}px`,
+              right: 0,
+              height: `${targetRect.height}px`,
+            }}
+          />
+        </>
+      )}
       
-      {/* Spotlight highlight - positioned above overlay */}
+      {/* Spotlight highlight border - positioned above overlay */}
       {targetRect && (
         <div
           ref={spotlightRef}
@@ -248,7 +393,7 @@ export function TutorialOverlay({
             borderRadius: '0.75rem',
             border: '4px solid',
             borderColor: 'hsl(var(--primary))',
-            boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.6), 0 0 20px rgba(59, 130, 246, 0.5)',
+            boxShadow: '0 0 20px rgba(59, 130, 246, 0.5), 0 0 40px rgba(59, 130, 246, 0.3)',
           }}
         />
       )}

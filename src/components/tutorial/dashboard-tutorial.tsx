@@ -74,14 +74,35 @@ export function DashboardTutorial() {
     const isNewUser = searchParams.get('newUser') === 'true' || searchParams.get('userId')
     
     // Show tutorial if:
-    // 1. Not completed before
-    // 2. User just signed up (has userId or newUser param)
-    // 3. User manually triggers it (could add a button later)
-    if (!tutorialCompleted && isNewUser) {
+    // 1. User just signed up (has newUser param) - ALWAYS show for new users
+    // 2. OR if tutorial hasn't been completed before (for returning users who skipped)
+    if (isNewUser) {
+      // For new users, always show tutorial (even if they somehow have the flag set)
+      // Clear the flag to ensure fresh start
+      if (tutorialCompleted) {
+        localStorage.removeItem('dashboard_tutorial_completed')
+      }
+      
       // Small delay to ensure page is fully rendered
       setTimeout(() => {
         setShowTutorial(true)
-      }, 500)
+      }, 800)
+      
+      // Clean up URL params after starting tutorial
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href)
+        if (url.searchParams.has('newUser') || url.searchParams.has('userId')) {
+          url.searchParams.delete('newUser')
+          url.searchParams.delete('userId')
+          window.history.replaceState({}, '', url.toString())
+        }
+      }
+    } else if (!tutorialCompleted) {
+      // For returning users who haven't completed tutorial, also show it
+      // (in case they skipped it before)
+      setTimeout(() => {
+        setShowTutorial(true)
+      }, 1000)
     }
   }, [searchParams])
 

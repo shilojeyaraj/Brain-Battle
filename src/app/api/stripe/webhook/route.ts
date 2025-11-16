@@ -6,11 +6,17 @@ import Stripe from 'stripe';
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-if (!webhookSecret) {
-  throw new Error('STRIPE_WEBHOOK_SECRET is not set');
-}
+// Webhook secret is optional - webhook won't work without it, but app won't crash
 
 export async function POST(request: NextRequest) {
+  // If Stripe is not configured, return early
+  if (!stripe || !webhookSecret) {
+    return NextResponse.json(
+      { error: 'Stripe is not configured' },
+      { status: 503 }
+    );
+  }
+
   const body = await request.text();
   const headersList = await headers();
   const signature = headersList.get('stripe-signature');
@@ -23,14 +29,6 @@ export async function POST(request: NextRequest) {
   }
 
   let event: Stripe.Event;
-
-  if (!webhookSecret) {
-    console.error('Webhook secret is not configured');
-    return NextResponse.json(
-      { error: 'Webhook secret not configured' },
-      { status: 500 }
-    );
-  }
 
   try {
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret);

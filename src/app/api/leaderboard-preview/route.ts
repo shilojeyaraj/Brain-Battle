@@ -2,20 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server-admin'
 
 /**
- * API route to fetch top 5 players for homepage leaderboard preview
+ * API route to fetch top 3 players for homepage leaderboard preview
  * Uses admin client to bypass RLS since custom auth doesn't set auth.uid()
  */
 export async function GET(request: NextRequest) {
   try {
     const adminClient = createAdminClient()
     
-    // Fetch top 5 players by XP
+    // Fetch top 3 players by XP
     const { data: playersData, error: playersError } = await adminClient
       .from('player_stats')
       .select('user_id, level, xp, total_wins, total_games')
       .order('xp', { ascending: false })
       .order('total_games', { ascending: false }) // Secondary sort
-      .limit(5)
+      .limit(3)
 
     if (playersError) {
       console.error('❌ [LEADERBOARD PREVIEW] Error fetching players:', playersError)

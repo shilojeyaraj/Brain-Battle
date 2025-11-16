@@ -97,12 +97,15 @@ export default function ProOnboardingPage() {
   const { isPro, loading: subscriptionLoading } = useSubscription(userId)
 
   useEffect(() => {
-    const currentUserId = getCurrentUserId()
-    if (!currentUserId) {
-      router.push('/login?redirect=/pro-onboarding')
-      return
+    const checkUser = async () => {
+      const currentUserId = await getCurrentUserId()
+      if (!currentUserId) {
+        router.push('/login?redirect=/pro-onboarding')
+        return
+      }
+      setUserId(currentUserId)
     }
-    setUserId(currentUserId)
+    checkUser()
   }, [router])
 
   // Redirect if already Pro

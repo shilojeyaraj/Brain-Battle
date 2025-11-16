@@ -109,7 +109,7 @@ export default function MultiplayerBattlePage() {
         setIsLoading(true)
         
         // Get current user
-        const userId = getCurrentUserId()
+        const userId = await getCurrentUserId()
         setCurrentUserId(userId)
 
         // Load active quiz session

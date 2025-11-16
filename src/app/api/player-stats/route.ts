@@ -50,6 +50,17 @@ export async function POST(request: NextRequest) {
       
       // Create user in users table (works for both Supabase Auth and custom auth)
       const generatedUsername = `user_${user_id.slice(0, 8)}`
+      
+      // Validate user_id is a valid UUID format
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      if (!uuidRegex.test(user_id)) {
+        console.error('❌ [STATS API] Invalid user_id format:', user_id)
+        return NextResponse.json(
+          { error: 'Invalid user ID format. Please log in again.' },
+          { status: 400 }
+        )
+      }
+      
       const { data: newUser, error: createError } = await adminClient
         .from('users')
         .insert({
@@ -75,12 +86,20 @@ export async function POST(request: NextRequest) {
             .single()
           if (retryUser) {
             userExists = retryUser
+            console.log('✅ [STATS API] User found after retry')
           } else {
             return NextResponse.json(
-              { error: 'Failed to create user. Please try again.' },
+              { error: 'Failed to create user. Please try registering again.' },
               { status: 500 }
             )
           }
+        } else if (createError.code === '23502') {
+          // NOT NULL constraint violation
+          console.error('❌ [STATS API] Required field is missing:', createError.message)
+          return NextResponse.json(
+            { error: 'User creation failed: Missing required fields. Please contact support.' },
+            { status: 500 }
+          )
         } else {
           return NextResponse.json(
             { error: `Failed to create user: ${createError.message}` },
@@ -88,8 +107,23 @@ export async function POST(request: NextRequest) {
           )
         }
       } else {
+        // Verify user was actually created
+        const { data: verifyUser } = await adminClient
+          .from('users')
+          .select('id')
+          .eq('id', user_id)
+          .single()
+        
+        if (!verifyUser) {
+          console.error('❌ [STATS API] User creation verification failed')
+          return NextResponse.json(
+            { error: 'User creation failed verification. Please try again.' },
+            { status: 500 }
+          )
+        }
+        
         userExists = newUser
-        console.log('✅ [STATS API] User created in users table successfully')
+        console.log('✅ [STATS API] User created and verified in users table successfully')
       }
     }
 
@@ -150,8 +184,16 @@ export async function POST(request: NextRequest) {
 
       if (error) {
         console.error('❌ [STATS API] Error creating stats:', error)
+        // Check if it's a foreign key constraint error
+        if (error.code === '23503') {
+          console.error('❌ [STATS API] Foreign key constraint violation - user does not exist in users table')
+          return NextResponse.json(
+            { error: 'User does not exist. Please ensure the user is created first.' },
+            { status: 400 }
+          )
+        }
         return NextResponse.json(
-          { error: 'Failed to create stats' },
+          { error: `Failed to create stats: ${error.message}` },
           { status: 500 }
         )
       }

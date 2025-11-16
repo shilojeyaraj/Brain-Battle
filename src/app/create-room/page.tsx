@@ -7,6 +7,7 @@ import Link from 'next/link'
 import { getCurrentUserId } from '@/lib/auth/session'
 import { useSubscription } from '@/hooks/use-subscription'
 import { UpgradePrompt } from '@/components/subscription/upgrade-prompt'
+import { Button } from '@/components/ui/button'
 
 // Force dynamic rendering to avoid SSR issues
 export const dynamic = 'force-dynamic'
@@ -22,12 +23,15 @@ export default function CreateRoomPage() {
   const { isPro, limits, loading: subscriptionLoading } = useSubscription(userId)
 
   useEffect(() => {
-    const currentUserId = getCurrentUserId()
-    if (!currentUserId) {
-      router.push('/login')
-      return
+    const fetchUserId = async () => {
+      const currentUserId = await getCurrentUserId()
+      if (!currentUserId) {
+        router.push('/login')
+        return
+      }
+      setUserId(currentUserId)
     }
-    setUserId(currentUserId)
+    fetchUserId()
   }, [router])
 
   // Set max players based on subscription when limits load
@@ -198,20 +202,16 @@ export default function CreateRoomPage() {
                 </div>
               )}
 
-              <button
+              <Button
                 type="submit"
-                disabled={loading || subscriptionLoading}
-                className="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+                loading={loading || subscriptionLoading}
+                loadingText="Creating Room..."
+                disabled={subscriptionLoading}
+                className="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
               >
-                {loading ? (
-                  'Creating Room...'
-                ) : (
-                  <>
-                    <Users className="h-5 w-5 mr-2" />
-                    Create Room
-                  </>
-                )}
-              </button>
+                <Users className="h-5 w-5 mr-2" />
+                Create Room
+              </Button>
             </form>
           </div>
 

@@ -773,14 +773,14 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
           /^[^()]*importance$/i,  // Items ending with just "importance"
         ]
         
-        const genericOutlineItems = notesData.outline?.filter(item => 
+        const genericOutlineItems = notesData.outline?.filter((item: string) => 
           genericPatterns.some(pattern => pattern.test(item))
         ) || []
         
         if (genericOutlineItems.length > 0) {
           console.error(`  ❌ [NOTES API] CRITICAL: ${genericOutlineItems.length} generic outline items detected!`)
           console.error(`     Generic items found:`)
-          genericOutlineItems.forEach((item, idx) => {
+          genericOutlineItems.forEach((item: string, idx: number) => {
             console.error(`       ${idx + 1}. "${item}"`)
           })
           console.error(`     Outline items MUST contain specific formulas, examples, calculations, or procedures from the document`)
@@ -788,7 +788,7 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
         }
         
         // Check if outline items have specific content (formulas, examples, page refs)
-        const outlineHasSpecifics = notesData.outline?.some(item => {
+        const outlineHasSpecifics = notesData.outline?.some((item: string) => {
           const hasFormula = /[=+\-×÷√lnlog∫Σ∏]|%|[\u03B1-\u03C9\u0391-\u03A9]|[\u2080-\u2089\u00B2\u00B3]|[\u2070-\u2079]|O\(|T\(|f\(|g\(|h\(|S\s*=|e\s*=|σ\s*=|ε\s*=|x\s*=|y\s*=|z\s*=/.test(item)
           const hasExample = /\d+\.?\d*\s*(mm|cm|m|kg|g|psi|pa|%|°|rad|deg|s|min|h|Hz|J|W|V|A|Ω|F|H|C|K|mol)/i.test(item) || /example|worked|case study|trace|calculation/i.test(item)
           const hasPageRef = /\(p\.|\(pp\.|\(page|\(pg\./i.test(item)
@@ -919,9 +919,17 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
       // Image extraction failed, but we still have diagrams from OpenAI
       // These diagrams won't have image_data_b64, but we can enrich with web images
       if (process.env.NODE_ENV === 'development') {
-        console.log(`⚠️ [NOTES API] No images extracted, but ${analyzedDiagrams.length} diagrams found from OpenAI analysis`)
+        console.log(`⚠️ [NOTES API] No images extracted from PDF, but ${analyzedDiagrams.length} diagrams found from OpenAI text analysis`)
         console.log(`  ℹ️ [NOTES API] Will attempt to enrich with web images if keywords are available`)
+        console.log(`  💡 [NOTES API] Tip: Diagrams will still be useful for study even without original PDF images`)
       }
+      
+      // Ensure diagrams from OpenAI have proper structure even without images
+      analyzedDiagrams = analyzedDiagrams.map((diagram: any) => ({
+        ...diagram,
+        source: diagram.source || 'text',
+        image_data_b64: diagram.image_data_b64 || null, // Explicitly set to null if missing
+      }))
     }
 
     // 5) Enrich with web images if needed (for diagrams without extracted images)

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { Brain, ArrowLeft, Users, Key } from 'lucide-react'
 import Link from 'next/link'
 import { getCurrentUserId } from '@/lib/auth/session'
+import { Button } from '@/components/ui/button'
 
 // Force dynamic rendering to avoid SSR issues
 export const dynamic = 'force-dynamic'
@@ -17,14 +18,17 @@ export default function JoinRoomPage() {
   const router = useRouter()
 
   useEffect(() => {
-    const currentUserId = getCurrentUserId()
-    if (!currentUserId) {
-      console.log('❌ [JOIN-ROOM] No user session found, redirecting to login')
-      router.push('/login')
-      return
+    const checkUser = async () => {
+      const currentUserId = await getCurrentUserId()
+      if (!currentUserId) {
+        console.log('❌ [JOIN-ROOM] No user session found, redirecting to login')
+        router.push('/login')
+        return
+      }
+      console.log('✅ [JOIN-ROOM] User session found:', currentUserId)
+      setUserId(currentUserId)
     }
-    console.log('✅ [JOIN-ROOM] User session found:', currentUserId)
-    setUserId(currentUserId)
+    checkUser()
   }, [router])
 
   const handleJoinRoom = async (e: React.FormEvent) => {
@@ -132,20 +136,16 @@ export default function JoinRoomPage() {
                 </p>
               </div>
 
-              <button
+              <Button
                 type="submit"
-                disabled={loading || roomCode.length !== 6}
-                className="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
+                loading={loading}
+                loadingText="Joining Room..."
+                disabled={roomCode.length !== 6}
+                className="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
               >
-                {loading ? (
-                  'Joining Room...'
-                ) : (
-                  <>
-                    <Users className="h-5 w-5 mr-2" />
-                    Join Room
-                  </>
-                )}
-              </button>
+                <Users className="h-5 w-5 mr-2" />
+                Join Room
+              </Button>
             </form>
           </div>
 

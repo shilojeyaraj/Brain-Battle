@@ -1,14 +1,19 @@
 import Stripe from 'stripe';
 
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error('STRIPE_SECRET_KEY is not set in environment variables');
-}
+// Stripe is currently disabled - make it completely optional
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 
-// Initialize Stripe
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2024-12-18.acacia',
-  typescript: true,
-});
+// Initialize Stripe only if key is available
+// For now, Stripe is disabled - all users get free tier access
+export const stripe = stripeSecretKey 
+  ? new Stripe(stripeSecretKey, {
+      apiVersion: '2024-12-18.acacia',
+      typescript: true,
+    })
+  : null;
+
+// Export a flag to check if Stripe is enabled
+export const isStripeEnabled = !!stripeSecretKey;
 
 // Stripe Price IDs - Replace these with your actual Stripe Price IDs
 // You'll create these in your Stripe Dashboard

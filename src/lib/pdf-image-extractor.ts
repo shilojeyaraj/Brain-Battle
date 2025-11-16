@@ -144,43 +144,100 @@ export async function extractImagesFromPDF(
           viewport: viewport,
         }
         
-        // Render the page
-        const renderTask = page.render(renderContext as any)
-        await renderTask.promise
-        
-        // Convert canvas to base64 PNG
-        const base64 = canvas.toDataURL('image/png').split(',')[1]
-        
-        extractedImages.push({
-          image_data_b64: base64,
-          page: pageNum,
-          width: viewport.width,
-          height: viewport.height,
-          type: 'png',
-        })
-        
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`  ✅ [PDF EXTRACTOR] Extracted page ${pageNum} as image (${viewport.width}x${viewport.height}px)`)
+        // Try to render the page
+        try {
+          const renderTask = page.render(renderContext as any)
+          await renderTask.promise
+          
+          // Convert canvas to base64 PNG
+          const base64 = canvas.toDataURL('image/png').split(',')[1]
+          
+          extractedImages.push({
+            image_data_b64: base64,
+            page: pageNum,
+            width: viewport.width,
+            height: viewport.height,
+            type: 'png',
+          })
+          
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`  ✅ [PDF EXTRACTOR] Extracted page ${pageNum} as image (${viewport.width}x${viewport.height}px)`)
+          }
+        } catch (renderError: any) {
+          // If canvas rendering fails, try alternative method
+          if (renderError.message && renderError.message.includes('Image or Canvas expected')) {
+            // Fallback: Try rendering with a simpler approach (no compatibility layer)
+            console.warn(`  ⚠️ [PDF EXTRACTOR] Page ${pageNum}: Canvas rendering failed, trying simplified approach...`)
+            
+            try {
+              // Create a fresh canvas without compatibility layer
+              const simpleCanvas = createCanvas(width, height)
+              const simpleContext = simpleCanvas.getContext('2d')
+              
+              // Fill white background
+              simpleContext.fillStyle = 'white'
+              simpleContext.fillRect(0, 0, width, height)
+              
+              // Try rendering with minimal context - sometimes this works when the full compatibility layer doesn't
+              const simpleRenderContext: any = {
+                canvasContext: simpleContext,
+                viewport: viewport,
+              }
+              
+              // Try to render
+              const simpleRenderTask = page.render(simpleRenderContext)
+              await simpleRenderTask.promise
+              
+              // Convert to base64
+              const base64 = simpleCanvas.toDataURL('image/png').split(',')[1]
+              
+              extractedImages.push({
+                image_data_b64: base64,
+                page: pageNum,
+                width: viewport.width,
+                height: viewport.height,
+                type: 'png',
+              })
+              
+              if (process.env.NODE_ENV === 'development') {
+                console.log(`  ✅ [PDF EXTRACTOR] Extracted page ${pageNum} using simplified method`)
+              }
+            } catch (altError: any) {
+              // If simplified approach also fails, log detailed diagnostics
+              console.error(`  ❌ [PDF EXTRACTOR] Page ${pageNum}: All extraction methods failed`)
+              console.error(`     Original error: ${renderError.message}`)
+              console.error(`     Alternative error: ${altError?.message || altError}`)
+              console.error(`     pdfjs-dist version: ${pdfjsLib.version || 'unknown'}`)
+              console.error(`     Canvas library: ${createCanvas ? 'available' : 'missing'}`)
+              
+              // Still create a placeholder entry so the page isn't completely skipped
+              // This allows diagram analysis to proceed even without the image
+              if (process.env.NODE_ENV === 'development') {
+                console.warn(`  ⚠️ [PDF EXTRACTOR] Page ${pageNum}: Creating placeholder entry (no image data)`)
+              }
+              
+              // Don't add placeholder - let the diagram analyzer work with text-only
+              // extractedImages.push({
+              //   image_data_b64: '', // Empty - will be handled by diagram analyzer
+              //   page: pageNum,
+              //   width: viewport.width,
+              //   height: viewport.height,
+              //   type: 'placeholder',
+              // })
+            }
+          } else {
+            // Log other errors
+            console.error(`  ❌ [PDF EXTRACTOR] Error processing page ${pageNum}:`, renderError.message)
+            if (renderError.stack) {
+              console.error(`     Stack: ${renderError.stack}`)
+            }
+          }
         }
       } catch (pageError: any) {
-        // Log the error but continue processing other pages
-        // This is often a compatibility issue between pdfjs-dist v5+ and node-canvas
-        if (pageError.message && pageError.message.includes('Image or Canvas expected')) {
-          // Log detailed error information for debugging
-          console.error(`  ❌ [PDF EXTRACTOR] Page ${pageNum}: Canvas rendering failed`)
-          console.error(`     Error: ${pageError.message}`)
-          console.error(`     pdfjs-dist version: ${pdfjsLib.version || 'unknown'}`)
-          console.error(`     Canvas type: ${typeof canvas}`)
-          console.error(`     Canvas constructor: ${canvas?.constructor?.name || 'unknown'}`)
-          console.error(`     Has nodeName: ${!!(canvas as any)?.nodeName}`)
-          console.error(`     Has tagName: ${!!(canvas as any)?.tagName}`)
-          console.error(`  ℹ️ [PDF EXTRACTOR] Text extraction is working fine - this only affects diagram/image capture.`)
-        } else {
-          // Always log real errors
-          console.error(`  ❌ [PDF EXTRACTOR] Error processing page ${pageNum}:`, pageError.message)
-          if (pageError.stack) {
-            console.error(`     Stack: ${pageError.stack}`)
-          }
+        // Catch any other errors
+        console.error(`  ❌ [PDF EXTRACTOR] Unexpected error processing page ${pageNum}:`, pageError.message)
+        if (pageError.stack) {
+          console.error(`     Stack: ${pageError.stack}`)
         }
         continue
       }

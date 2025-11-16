@@ -33,6 +33,7 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
   const [currentDiagram, setCurrentDiagram] = useState(0)
   const [expandedOutlineItems, setExpandedOutlineItems] = useState<Set<number>>(new Set())
   const [hoveredTerm, setHoveredTerm] = useState<string | null>(null)
+  const [hoveredTermPosition, setHoveredTermPosition] = useState<{ x: number; y: number; transform?: string } | null>(null)
   const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set())
 
   // Safety: Ensure diagrams and concepts are arrays
@@ -677,203 +678,201 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
                   return (
                     <div
                       key={index}
-                      className={`relative min-h-96 h-auto cursor-pointer perspective-1000 card-shake-container ${
-                        isFlipped ? 'flipped' : ''
+                      className={`relative w-full cursor-pointer transition-all duration-300 ${
+                        isFlipped ? '' : ''
                       }`}
                       onClick={() => toggleCardFlip(index)}
-                      style={{ minHeight: '500px' }}
                     >
-                      {/* Card Container with 3D Flip */}
-                      <div
-                        className={`relative w-full h-full preserve-3d transition-transform duration-500 card-flip-inner ${
-                          isFlipped ? 'rotate-y-180' : ''
-                        }`}
-                        style={{
-                          transformStyle: 'preserve-3d',
-                        }}
-                      >
-                        {/* Front of Card (Question) */}
-                        <div
-                          className="absolute inset-0 w-full h-full backface-hidden p-8 rounded-xl bg-slate-700/50 border-4 border-slate-600/50 card-front-face"
-                          style={{
-                            backfaceVisibility: 'hidden',
-                            transform: 'rotateY(0deg)',
-                          }}
-                        >
-                          <div className="flex items-center justify-between mb-4">
-                            <span className="text-lg font-black text-blue-400">Q{index + 1}:</span>
+                      {/* Simple Card - No 3D flip, just show/hide */}
+                      {!isFlipped ? (
+                        /* Front of Card (Question) */
+                        <div className="w-full p-8 rounded-xl bg-gradient-to-br from-slate-700/80 to-slate-800/80 border-4 border-slate-600/50 shadow-lg min-h-[500px] flex flex-col">
+                          <div className="flex items-center justify-between mb-6">
+                            <span className="text-xl font-black text-blue-400">Q{index + 1}:</span>
                             <div className="flex gap-3">
-                              <span className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${
+                              <span className={`px-4 py-2 rounded-full text-sm font-bold border-2 ${
                                 qa.difficulty === 'easy' ? 'bg-green-500/20 text-green-300 border-green-500/50' :
                                 qa.difficulty === 'medium' ? 'bg-blue-500/20 text-blue-300 border-blue-500/50' :
                                 'bg-red-500/20 text-red-300 border-red-500/50'
                               }`}>
                                 {qa.difficulty}
                               </span>
-                              <span className="px-3 py-1.5 rounded-full text-sm font-bold border-2 border-slate-600/50 bg-slate-600/50 text-blue-100/70">
+                              <span className="px-4 py-2 rounded-full text-sm font-bold border-2 border-slate-600/50 bg-slate-600/50 text-blue-100/70">
                                 {qa.type.replace('_', ' ')}
                               </span>
                             </div>
                           </div>
-                          <div className="mb-4">
-                            <p className="text-lg text-white font-bold break-words overflow-hidden leading-relaxed">{qa.question}</p>
-                          </div>
                           
-                          {/* Show options for multiple choice questions on the front */}
-                          {qa.type === 'multiple_choice' && qa.options && qa.options.length > 0 && (
-                            <div className="mt-4 space-y-2 mb-6">
-                              {qa.options.map((option, optIndex) => (
-                                <div
-                                  key={optIndex}
-                                  className="p-3 rounded-lg bg-slate-800/50 border-2 border-slate-600/50"
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-slate-600/50 text-blue-100/70 flex items-center justify-center font-black text-sm border-2 border-slate-500/50">
-                                      {String.fromCharCode(65 + optIndex)}
-                                    </div>
-                                    <span className="text-white font-bold flex-1">{option}</span>
-                                  </div>
+                          <div className="flex-1 flex flex-col">
+                            <div className="mb-6">
+                              <p className="text-xl text-white font-bold break-words whitespace-normal leading-relaxed">{qa.question}</p>
+                              {/* Show page reference if available */}
+                              {(qa as any).page && (
+                                <div className="mt-3 text-sm text-blue-100/60 font-bold">
+                                  Reference: Page {(qa as any).page}
                                 </div>
-                              ))}
+                              )}
                             </div>
-                          )}
-                          
-                          <div className="text-sm text-blue-100/70 font-bold mt-6">
-                            Topic: {qa.topic}
+                            
+                            {/* Show options for multiple choice questions on the front */}
+                            {qa.type === 'multiple_choice' && qa.options && qa.options.length > 0 && (
+                              <div className="mt-4 space-y-3 flex-1">
+                                {qa.options.map((option, optIndex) => (
+                                  <div
+                                    key={optIndex}
+                                    className="p-4 rounded-lg bg-slate-800/50 border-2 border-slate-600/50"
+                                  >
+                                    <div className="flex items-center gap-3">
+                                      <div className="w-10 h-10 rounded-full bg-slate-600/50 text-blue-100/70 flex items-center justify-center font-black text-base border-2 border-slate-500/50 flex-shrink-0">
+                                        {String.fromCharCode(65 + optIndex)}
+                                      </div>
+                                      <span className="text-white font-bold text-base flex-1 break-words whitespace-normal leading-relaxed">{option}</span>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            
+                            <div className="mt-auto pt-6">
+                              <div className="text-base text-blue-100/70 font-bold">
+                                Topic: {qa.topic}
+                              </div>
+                              <div className="text-sm text-blue-100/60 font-bold mt-3 text-center">
+                                Click to reveal answer
+                              </div>
+                            </div>
                           </div>
-                          {!isFlipped && (
-                            <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 text-sm text-blue-100/60 font-bold">
-                              Hover to shake • Click to reveal answer
-                            </div>
-                          )}
                         </div>
-
-                        {/* Back of Card (Answer) */}
-                        <div
-                          className="absolute inset-0 w-full h-full backface-hidden p-8 rounded-xl bg-blue-500/10 border-4 border-blue-400/30 overflow-y-auto"
-                          style={{
-                            backfaceVisibility: 'hidden',
-                            transform: 'rotateY(180deg)',
-                          }}
-                        >
-                          <div className="flex items-center justify-between mb-4">
-                            <span className="text-lg font-black text-blue-400">Q{index + 1}:</span>
+                      ) : (
+                        /* Back of Card (Answer) */
+                        <div className="w-full p-8 rounded-xl bg-gradient-to-br from-blue-500/10 to-blue-600/10 border-4 border-blue-400/30 shadow-lg min-h-[500px] flex flex-col">
+                          <div className="flex items-center justify-between mb-6">
+                            <span className="text-xl font-black text-blue-400">Q{index + 1}:</span>
                             <div className="flex gap-3">
-                              <span className={`px-3 py-1.5 rounded-full text-sm font-bold border-2 ${
+                              <span className={`px-4 py-2 rounded-full text-sm font-bold border-2 ${
                                 qa.difficulty === 'easy' ? 'bg-green-500/20 text-green-300 border-green-500/50' :
                                 qa.difficulty === 'medium' ? 'bg-blue-500/20 text-blue-300 border-blue-500/50' :
                                 'bg-red-500/20 text-red-300 border-red-500/50'
                               }`}>
                                 {qa.difficulty}
                               </span>
-                              <span className="px-3 py-1.5 rounded-full text-sm font-bold border-2 border-slate-600/50 bg-slate-600/50 text-blue-100/70">
+                              <span className="px-4 py-2 rounded-full text-sm font-bold border-2 border-slate-600/50 bg-slate-600/50 text-blue-100/70">
                                 {qa.type.replace('_', ' ')}
                               </span>
                             </div>
                           </div>
-                          <div className="mb-4">
-                            <p className="text-lg text-white font-bold break-words overflow-wrap-anywhere leading-relaxed whitespace-normal">{qa.question}</p>
-                            {/* Show page reference if available */}
-                            {(qa as any).page && (
-                              <div className="mt-2 text-xs text-blue-100/60 font-bold">
-                                Reference: Page {(qa as any).page}
-                              </div>
-                            )}
-                          </div>
-                          <div className="mb-4 mt-6 flex-1 overflow-y-auto">
-                            <span className="text-base font-black text-green-400">Correct Answer{qa.type === 'open_ended' && (qa as any).expected_answers && (qa as any).expected_answers.length > 1 ? 's' : ''}:</span>
-                            
-                            {/* For multiple choice, show the correct option */}
-                            {qa.type === 'multiple_choice' && qa.options && (
-                              <div className="mt-3 space-y-2">
-                                {qa.options.map((option, optIndex) => {
-                                  // Check if this is the correct answer
-                                  // The answer field might contain the option text or index
-                                  const isCorrect = qa.answer.toLowerCase().trim() === option.toLowerCase().trim() ||
-                                                   qa.answer === String(optIndex) ||
-                                                   qa.answer === String.fromCharCode(65 + optIndex) ||
-                                                   (qa as any).correct === optIndex ||
-                                                   (qa as any).correct_answer === optIndex
-                                  
-                                  return (
-                                    <div
-                                      key={optIndex}
-                                      className={`p-3 rounded-lg border-2 ${
-                                        isCorrect
-                                          ? 'bg-green-500/20 border-green-400'
-                                          : 'bg-slate-700/50 border-slate-600/50'
-                                      }`}
-                                    >
-                                      <div className="flex items-center gap-3">
-                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black text-sm border-2 ${
-                                          isCorrect
-                                            ? 'bg-green-500 text-white border-green-400'
-                                            : 'bg-slate-600/50 text-blue-100/70 border-slate-500/50'
-                                        }`}>
-                                          {String.fromCharCode(65 + optIndex)}
-                                        </div>
-                                        <span className={`text-white font-bold flex-1 ${
-                                          isCorrect ? 'text-green-300' : ''
-                                        }`}>
-                                          {option}
-                                        </span>
-                                        {isCorrect && (
-                                          <span className="text-xs font-black text-green-300 bg-green-500/20 px-2 py-1 rounded-full border border-green-400/50">
-                                            ✓ Correct
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            )}
-                            
-                            {/* For open-ended questions, show expected answers if available, otherwise show answer */}
-                            {qa.type === 'open_ended' && (
-                              <div className="mt-3">
-                                {(qa as any).expected_answers && Array.isArray((qa as any).expected_answers) && (qa as any).expected_answers.length > 0 ? (
-                                  <div className="space-y-2">
-                                    {(qa as any).expected_answers.map((expectedAns: string, ansIndex: number) => (
-                                      <div
-                                        key={ansIndex}
-                                        className="p-3 rounded-lg bg-green-500/20 border-2 border-green-400"
-                                      >
-                                        <div className="flex items-start gap-2">
-                                          <span className="text-green-300 font-black text-sm mt-1">✓</span>
-                                          <span className="text-white font-bold flex-1">{expectedAns}</span>
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <div className="p-3 rounded-lg bg-green-500/20 border-2 border-green-400">
-                                    <p className="text-white font-bold break-words whitespace-normal leading-relaxed">{qa.answer}</p>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                            
-                            {/* For other question types (true/false, fill blank), show the answer */}
-                            {qa.type !== 'multiple_choice' && qa.type !== 'open_ended' && (
-                              <div className="mt-3 p-3 rounded-lg bg-green-500/20 border-2 border-green-400">
-                                <p className="text-white font-bold break-words whitespace-normal leading-relaxed">{qa.answer}</p>
-                              </div>
-                            )}
-                          </div>
-                          {qa.explanation && (
-                            <div className="mt-4 p-4 rounded-lg bg-slate-800/50 border-2 border-slate-600/50">
-                              <p className="text-sm text-blue-100/70 font-bold leading-relaxed break-words overflow-wrap-anywhere whitespace-normal">{qa.explanation}</p>
+                          
+                          <div className="flex-1 flex flex-col">
+                            <div className="mb-6">
+                              <p className="text-xl text-white font-bold break-words whitespace-normal leading-relaxed">{qa.question}</p>
+                              {/* Show page reference if available */}
+                              {(qa as any).page && (
+                                <div className="mt-3 text-sm text-blue-100/60 font-bold">
+                                  Reference: Page {(qa as any).page}
+                                </div>
+                              )}
                             </div>
-                          )}
-                          <div className="text-sm text-blue-100/70 font-bold mt-6">
-                            Topic: {qa.topic}
-                          </div>
-                          <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 text-sm text-blue-100/60 font-bold">
-                            Click to flip back
+                            
+                            <div className="mt-6 flex-1">
+                              <span className="text-lg font-black text-green-400 block mb-4">
+                                Correct Answer{qa.type === 'open_ended' && (qa as any).expected_answers && (qa as any).expected_answers.length > 1 ? 's' : ''}:
+                              </span>
+                              
+                              {/* For multiple choice, show the correct option */}
+                              {qa.type === 'multiple_choice' && qa.options && (
+                                <div className="space-y-3">
+                                  {qa.options.map((option, optIndex) => {
+                                    // Check if this is the correct answer
+                                    const isCorrect = qa.answer.toLowerCase().trim() === option.toLowerCase().trim() ||
+                                                     qa.answer === String(optIndex) ||
+                                                     qa.answer === String.fromCharCode(65 + optIndex) ||
+                                                     (qa as any).correct === optIndex ||
+                                                     (qa as any).correct_answer === optIndex
+                                    
+                                    return (
+                                      <div
+                                        key={optIndex}
+                                        className={`p-4 rounded-lg border-2 ${
+                                          isCorrect
+                                            ? 'bg-green-500/20 border-green-400'
+                                            : 'bg-slate-700/50 border-slate-600/50'
+                                        }`}
+                                      >
+                                        <div className="flex items-center gap-3">
+                                          <div className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-base border-2 flex-shrink-0 ${
+                                            isCorrect
+                                              ? 'bg-green-500 text-white border-green-400'
+                                              : 'bg-slate-600/50 text-blue-100/70 border-slate-500/50'
+                                          }`}>
+                                            {String.fromCharCode(65 + optIndex)}
+                                          </div>
+                                          <span className={`font-bold text-base flex-1 break-words whitespace-normal leading-relaxed ${
+                                            isCorrect ? 'text-green-300' : 'text-white'
+                                          }`}>
+                                            {option}
+                                          </span>
+                                          {isCorrect && (
+                                            <span className="text-sm font-black text-green-300 bg-green-500/20 px-3 py-1.5 rounded-full border border-green-400/50 flex-shrink-0">
+                                              ✓ Correct
+                                            </span>
+                                          )}
+                                        </div>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              )}
+                              
+                              {/* For open-ended questions, show expected answers if available, otherwise show answer */}
+                              {qa.type === 'open_ended' && (
+                                <div>
+                                  {(qa as any).expected_answers && Array.isArray((qa as any).expected_answers) && (qa as any).expected_answers.length > 0 ? (
+                                    <div className="space-y-3">
+                                      {(qa as any).expected_answers.map((expectedAns: string, ansIndex: number) => (
+                                        <div
+                                          key={ansIndex}
+                                          className="p-4 rounded-lg bg-green-500/20 border-2 border-green-400"
+                                        >
+                                          <div className="flex items-start gap-3">
+                                            <span className="text-green-300 font-black text-base mt-1 flex-shrink-0">✓</span>
+                                            <span className="text-white font-bold text-base flex-1 break-words whitespace-normal leading-relaxed">{expectedAns}</span>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div className="p-4 rounded-lg bg-green-500/20 border-2 border-green-400">
+                                      <p className="text-white font-bold text-base break-words whitespace-normal leading-relaxed">{qa.answer}</p>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                              
+                              {/* For other question types (true/false, fill blank), show the answer */}
+                              {qa.type !== 'multiple_choice' && qa.type !== 'open_ended' && (
+                                <div className="p-4 rounded-lg bg-green-500/20 border-2 border-green-400">
+                                  <p className="text-white font-bold text-base break-words whitespace-normal leading-relaxed">{qa.answer}</p>
+                                </div>
+                              )}
+                            </div>
+                            
+                            {qa.explanation && (
+                              <div className="mt-6 p-5 rounded-lg bg-slate-800/50 border-2 border-slate-600/50">
+                                <p className="text-base text-blue-100/70 font-bold leading-relaxed break-words whitespace-normal">{qa.explanation}</p>
+                              </div>
+                            )}
+                            
+                            <div className="mt-auto pt-6">
+                              <div className="text-base text-blue-100/70 font-bold">
+                                Topic: {qa.topic}
+                              </div>
+                              <div className="text-sm text-blue-100/60 font-bold mt-3 text-center">
+                                Click to flip back
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   )
                 })}
@@ -924,26 +923,93 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
                 <div key={index} className="relative inline-block mr-2 mb-2">
                   <Badge 
                     className="border-2 border-orange-400/50 bg-orange-500/20 text-orange-300 font-black cursor-help hover:bg-orange-500/30 transition-colors px-3 py-1.5"
-                    onMouseEnter={() => setHoveredTerm(term.term)}
-                    onMouseLeave={() => setHoveredTerm(null)}
+                    onMouseEnter={(e) => {
+                      const rect = e.currentTarget.getBoundingClientRect()
+                      const cardWidth = 400
+                      const cardHeight = 150 // Approximate height
+                      const padding = 12
+                      
+                      // Calculate position - prefer above, but adjust if needed
+                      let x = rect.left + rect.width / 2
+                      let y = rect.top
+                      let transform = 'translate(-50%, calc(-100% - 12px))'
+                      
+                      // Check if card would go off left edge
+                      if (x - cardWidth / 2 < padding) {
+                        x = cardWidth / 2 + padding
+                      }
+                      
+                      // Check if card would go off right edge
+                      if (x + cardWidth / 2 > window.innerWidth - padding) {
+                        x = window.innerWidth - cardWidth / 2 - padding
+                      }
+                      
+                      // Check if card would go off top edge - show below instead
+                      if (y - cardHeight - padding < 0) {
+                        y = rect.bottom
+                        transform = 'translate(-50%, 12px)'
+                      }
+                      
+                      setHoveredTerm(term.term)
+                      setHoveredTermPosition({ x, y, transform })
+                    }}
+                    onMouseLeave={() => {
+                      setHoveredTerm(null)
+                      setHoveredTermPosition(null)
+                    }}
                   >
                     {term.term}
                   </Badge>
                   
-                  {/* Hover Card */}
-                  {hoveredTerm === term.term && (
-                    <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-50">
-                      <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl p-4 shadow-lg border-4 border-orange-400/50" style={{ width: '400px', maxWidth: '90vw' }}>
+                  {/* Hover Card - Positioned dynamically */}
+                  {hoveredTerm === term.term && hoveredTermPosition && (
+                    <div 
+                      className="fixed z-[9999] pointer-events-none"
+                      style={{
+                        left: `${hoveredTermPosition.x}px`,
+                        top: `${hoveredTermPosition.y}px`,
+                        transform: hoveredTermPosition.transform || 'translate(-50%, calc(-100% - 12px))',
+                      }}
+                    >
+                      <div 
+                        className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-xl p-4 shadow-2xl border-4 border-orange-400/50 pointer-events-auto"
+                        style={{ 
+                          width: '400px', 
+                          maxWidth: 'min(90vw, 400px)',
+                          minWidth: '250px'
+                        }}
+                        onMouseEnter={() => setHoveredTerm(term.term)}
+                        onMouseLeave={() => {
+                          setHoveredTerm(null)
+                          setHoveredTermPosition(null)
+                        }}
+                      >
                         <div className="text-sm font-black text-white mb-2">{term.term}</div>
-                        <div className="text-xs text-blue-100/70 font-bold leading-relaxed">
+                        <div className="text-xs text-blue-100/70 font-bold leading-relaxed whitespace-normal">
                           {term.definition}
                         </div>
-                        {/* Arrow */}
-                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0" style={{ 
-                          borderLeft: '8px solid transparent',
-                          borderRight: '8px solid transparent',
-                          borderTop: '8px solid rgba(251, 146, 60, 0.5)'
-                        }}></div>
+                        {/* Arrow pointing to the badge */}
+                        {hoveredTermPosition.transform?.includes('calc(-100%') ? (
+                          // Arrow pointing down (card above badge)
+                          <div 
+                            className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0"
+                            style={{ 
+                              borderLeft: '8px solid transparent',
+                              borderRight: '8px solid transparent',
+                              borderTop: '8px solid rgba(251, 146, 60, 0.5)'
+                            }}
+                          />
+                        ) : (
+                          // Arrow pointing up (card below badge)
+                          <div 
+                            className="absolute bottom-full left-1/2 transform -translate-x-1/2 w-0 h-0"
+                            style={{ 
+                              borderLeft: '8px solid transparent',
+                              borderRight: '8px solid transparent',
+                              borderBottom: '8px solid rgba(251, 146, 60, 0.5)'
+                            }}
+                          />
+                        )}
                       </div>
                     </div>
                   )}

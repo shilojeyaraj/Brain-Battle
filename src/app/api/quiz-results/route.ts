@@ -58,18 +58,43 @@ export async function POST(request: NextRequest) {
     console.log("✅ [QUIZ RESULTS] Created quiz session:", sessionData.id)
 
     // 🚀 OPTIMIZATION: Insert questions and get IDs back in one operation
-    const questionsToInsert = questions.map((q: any, index: number) => ({
-      session_id: sessionData.id,
-      question_text: q.question || q.q,
-      question_type: 'multiple_choice',
-      correct_answer: q.options ? q.options[q.correct] : q.a,
-      options: q.options || [q.a],
-      explanation: q.explanation || q.a,
-      difficulty: 'medium',
-      points: 10,
-      time_limit: 30,
-      order_index: index
-    }))
+    const questionsToInsert = questions.map((q: any, index: number) => {
+      // Determine correct answer based on question type
+      let correctAnswer: string | null = null
+      
+      if (q.type === 'multiple_choice' && q.options) {
+        // For multiple choice, get the correct option
+        const correctIndex = q.correct !== undefined ? q.correct : 0
+        correctAnswer = q.options[correctIndex] || q.options[0] || null
+      } else if (q.type === 'open_ended') {
+        // For open-ended, use the first expected answer or the answer field
+        correctAnswer = q.expected_answers && q.expected_answers.length > 0 
+          ? q.expected_answers[0] 
+          : q.answer || q.a || null
+      } else {
+        // Fallback: use answer field or first option
+        correctAnswer = q.answer || q.a || (q.options && q.options[0]) || null
+      }
+      
+      // Ensure we have a valid correct answer
+      if (!correctAnswer) {
+        console.warn(`⚠️ [QUIZ RESULTS] Question ${index} has no valid correct answer, using placeholder`)
+        correctAnswer = 'N/A'
+      }
+      
+      return {
+        session_id: sessionData.id,
+        question_text: q.question || q.q,
+        question_type: q.type === 'open_ended' ? 'open_ended' : 'multiple_choice',
+        correct_answer: correctAnswer,
+        options: q.options || (q.a ? [q.a] : []),
+        explanation: q.explanation || q.answer || q.a || '',
+        difficulty: q.difficulty || 'medium',
+        points: 10,
+        time_limit: 30,
+        order_index: index
+      }
+    })
 
     const { data: insertedQuestions, error: questionsError } = await adminClient
       .from('questions')

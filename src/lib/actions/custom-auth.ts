@@ -135,32 +135,68 @@ export async function registerUser(
     
     console.log('✅ [AUTH] User created successfully:', userData.id)
     
-    // Create initial player stats
-    const { error: statsError } = await supabase
-      .from('player_stats')
-      .insert({
-        user_id: userData.id,
-        level: 1,
-        xp: 0,
-        total_wins: 0,
-        total_losses: 0,
-        total_games: 0,
-        win_streak: 0,
-        best_streak: 0,
-        total_questions_answered: 0,
-        correct_answers: 0,
-        accuracy: 0.00,
-        average_response_time: 0.00,
-        favorite_subject: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
+    // Verify user was actually created in database
+    const { data: verifyUser, error: verifyError } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', userData.id)
+      .single()
     
-    if (statsError) {
-      console.error('❌ [AUTH] Player stats creation failed:', statsError)
+    if (verifyError || !verifyUser) {
+      console.error('❌ [AUTH] User verification failed after creation:', verifyError)
+      return { success: false, error: 'User creation verification failed. Please try again.' }
+    }
+    
+    console.log('✅ [AUTH] User verified in database:', verifyUser.id)
+    
+    // Create initial player stats using admin client to bypass RLS
+    // This ensures stats are created even if RLS policies block regular inserts
+    try {
+      const adminClient = createAdminClient()
+      const { error: statsError } = await adminClient
+        .from('player_stats')
+        .insert({
+          user_id: userData.id,
+          level: 1,
+          xp: 0,
+          total_wins: 0,
+          total_losses: 0,
+          total_games: 0,
+          win_streak: 0,
+          best_streak: 0,
+          total_questions_answered: 0,
+          correct_answers: 0,
+          accuracy: 0.00,
+          average_response_time: 0.00,
+          favorite_subject: null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+      
+      if (statsError) {
+        console.error('❌ [AUTH] Player stats creation failed:', statsError)
+        // If foreign key error, user might not exist - this shouldn't happen but log it
+        if (statsError.code === '23503') {
+          console.error('❌ [AUTH] Foreign key constraint - user does not exist in users table (this should not happen)')
+          // Try to verify user exists one more time
+          const { data: recheckUser } = await adminClient
+            .from('users')
+            .select('id')
+            .eq('id', userData.id)
+            .single()
+          
+          if (!recheckUser) {
+            console.error('❌ [AUTH] User does not exist in database - registration may have failed')
+            return { success: false, error: 'User creation failed. Please try again.' }
+          }
+        }
+        // Don't fail the registration for this - stats can be created later via API
+      } else {
+        console.log('✅ [AUTH] Player stats created successfully')
+      }
+    } catch (statsException) {
+      console.error('❌ [AUTH] Exception creating player stats:', statsException)
       // Don't fail the registration for this
-    } else {
-      console.log('✅ [AUTH] Player stats created successfully')
     }
     
     const user: User = {

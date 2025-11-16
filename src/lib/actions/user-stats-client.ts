@@ -164,11 +164,16 @@ export async function getUserStatsClient(userId: string): Promise<{ success: boo
                 stats: result.data
               }
             }
+          } else {
+            const errorText = result.error || 'Unknown error'
+            console.error('❌ [USER STATS] Failed to create stats via API:', errorText)
+            return { success: false, error: `Failed to create user stats: ${errorText}` }
           }
+        } else {
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+          console.error('❌ [USER STATS] Failed to create stats via API - HTTP error:', response.status, errorData)
+          return { success: false, error: `Failed to create user stats: ${errorData.error || 'HTTP ' + response.status}` }
         }
-        
-        console.error('❌ [USER STATS] Failed to create stats via API')
-        return { success: false, error: 'Failed to create user stats' }
       } catch (apiError) {
         console.error('❌ [USER STATS] Error calling stats API:', apiError)
         return { success: false, error: 'Failed to create user stats' }

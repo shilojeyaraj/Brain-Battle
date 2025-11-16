@@ -71,6 +71,7 @@ export default function RoomPage() {
     timeLimit: 30
   })
   const [isStartingQuiz, setIsStartingQuiz] = useState(false)
+  const [isStartingStudySession, setIsStartingStudySession] = useState(false)
   const [playerProgress, setPlayerProgress] = useState<{[key: string]: {currentQuestion: number, score: number, isActive: boolean}}>({})
   
   // Current user's quiz progress
@@ -172,14 +173,17 @@ export default function RoomPage() {
 
   // Get current user ID and check if they're the host
   useEffect(() => {
-    const userId = getCurrentUserId()
-    setCurrentUserId(userId)
-    
-    if (!userId) {
-      console.log('❌ [ROOM] No user session found, redirecting to login')
-      router.push('/login')
-      return
+    const checkUser = async () => {
+      const userId = await getCurrentUserId()
+      setCurrentUserId(userId)
+      
+      if (!userId) {
+        console.log('❌ [ROOM] No user session found, redirecting to login')
+        router.push('/login')
+        return
+      }
     }
+    checkUser()
   }, [router])
 
   // Function to fetch room members (can be called from real-time updates)
@@ -716,11 +720,13 @@ export default function RoomPage() {
   const startStudySession = async () => {
     if (!isHost || !room || uploadedFiles.length === 0) return
     
+    setIsStartingStudySession(true)
     console.log('📚 [ROOM] Starting study session...')
     
     // If study session is not included, skip directly to quiz
     if (!includeStudySession) {
       console.log('📚 [ROOM] Skipping study session, starting quiz directly...')
+      setIsStartingStudySession(false)
       // TODO: Implement direct quiz start
       return
     }
@@ -756,13 +762,16 @@ export default function RoomPage() {
         startStudyTimer()
         
         console.log('✅ [ROOM] Study session started with materials and resources')
+        setIsStartingStudySession(false)
       } else {
         console.error('❌ [ROOM] Failed to generate study materials:', result.error)
         alert('Failed to generate study materials. Please try again.')
+        setIsStartingStudySession(false)
       }
     } catch (error) {
       console.error('❌ [ROOM] Error starting study session:', error)
       alert('Failed to start study session. Please try again.')
+      setIsStartingStudySession(false)
     }
   }
 
@@ -1873,35 +1882,30 @@ export default function RoomPage() {
                       </div>
                     )}
 
-                    <button 
+                    <Button 
                       onClick={startStudySession}
+                      loading={isStartingStudySession}
+                      loadingText={includeStudySession ? `Starting Study Session...` : 'Starting Quiz...'}
                       disabled={uploadedFiles.length === 0 || studySession.isActive}
-                      className="w-full bg-chart-3 text-foreground py-3 px-4 rounded-xl cartoon-border cartoon-shadow cartoon-hover font-black text-lg disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      className="w-full bg-chart-3 text-foreground py-3 px-4 rounded-xl cartoon-border cartoon-shadow cartoon-hover font-black text-lg disabled:bg-muted disabled:text-muted-foreground"
                     >
                       <Brain className="h-5 w-5" strokeWidth={3} />
                       {includeStudySession 
                         ? `Start Study Session (${studySessionDuration} min)` 
                         : 'Start Quiz Directly'
                       }
-                    </button>
+                    </Button>
                     
-                    <button 
+                    <Button 
                       onClick={handleStartQuiz}
-                      disabled={isStartingQuiz || uploadedFiles.length === 0}
-                      className="w-full bg-primary text-primary-foreground py-3 px-4 rounded-xl cartoon-border cartoon-shadow cartoon-hover font-black text-lg disabled:bg-muted disabled:text-muted-foreground disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                      loading={isStartingQuiz}
+                      loadingText="Starting Quiz..."
+                      disabled={uploadedFiles.length === 0}
+                      className="w-full bg-primary text-primary-foreground py-3 px-4 rounded-xl cartoon-border cartoon-shadow cartoon-hover font-black text-lg disabled:bg-muted disabled:text-muted-foreground"
                     >
-                      {isStartingQuiz ? (
-                        <>
-                          <div className="w-5 h-5 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin"></div>
-                          Starting Quiz...
-                        </>
-                      ) : (
-                        <>
-                          <Zap className="h-5 w-5" strokeWidth={3} />
-                          Start Quiz Directly
-                        </>
-                      )}
-                    </button>
+                      <Zap className="h-5 w-5" strokeWidth={3} />
+                      Start Quiz Directly
+                    </Button>
                   </div>
                   
                   {uploadedFiles.length === 0 && (

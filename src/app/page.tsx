@@ -174,16 +174,15 @@ export default function HomePage() {
     document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  // Default placeholder data if no real data
+  // Default placeholder data if no real data (top 3 only)
   const placeholderPlayers = [
     { rank: 1, username: "Alex", xp: 12500, trend: "up" as const, level: 13, wins: 45, user_id: "placeholder-1" },
     { rank: 2, username: "Sarah", xp: 11200, trend: "up" as const, level: 12, wins: 38, user_id: "placeholder-2" },
     { rank: 3, username: "Mike", xp: 9800, trend: "down" as const, level: 10, wins: 32, user_id: "placeholder-3" },
-    { rank: 4, username: "Emma", xp: 8750, trend: "up" as const, level: 9, wins: 28, user_id: "placeholder-4" },
-    { rank: 5, username: "You", xp: 7200, trend: "up" as const, level: 8, wins: 22, user_id: "placeholder-5" },
   ]
   
-  const displayPlayers = leaderboardPlayers.length > 0 ? leaderboardPlayers : placeholderPlayers
+  // Limit to top 3 players only
+  const displayPlayers = (leaderboardPlayers.length > 0 ? leaderboardPlayers : placeholderPlayers).slice(0, 3)
   
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
@@ -387,8 +386,8 @@ export default function HomePage() {
               
               <div className="space-y-2">
                 {leaderboardLoading ? (
-                  // Loading skeleton
-                  [...Array(5)].map((_, idx) => (
+                  // Loading skeleton (top 3 only)
+                  [...Array(3)].map((_, idx) => (
                     <div
                       key={idx}
                       className="flex items-center gap-2 p-2 rounded-lg bg-slate-700/30 border-2 border-slate-600/30"

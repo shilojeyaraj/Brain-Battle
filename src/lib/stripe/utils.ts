@@ -30,7 +30,14 @@ export async function getOrCreateStripeCustomer(
     return user.stripe_customer_id;
   }
 
-  // Create a new Stripe customer
+  // Create a new Stripe customer (only if Stripe is configured)
+  if (!stripe) {
+    // Stripe is disabled - return a placeholder customer ID
+    // In production, you would want to handle this differently
+    console.warn('⚠️ [STRIPE] Stripe is not configured. Returning placeholder customer ID.');
+    return `placeholder_customer_${userId}`;
+  }
+
   const customer = await stripe.customers.create({
     email,
     metadata: {
@@ -49,10 +56,22 @@ export async function getOrCreateStripeCustomer(
 
 /**
  * Get user's subscription information
+ * Returns free tier if Stripe is not configured
  */
 export async function getUserSubscription(
   userId: string
 ): Promise<SubscriptionInfo | null> {
+  // If Stripe is not configured, return free tier
+  if (!stripe) {
+    return {
+      tier: 'free',
+      status: 'free',
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      isActive: false,
+    };
+  }
+
   const supabase = await createClient();
 
   const { data: user } = await supabase
@@ -64,7 +83,13 @@ export async function getUserSubscription(
     .single();
 
   if (!user) {
-    return null;
+    return {
+      tier: 'free',
+      status: 'free',
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      isActive: false,
+    };
   }
 
   const isActive =
@@ -84,8 +109,14 @@ export async function getUserSubscription(
 
 /**
  * Check if user has Pro subscription
+ * Returns false if Stripe is not configured (all users get free tier for now)
  */
 export async function hasProSubscription(userId: string): Promise<boolean> {
+  // If Stripe is not configured, all users are on free tier
+  if (!stripe) {
+    return false;
+  }
+  
   const subscription = await getUserSubscription(userId);
   return subscription?.isActive && subscription.tier === 'pro';
 }

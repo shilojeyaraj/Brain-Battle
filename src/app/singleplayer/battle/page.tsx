@@ -495,19 +495,19 @@ export default function BattlePage() {
           </Link>
           
           <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-card cartoon-border cartoon-shadow">
-              <Target className="h-5 w-5 text-primary" strokeWidth={3} />
-              <span className="text-muted-foreground font-bold">Score:</span>
-              <span className="font-black text-primary">{score}/{questions.length}</span>
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 cartoon-border cartoon-shadow">
+              <Target className="h-5 w-5 text-orange-400" strokeWidth={3} />
+              <span className="text-blue-100/70 font-bold">Score:</span>
+              <span className="font-black text-orange-300">{score}/{questions.length}</span>
             </div>
-            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-card cartoon-border cartoon-shadow">
-              <Clock className="h-5 w-5 text-secondary" strokeWidth={3} />
-              <span className="font-black text-secondary">{timeLeft}s</span>
+            <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 cartoon-border cartoon-shadow">
+              <Clock className="h-5 w-5 text-blue-400" strokeWidth={3} />
+              <span className="font-black text-blue-300">{timeLeft}s</span>
             </div>
             {isAway && (
-              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-yellow-100 border-2 border-yellow-300 cartoon-border">
-                <EyeOff className="h-5 w-5 text-yellow-600" strokeWidth={3} />
-                <span className="font-black text-yellow-700">Away</span>
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-yellow-500/20 border-4 border-yellow-400/50 cartoon-border">
+                <EyeOff className="h-5 w-5 text-yellow-300" strokeWidth={3} />
+                <span className="font-black text-yellow-300">Away</span>
               </div>
             )}
           </div>
@@ -525,16 +525,16 @@ export default function BattlePage() {
         />
 
         {/* Question Card */}
-        <Card className="p-8 bg-card cartoon-border cartoon-shadow">
+        <Card className="p-8 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 cartoon-border cartoon-shadow">
           <div className="mb-8">
             <div className="flex items-center gap-3 mb-4">
-              <h2 className="text-2xl font-black text-foreground leading-relaxed">
+              <h2 className="text-2xl font-black text-white leading-relaxed">
                 {question.question || question.q}
               </h2>
-              <Badge className={`cartoon-border font-black ${
+              <Badge className={`cartoon-border font-black border-4 ${
                 question.type === "open_ended" 
-                  ? "bg-secondary text-secondary-foreground" 
-                  : "bg-primary text-primary-foreground"
+                  ? "bg-blue-500/20 text-blue-300 border-blue-400/50" 
+                  : "bg-orange-500/20 text-orange-300 border-orange-400/50"
               }`}>
                 {question.type === "open_ended" ? "Open Answer" : "Multiple Choice"}
               </Badge>
@@ -542,11 +542,11 @@ export default function BattlePage() {
             
             {/* Show source document if available */}
             {question.source_document && (
-              <div className="mb-4 p-3 rounded-lg bg-secondary/30 cartoon-border">
+              <div className="mb-4 p-3 rounded-lg bg-blue-500/20 border-4 border-blue-400/50 cartoon-border">
                 <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-secondary" strokeWidth={3} />
-                  <span className="text-sm text-muted-foreground font-bold">Based on:</span>
-                  <span className="text-sm text-foreground font-black">{question.source_document}</span>
+                  <FileText className="h-4 w-4 text-blue-400" strokeWidth={3} />
+                  <span className="text-sm text-blue-100/70 font-bold">Based on:</span>
+                  <span className="text-sm text-white font-black">{question.source_document}</span>
                 </div>
               </div>
             )}
@@ -800,8 +800,17 @@ function BattleResultsScreen({
   const rank = userProfile ? getRankFromXP(userProfile.stats?.xp || 0) : null
 
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-4xl mx-auto">
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
+        <div
+          className="absolute -bottom-40 -left-40 w-80 h-80 bg-orange-500/10 rounded-full blur-3xl animate-float"
+          style={{ animationDelay: "1s" }}
+        />
+      </div>
+      
+      <div className="relative z-10 max-w-4xl mx-auto">
         {/* Level Up Modal */}
         {battleResults && (
           <LevelUpModal
@@ -815,28 +824,28 @@ function BattleResultsScreen({
 
         {/* Results Header */}
         <div className="text-center mb-8">
-          <div className="w-20 h-20 rounded-xl bg-primary flex items-center justify-center mx-auto mb-6 cartoon-border cartoon-shadow">
-            <Trophy className="w-10 h-10 text-primary-foreground" strokeWidth={3} />
+          <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center mx-auto mb-6 border-4 border-orange-400/50 cartoon-border cartoon-shadow">
+            <Trophy className="w-10 h-10 text-white" strokeWidth={3} />
           </div>
           
-          <h1 className="text-4xl font-black text-foreground mb-4" style={{ fontFamily: "var(--font-display)" }}>
+          <h1 className="text-4xl font-black text-white mb-4" style={{ fontFamily: "var(--font-display)" }}>
             Quiz Complete!
           </h1>
           
           <div className="mb-6">
-            <p className="text-6xl font-black mb-2" style={{ color: "var(--primary)" }}>
+            <p className="text-6xl font-black mb-2 text-orange-400">
               {score}/{totalQuestions}
             </p>
-            <p className="text-2xl font-black text-foreground mb-2">
+            <p className="text-2xl font-black text-white mb-2">
               {accuracy.toFixed(1)}% Correct
             </p>
-            <p className="text-lg text-muted-foreground font-bold mb-4">Topic: {topic}</p>
-            <Badge className={`cartoon-border font-black text-lg px-4 py-2 ${
+            <p className="text-lg text-blue-100/70 font-bold mb-4">Topic: {topic}</p>
+            <Badge className={`cartoon-border font-black text-lg px-4 py-2 border-4 ${
               accuracy >= 80
-                ? "bg-chart-3 text-foreground"
+                ? "bg-orange-500/20 text-orange-300 border-orange-400/50"
                 : accuracy >= 60
-                ? "bg-primary text-primary-foreground"
-                : "bg-destructive text-destructive-foreground"
+                ? "bg-blue-500/20 text-blue-300 border-blue-400/50"
+                : "bg-red-500/20 text-red-300 border-red-400/50"
             }`}>
               {accuracy >= 80
                 ? "Excellent!"
@@ -849,43 +858,43 @@ function BattleResultsScreen({
 
         {/* XP Earned Section */}
         {battleResults && (
-          <Card className="p-6 bg-card cartoon-border cartoon-shadow mb-8">
+          <Card className="p-6 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 cartoon-border cartoon-shadow mb-8">
             <div className="text-center">
               <div className="flex items-center justify-center gap-2 mb-4">
-                <Star className="h-6 w-6 text-chart-3" strokeWidth={3} />
-                <h3 className="text-2xl font-black text-foreground">XP Earned</h3>
+                <Star className="h-6 w-6 text-orange-400" strokeWidth={3} />
+                <h3 className="text-2xl font-black text-white">XP Earned</h3>
               </div>
               
               <div className="grid md:grid-cols-3 gap-6 mb-6">
-                <div className="p-4 bg-primary/10 rounded-xl cartoon-border">
-                  <div className="text-3xl font-black text-primary mb-2">
+                <div className="p-4 bg-orange-500/20 rounded-xl border-4 border-orange-400/50 cartoon-border">
+                  <div className="text-3xl font-black text-orange-300 mb-2">
                     +{battleResults.xpEarned}
                   </div>
-                  <div className="text-sm text-muted-foreground font-bold">XP Earned</div>
+                  <div className="text-sm text-blue-100/70 font-bold">XP Earned</div>
                 </div>
                 
-                <div className="p-4 bg-secondary/10 rounded-xl cartoon-border">
-                  <div className="text-3xl font-black text-secondary mb-2">
+                <div className="p-4 bg-blue-500/20 rounded-xl border-4 border-blue-400/50 cartoon-border">
+                  <div className="text-3xl font-black text-blue-300 mb-2">
                     {battleResults.oldXP}
                   </div>
-                  <div className="text-sm text-muted-foreground font-bold">Previous XP</div>
+                  <div className="text-sm text-blue-100/70 font-bold">Previous XP</div>
                 </div>
                 
-                <div className="p-4 bg-chart-3/10 rounded-xl cartoon-border">
-                  <div className="text-3xl font-black text-chart-3 mb-2">
+                <div className="p-4 bg-orange-500/20 rounded-xl border-4 border-orange-400/50 cartoon-border">
+                  <div className="text-3xl font-black text-orange-300 mb-2">
                     {battleResults.newXP}
                   </div>
-                  <div className="text-sm text-muted-foreground font-bold">Total XP</div>
+                  <div className="text-sm text-blue-100/70 font-bold">Total XP</div>
                 </div>
               </div>
 
               {/* XP Breakdown */}
               {battleResults.xpBreakdown && battleResults.xpBreakdown.length > 0 && (
-                <div className="bg-secondary/20 rounded-xl p-4 cartoon-border">
-                  <h4 className="font-black text-foreground mb-3">XP Breakdown:</h4>
+                <div className="bg-slate-700/50 rounded-xl p-4 border-4 border-slate-600/50 cartoon-border">
+                  <h4 className="font-black text-white mb-3">XP Breakdown:</h4>
                   <div className="space-y-2">
                     {battleResults.xpBreakdown.map((explanation, index) => (
-                      <div key={index} className="text-sm text-muted-foreground font-bold">
+                      <div key={index} className="text-sm text-blue-100/70 font-bold">
                         • {explanation}
                       </div>
                     ))}
@@ -894,10 +903,10 @@ function BattleResultsScreen({
               )}
               
               {battleResults.leveledUp && (
-                <div className="mt-4 p-3 bg-chart-3/20 border-2 border-chart-3 rounded-xl cartoon-border">
+                <div className="mt-4 p-3 bg-orange-500/20 border-4 border-orange-400/50 rounded-xl cartoon-border">
                   <div className="flex items-center justify-center gap-2">
-                    <Trophy className="h-5 w-5 text-chart-3" strokeWidth={3} />
-                    <span className="font-black text-chart-3">Level Up!</span>
+                    <Trophy className="h-5 w-5 text-orange-400" strokeWidth={3} />
+                    <span className="font-black text-orange-300">Level Up!</span>
                   </div>
                 </div>
               )}
@@ -907,33 +916,33 @@ function BattleResultsScreen({
 
         {/* User Stats and XP Progress */}
         {userProfile && (
-          <Card className="p-6 bg-card cartoon-border cartoon-shadow mb-8">
+          <Card className="p-6 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 cartoon-border cartoon-shadow mb-8">
             <div className="grid md:grid-cols-2 gap-6">
               {/* Current Stats */}
               <div>
-                <h3 className="text-lg font-black text-foreground mb-4 flex items-center gap-2">
+                <h3 className="text-lg font-black text-white mb-4 flex items-center gap-2">
                   {rank && getRankIcon(rank, "h-5 w-5")}
                   Your Progress
                 </h3>
                 <div className="space-y-3">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground font-bold">Current Level:</span>
-                    <span className="font-black text-foreground">Level {userProfile.stats?.level || 1}</span>
+                    <span className="text-blue-100/70 font-bold">Current Level:</span>
+                    <span className="font-black text-orange-300">Level {userProfile.stats?.level || 1}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground font-bold">Total XP:</span>
-                    <span className="font-black text-foreground">{formatXP(userProfile.stats?.xp || 0)}</span>
+                    <span className="text-blue-100/70 font-bold">Total XP:</span>
+                    <span className="font-black text-orange-300">{formatXP(userProfile.stats?.xp || 0)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground font-bold">Total Wins:</span>
-                    <span className="font-black text-foreground">{userProfile.stats?.total_wins || 0}</span>
+                    <span className="text-blue-100/70 font-bold">Total Wins:</span>
+                    <span className="font-black text-orange-300">{userProfile.stats?.total_wins || 0}</span>
                   </div>
                 </div>
               </div>
 
               {/* XP Progress */}
               <div>
-                <h3 className="text-lg font-black text-foreground mb-4">XP Progress</h3>
+                <h3 className="text-lg font-black text-white mb-4">XP Progress</h3>
                 <XPProgressBar xp={userProfile.stats?.xp || 0} />
               </div>
             </div>
@@ -941,8 +950,8 @@ function BattleResultsScreen({
         )}
 
         {/* Question Review */}
-        <Card className="p-6 bg-card cartoon-border cartoon-shadow mb-8">
-          <h3 className="text-lg font-black text-foreground mb-4">Question Review</h3>
+        <Card className="p-6 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 cartoon-border cartoon-shadow mb-8">
+          <h3 className="text-lg font-black text-white mb-4">Question Review</h3>
           <div className="space-y-4">
             {questions.map((question, index) => {
               const userAnswer = userAnswers[index]
@@ -987,27 +996,27 @@ function BattleResultsScreen({
               }
               
               return (
-                <div key={index} className={`p-4 rounded-xl border-2 ${
+                <div key={index} className={`p-4 rounded-xl border-4 ${
                   isCorrect 
-                    ? "bg-chart-3/10 border-chart-3" 
-                    : "bg-destructive/10 border-destructive"
-                }`}>
+                    ? "bg-orange-500/20 border-orange-400/50" 
+                    : "bg-red-500/20 border-red-400/50"
+                } cartoon-border`}>
                   <div className="flex items-start gap-3">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black ${
-                      isCorrect ? "bg-chart-3 text-foreground" : "bg-destructive text-destructive-foreground"
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black border-2 ${
+                      isCorrect ? "bg-orange-500 text-white border-orange-400" : "bg-red-500 text-white border-red-400"
                     }`}>
                       {isCorrect ? "✓" : "✗"}
                     </div>
                     <div className="flex-1">
-                      <p className="font-bold text-foreground mb-2">
+                      <p className="font-bold text-white mb-2">
                         {question.question || question.q}
                       </p>
                       <div className="text-sm space-y-1">
-                        <p className="text-muted-foreground">
-                          <strong className="text-foreground">Your answer:</strong> <span className="font-bold">{userAnswerText}</span>
+                        <p className="text-blue-100/70">
+                          <strong className="text-white">Your answer:</strong> <span className="font-bold text-white">{userAnswerText}</span>
                         </p>
-                        <p className="text-muted-foreground">
-                          <strong className="text-foreground">Correct answer:</strong> <span className="font-bold">{correctAnswerText}</span>
+                        <p className="text-blue-100/70">
+                          <strong className="text-white">Correct answer:</strong> <span className="font-bold text-white">{correctAnswerText}</span>
                         </p>
                       </div>
                     </div>
@@ -1022,7 +1031,7 @@ function BattleResultsScreen({
         <div className="space-y-4">
           <Button 
             onClick={onRetakeBattle}
-            className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg cartoon-border cartoon-shadow cartoon-hover"
+            className="w-full h-12 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black text-lg border-4 border-orange-400/50 cartoon-border cartoon-shadow cartoon-hover"
           >
             <Zap className="h-5 w-5 mr-2" strokeWidth={3} />
             Take Another Quiz
@@ -1030,7 +1039,7 @@ function BattleResultsScreen({
           <Button 
             onClick={onBackToDashboard}
             variant="outline" 
-            className="w-full h-12 font-black cartoon-border cartoon-shadow"
+            className="w-full h-12 font-black border-4 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70 cartoon-border cartoon-shadow"
           >
             <ArrowLeft className="h-5 w-5 mr-2" strokeWidth={3} />
             Back to Dashboard

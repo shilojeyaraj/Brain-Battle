@@ -50,12 +50,14 @@ export default function MFASetupPage() {
       }
 
       // Check Supabase MFA factors (TOTP, Email)
-      const { data: { factors }, error } = await supabase.auth.mfa.listFactors()
+      const { data, error } = await supabase.auth.mfa.listFactors()
       
       if (error) {
         console.error('Error checking MFA status:', error)
         return
       }
+
+      const factors = data?.all || []
 
       // Check WebAuthn credentials (stored separately)
       const { data: webauthnCreds } = await supabase
@@ -117,8 +119,8 @@ export default function MFASetupPage() {
       }
 
       if (data) {
-        setQrCode(data.qr_code || null)
-        setSecret(data.secret || null)
+        setQrCode(data.totp?.qr_code || null)
+        setSecret(data.totp?.secret || null)
         setFactorId(data.id || null)
         setStep('verify')
       }
@@ -141,34 +143,11 @@ export default function MFASetupPage() {
         return
       }
 
-      // For Email MFA, we enroll email as a factor
-      const { data, error } = await supabase.auth.mfa.enroll({
-        factorType: 'email',
-        friendlyName: 'Email Verification'
-      })
-
-      if (error) {
-        setError(error.message)
-        setLoading(false)
-        return
-      }
-
-      if (data) {
-        setFactorId(data.id || null)
-        // Send verification email
-        const { error: emailError } = await supabase.auth.mfa.challenge({
-          factorId: data.id
-        })
-
-        if (emailError) {
-          setError(emailError.message)
-          setLoading(false)
-          return
-        }
-
-        setEmailSent(true)
-        setStep('verify')
-      }
+      // Email MFA may not be directly supported via enroll API
+      // For now, we'll mark it as enabled and handle verification separately
+      // Note: This may need to be configured in Supabase dashboard
+      setError('Email MFA enrollment is not currently supported. Please use TOTP or WebAuthn instead.')
+      setLoading(false)
     } catch (err: any) {
       setError(err.message || 'Failed to setup Email MFA')
     } finally {
@@ -247,40 +226,41 @@ export default function MFASetupPage() {
         return
       }
 
+      // Email MFA is not currently supported, only TOTP/WebAuthn
       if (mfaType === 'email') {
-        // Verify email OTP
-        const { data, error } = await supabase.auth.mfa.verify({
-          factorId: factorId,
-          code: verificationCode
-        })
+        setError('Email MFA verification is not currently supported. Please use TOTP or WebAuthn instead.')
+        setLoading(false)
+        return
+      }
 
-        if (error) {
-          setError(error.message || 'Invalid code. Please try again.')
-          setLoading(false)
-          return
-        }
+      // For TOTP, we need to create a challenge first (even during enrollment)
+      // Create a challenge
+      const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({
+        factorId: factorId
+      })
 
-        if (data) {
-          setStep('enabled')
-          setMfaEnabled(true)
-        }
-      } else {
-        // Verify TOTP
-        const { data, error } = await supabase.auth.mfa.verify({
-          factorId: factorId,
-          code: verificationCode
-        })
+      if (challengeError || !challengeData) {
+        setError(challengeError?.message || 'Failed to create challenge')
+        setLoading(false)
+        return
+      }
 
-        if (error) {
-          setError(error.message || 'Invalid code. Please try again.')
-          setLoading(false)
-          return
-        }
+      // Verify TOTP or WebAuthn with the challenge
+      const { data, error } = await supabase.auth.mfa.verify({
+        factorId: factorId,
+        challengeId: challengeData.id,
+        code: verificationCode
+      })
 
-        if (data) {
-          setStep('enabled')
-          setMfaEnabled(true)
-        }
+      if (error) {
+        setError(error.message || 'Invalid code. Please try again.')
+        setLoading(false)
+        return
+      }
+
+      if (data) {
+        setStep('enabled')
+        setMfaEnabled(true)
       }
     } catch (err: any) {
       setError(err.message || 'Verification failed')
@@ -321,7 +301,8 @@ export default function MFASetupPage() {
     setError(null)
 
     try {
-      const { data: { factors } } = await supabase.auth.mfa.listFactors()
+      const { data } = await supabase.auth.mfa.listFactors()
+      const factors = data?.all || []
       const activeFactor = factors?.find(f => f.status === 'verified')
 
       if (activeFactor) {

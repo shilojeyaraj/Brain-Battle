@@ -89,11 +89,20 @@ function SignupForm() {
       }
 
       if (result.success && result.user) {
+        // Verify user ID is valid before storing
+        if (!result.user.id || result.user.id.trim() === '') {
+          console.error('❌ [SIGNUP] Invalid user ID received:', result.user.id)
+          setError('Registration succeeded but user ID is invalid. Please contact support.')
+          setIsPending(false)
+          return
+        }
+        
         // Store user ID in localStorage for session management
         localStorage.setItem('userId', result.user.id)
+        console.log('✅ [SIGNUP] User ID stored in localStorage:', result.user.id)
         setSuccessMessage("Account created successfully! Redirecting...")
         setTimeout(() => {
-          router.push('/dashboard?newUser=true')
+          router.push(`/dashboard?userId=${result.user.id}&newUser=true`)
         }, 1500)
       } else {
         setError('Sign up failed')
