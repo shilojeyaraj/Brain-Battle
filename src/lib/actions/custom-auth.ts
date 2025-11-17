@@ -40,7 +40,9 @@ export async function registerUser(
 ): Promise<AuthResponse> {
   try {
     // Use admin client to bypass RLS for registration
+    // Use the same client instance for all operations to ensure transaction consistency
     const supabase = createAdminClient()
+    const adminClient = supabase // Use same client for consistency
 
     // Normalize optional email (trim and lowercase)
     const normalizedEmail = (email ?? '').trim().toLowerCase()
@@ -125,78 +127,162 @@ export async function registerUser(
     
     if (userError) {
       console.error('❌ [AUTH] User creation failed:', userError)
+      console.error('❌ [AUTH] Error details:', JSON.stringify(userError, null, 2))
       return { success: false, error: `Registration failed: ${userError.message}` }
     }
     
     if (!userData) {
       console.error('❌ [AUTH] No user returned after insert')
-      return { success: false, error: 'Registration failed' }
+      console.error('❌ [AUTH] Insert response:', JSON.stringify(attempt, null, 2))
+      return { success: false, error: 'Registration failed: No user data returned' }
     }
     
     console.log('✅ [AUTH] User created successfully:', userData.id)
+    console.log('✅ [AUTH] User data:', JSON.stringify({ id: userData.id, username: userData.username, email: userData.email }, null, 2))
     
-    // Verify user was actually created in database
-    const { data: verifyUser, error: verifyError } = await supabase
+    // Immediately query to verify the insert was committed
+    console.log('🔍 [AUTH] Immediately checking if user exists in database...')
+    const immediateCheck = await supabase
       .from('users')
-      .select('id')
+      .select('id, username, email, created_at')
       .eq('id', userData.id)
       .single()
     
-    if (verifyError || !verifyUser) {
-      console.error('❌ [AUTH] User verification failed after creation:', verifyError)
-      return { success: false, error: 'User creation verification failed. Please try again.' }
+    if (immediateCheck.error) {
+      console.error('❌ [AUTH] Immediate check failed:', immediateCheck.error)
+      console.error('❌ [AUTH] This suggests the insert may not have been committed')
+    } else if (immediateCheck.data) {
+      console.log('✅ [AUTH] Immediate check passed - user found:', immediateCheck.data.id)
+    } else {
+      console.warn('⚠️ [AUTH] Immediate check returned no data - user may not be committed yet')
     }
     
-    console.log('✅ [AUTH] User verified in database:', verifyUser.id)
+    // Verify user was actually created in database
+    // Add a small delay to ensure insert is committed
+    await new Promise(resolve => setTimeout(resolve, 100))
     
-    // Create initial player stats using admin client to bypass RLS
-    // This ensures stats are created even if RLS policies block regular inserts
-    try {
-      const adminClient = createAdminClient()
-      const { error: statsError } = await adminClient
-        .from('player_stats')
-        .insert({
-          user_id: userData.id,
-          level: 1,
-          xp: 0,
-          total_wins: 0,
-          total_losses: 0,
-          total_games: 0,
-          win_streak: 0,
-          best_streak: 0,
-          total_questions_answered: 0,
-          correct_answers: 0,
-          accuracy: 0.00,
-          average_response_time: 0.00,
-          favorite_subject: null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
+    const { data: verifyUser, error: verifyError } = await supabase
+      .from('users')
+      .select('id, username, email, created_at')
+      .eq('id', userData.id)
+      .single()
+    
+    if (verifyError) {
+      console.error('❌ [AUTH] User verification failed after creation:', verifyError)
+      console.error('❌ [AUTH] Verification error details:', JSON.stringify(verifyError, null, 2))
+      // Try one more time after a longer delay
+      await new Promise(resolve => setTimeout(resolve, 200))
+      const { data: retryVerify, error: retryError } = await supabase
+        .from('users')
+        .select('id, username, email')
+        .eq('id', userData.id)
+        .single()
       
-      if (statsError) {
-        console.error('❌ [AUTH] Player stats creation failed:', statsError)
-        // If foreign key error, user might not exist - this shouldn't happen but log it
-        if (statsError.code === '23503') {
-          console.error('❌ [AUTH] Foreign key constraint - user does not exist in users table (this should not happen)')
-          // Try to verify user exists one more time
-          const { data: recheckUser } = await adminClient
+      if (retryError || !retryVerify) {
+        console.error('❌ [AUTH] User still not found after retry:', retryError)
+        console.error('❌ [AUTH] This suggests the insert may have failed or rolled back')
+        return { success: false, error: 'User creation verification failed. The user may not have been saved to the database.' }
+      }
+      
+      console.log('✅ [AUTH] User verified in database after retry:', retryVerify.id)
+    } else if (!verifyUser) {
+      console.error('❌ [AUTH] User verification returned no data')
+      return { success: false, error: 'User creation verification failed. Please try again.' }
+    } else {
+      console.log('✅ [AUTH] User verified in database:', verifyUser.id)
+      console.log('✅ [AUTH] Verified user details:', JSON.stringify(verifyUser, null, 2))
+    }
+    
+    // Create initial player stats using the same admin client to ensure transaction consistency
+    // Add retry logic to handle potential timing issues with transaction commits
+    try {
+      // Use the same adminClient instance that was used for user creation
+      
+      // Retry logic for player stats creation (handles transaction timing issues)
+      // PostgREST commits each request separately, so we need to wait for the user insert to be fully committed
+      const createPlayerStatsWithRetry = async (retries = 3, delay = 150): Promise<{ error: any | null }> => {
+        // Small initial delay to ensure user insert transaction is fully committed
+        await new Promise(resolve => setTimeout(resolve, 50))
+        
+        for (let attempt = 1; attempt <= retries; attempt++) {
+          // Additional delay for retries (exponential backoff)
+          if (attempt > 1) {
+            await new Promise(resolve => setTimeout(resolve, delay * attempt))
+            console.log(`🔄 [AUTH] Retrying player stats creation (attempt ${attempt}/${retries})...`)
+          } else {
+            console.log(`🔄 [AUTH] Attempting player stats creation (attempt ${attempt}/${retries})...`)
+          }
+          
+          // Verify user still exists before attempting stats creation
+          const { data: verifyBeforeStats, error: verifyErr } = await adminClient
             .from('users')
             .select('id')
             .eq('id', userData.id)
             .single()
           
-          if (!recheckUser) {
-            console.error('❌ [AUTH] User does not exist in database - registration may have failed')
-            return { success: false, error: 'User creation failed. Please try again.' }
+          if (verifyErr || !verifyBeforeStats) {
+            console.error(`❌ [AUTH] User verification failed before stats creation (attempt ${attempt}):`, verifyErr)
+            if (attempt === retries) {
+              return { error: { code: '23503', message: 'User not found in database' } }
+            }
+            continue
           }
+          
+          // Attempt to create player stats
+          const { error: statsError } = await adminClient
+            .from('player_stats')
+            .insert({
+              user_id: userData.id,
+              level: 1,
+              xp: 0,
+              total_wins: 0,
+              total_losses: 0,
+              total_games: 0,
+              win_streak: 0,
+              best_streak: 0,
+              total_questions_answered: 0,
+              correct_answers: 0,
+              accuracy: 0.00,
+              average_response_time: 0.00,
+              favorite_subject: null,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+          
+          if (!statsError) {
+            console.log(`✅ [AUTH] Player stats created successfully (attempt ${attempt})`)
+            return { error: null }
+          }
+          
+          // If foreign key error, retry (transaction might not be committed yet)
+          if (statsError.code === '23503') {
+            console.warn(`⚠️ [AUTH] Foreign key constraint on attempt ${attempt} - user might not be committed yet`)
+            if (attempt === retries) {
+              console.error('❌ [AUTH] Player stats creation failed after all retries:', statsError)
+              return { error: statsError }
+            }
+            continue
+          }
+          
+          // For other errors, return immediately
+          console.error(`❌ [AUTH] Player stats creation failed (non-retryable error):`, statsError)
+          return { error: statsError }
         }
+        
+        return { error: { code: 'RETRY_EXHAUSTED', message: 'Failed after all retry attempts' } }
+      }
+      
+      const { error: statsError } = await createPlayerStatsWithRetry()
+      
+      if (statsError) {
+        console.error('❌ [AUTH] Player stats creation failed after retries:', statsError)
         // Don't fail the registration for this - stats can be created later via API
-      } else {
-        console.log('✅ [AUTH] Player stats created successfully')
+        // The user profile API will create stats if they don't exist
+        console.log('⚠️ [AUTH] Registration will continue - stats can be created later via API')
       }
     } catch (statsException) {
       console.error('❌ [AUTH] Exception creating player stats:', statsException)
-      // Don't fail the registration for this
+      // Don't fail the registration for this - stats can be created later via API
     }
     
     const user: User = {

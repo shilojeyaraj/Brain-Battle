@@ -82,10 +82,22 @@ export async function POST(request: NextRequest) {
         correctAnswer = 'N/A'
       }
       
+      // Map question type to database enum values
+      // Database enum: 'multiple_choice', 'true_false', 'fill_blank'
+      // Map 'open_ended' to 'fill_blank' as it's the closest match
+      let questionType: 'multiple_choice' | 'true_false' | 'fill_blank' = 'multiple_choice'
+      if (q.type === 'open_ended') {
+        questionType = 'fill_blank'
+      } else if (q.type === 'true_false') {
+        questionType = 'true_false'
+      } else if (q.type === 'multiple_choice') {
+        questionType = 'multiple_choice'
+      }
+      
       return {
         session_id: sessionData.id,
         question_text: q.question || q.q,
-        question_type: q.type === 'open_ended' ? 'open_ended' : 'multiple_choice',
+        question_type: questionType,
         correct_answer: correctAnswer,
         options: q.options || (q.a ? [q.a] : []),
         explanation: q.explanation || q.answer || q.a || '',
@@ -139,7 +151,12 @@ export async function POST(request: NextRequest) {
     console.log("✅ [QUIZ RESULTS] Inserted player answers")
 
     // 5. Create game result record
-    const xpEarned = Math.round((correctAnswers / totalQuestions) * 100) // XP based on percentage
+    // Calculate XP: base XP per question (10) + bonus for accuracy
+    // Base: 10 XP per correct answer
+    // Bonus: up to 50 XP for perfect score
+    const baseXP = correctAnswers * 10
+    const accuracyBonus = correctAnswers === totalQuestions ? 50 : Math.round((correctAnswers / totalQuestions) * 30)
+    const xpEarned = baseXP + accuracyBonus
     const { data: gameResult, error: gameResultError } = await adminClient
       .from('game_results')
       .insert({

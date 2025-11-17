@@ -617,14 +617,16 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
                       {/* Formula Display */}
                       <div className="bg-slate-900/50 p-6 rounded-xl border-4 border-blue-400/30 mb-4">
                         <div 
-                          className="text-xl md:text-2xl font-black text-blue-300 text-center font-mono leading-relaxed break-all"
+                          className="text-xl md:text-2xl font-black text-blue-300 text-center font-mono leading-relaxed"
                           dangerouslySetInnerHTML={{ 
                             __html: formatFormulaToHTML(formula.formula) 
                           }}
                           style={{ 
                             fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
                             lineHeight: '1.8',
-                            wordBreak: 'break-word'
+                            wordBreak: 'break-word',
+                            overflowWrap: 'break-word',
+                            whiteSpace: 'pre-wrap'
                           }}
                         />
                       </div>
@@ -679,14 +681,14 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
                     <div
                       key={index}
                       className={`relative w-full cursor-pointer transition-all duration-300 ${
-                        isFlipped ? '' : ''
+                        isFlipped ? '' : 'group'
                       }`}
                       onClick={() => toggleCardFlip(index)}
                     >
                       {/* Simple Card - No 3D flip, just show/hide */}
                       {!isFlipped ? (
                         /* Front of Card (Question) */
-                        <div className="w-full p-8 rounded-xl bg-gradient-to-br from-slate-700/80 to-slate-800/80 border-4 border-slate-600/50 shadow-lg min-h-[500px] flex flex-col">
+                        <div className="w-full p-8 rounded-xl bg-gradient-to-br from-slate-700/80 to-slate-800/80 border-4 border-slate-600/50 shadow-lg min-h-[500px] flex flex-col practice-card-hover transition-all duration-300">
                           <div className="flex items-center justify-between mb-6">
                             <span className="text-xl font-black text-blue-400">Q{index + 1}:</span>
                             <div className="flex gap-3">

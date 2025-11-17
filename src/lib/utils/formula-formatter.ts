@@ -101,15 +101,40 @@ export function formatFormulaToHTML(formula: string): string {
     return formula || ''
   }
 
-  // First, clean the formula of any existing malformed HTML
-  // Remove broken HTML tags and attributes
+  // First, STRIP ALL HTML completely - we'll rebuild it properly
   let cleanFormula = formula
-    .replace(/="[^"]*">/g, '') // Remove broken attributes like ="font-mono">
-    .replace(/<[^>]*="[^"]*"[^>]*>/g, '') // Remove malformed tags
-    .replace(/<[^>]+>/g, '') // Remove any remaining HTML tags
-    .replace(/&lt;/g, '<') // Unescape if needed
+    // Remove ALL HTML tags and their content attributes first
+    .replace(/<[^>]+>/g, '') // Remove all HTML tags
+    // Remove broken attribute patterns (very aggressive)
+    .replace(/="[^"]*">/g, '') // Remove ="..." >
+    .replace(/="[^"]*"/g, '') // Remove ="..." 
+    .replace(/="[^"]*\s*>/g, '') // Remove ="..." with whitespace before >
+    // Remove attribute fragments with spaces/dashes (like ="text - xs align - baseline")
+    .replace(/="[^"]*\s*-\s*[^"]*"/g, '') // Remove attributes with dashes
+    .replace(/="[^"]*\s*style\s*=\s*[^"]*"/g, '') // Remove style in attributes
+    .replace(/style\s*=\s*"[^"]*"/g, '') // Remove style="..."
+    // Remove CSS property fragments (even without quotes)
+    .replace(/vertical\s*-\s*align[^">;]*/g, '') // Remove vertical-align fragments
+    .replace(/text\s*-\s*xs[^">]*/g, '') // Remove text-xs fragments  
+    .replace(/align\s*-\s*baseline[^">;]*/g, '') // Remove align-baseline fragments
+    .replace(/class\s*=\s*"[^"]*"/g, '') // Remove class="..."
+    // Remove multi-part attribute patterns
+    .replace(/="[^"]*\s*-\s*[^"]*\s*-\s*[^"]*"/g, '') // Multi-dash attributes
+    // Remove HTML entities
+    .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&')
+    // Remove any remaining = "..." patterns
+    .replace(/\s*=\s*"[^"]*"/g, '') // Remove = "..."
+    .replace(/\s*=\s*"[^"]*">/g, '') // Remove = "..." >
+    .replace(/\s*style\s*=\s*/g, '') // Remove style= 
+    .replace(/\s*vertical\s*-\s*align\s*:\s*[^;"]*/g, '') // Remove vertical-align: value
+    // Remove any remaining HTML-like fragments
+    .replace(/<[^>]*/g, '') // Remove any remaining < tags
+    .replace(/[^>]*>/g, '') // Remove any remaining > tags
+    // Clean up multiple spaces and normalize
+    .replace(/\s+/g, ' ')
+    .trim()
 
   // Use a marker system to protect parts we're converting
   const markers: { [key: string]: string } = {}
@@ -135,7 +160,19 @@ export function formatFormulaToHTML(formula: string): string {
   })
 
   // Step 2: Handle underscore subscripts (D_i, l_f, A_0)
-  // Only process if not already marked
+  // First, clean up any malformed HTML that might be between underscore and subscript
+  // Pattern: letter_="..." style="...">subscript_value
+  // Handle patterns like: 1_= "text - xs align - baseline" style = "vertical - align: baseline;">f
+  html = html.replace(/([A-Za-z0-9])_\s*=\s*"[^"]*"\s*style\s*=\s*"[^"]*">\s*([0-9a-z]+)/g, '$1_$2')
+  html = html.replace(/([A-Za-z0-9])_\s*=\s*"[^"]*">\s*([0-9a-z]+)/g, '$1_$2')
+  html = html.replace(/([A-Za-z0-9])_\s*style\s*=\s*"[^"]*">\s*([0-9a-z]+)/g, '$1_$2')
+  // Handle patterns with spaces around = and dashes: = "text - xs align - baseline"
+  html = html.replace(/([A-Za-z0-9])_\s*=\s*"[^"]*\s*-\s*[^"]*"\s*style\s*=\s*"[^"]*">\s*([0-9a-z]+)/g, '$1_$2')
+  html = html.replace(/([A-Za-z0-9])_\s*=\s*"[^"]*\s*-\s*[^"]*">\s*([0-9a-z]+)/g, '$1_$2')
+  // Remove any remaining attribute fragments between underscore and value (very aggressive)
+  html = html.replace(/([A-Za-z0-9])_\s*[^0-9a-z]*([0-9a-z]+)/g, '$1_$2')
+  
+  // Now process clean underscore subscripts
   html = html.replace(/([A-Za-z])_([0-9a-z]+)/g, (match, letter, sub) => {
     // Skip if this match contains a marker (already processed)
     if (match.includes('__MARKER_')) {
@@ -170,14 +207,28 @@ export function formatFormulaToHTML(formula: string): string {
   html = html.replace(/([A-Za-z0-9])\(/g, '$1 (') // Space before opening paren
   html = html.replace(/\)([A-Za-z0-9])/g, ') $1') // Space after closing paren
 
-  // Step 6: Style Greek letters (wrap in italic span)
-  html = html.replace(/([αβγδεζηθικλμνξοπρστυφχψωΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ])/g, '<span class="italic">$1</span>')
+  // Step 6: Style Greek letters (wrap in italic span) - but only if not already in a tag
+  html = html.replace(/([αβγδεζηθικλμνξοπρστυφχψωΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩ])/g, (match) => {
+    // Don't wrap if already inside a tag
+    if (match.includes('<') || match.includes('>')) {
+      return match
+    }
+    return `<span class="italic">${match}</span>`
+  })
 
   // Step 7: Add spacing around operators for readability
   html = html.replace(/([=+\-×÷])/g, ' <span class="mx-0.5">$1</span> ')
   
   // Handle square root symbol
   html = html.replace(/√/g, '<span class="mx-0.5">√</span>')
+
+  // Final cleanup: remove any remaining broken HTML fragments that might have slipped through
+  html = html.replace(/="[^"]*">/g, '') // Remove any remaining ="..." >
+  html = html.replace(/="[^"]*"/g, '') // Remove any remaining ="..." 
+  html = html.replace(/style\s*=\s*"[^"]*"/g, '') // Remove any remaining style="..."
+  html = html.replace(/vertical\s*-\s*align[^">;]*/g, '') // Remove any remaining vertical-align
+  html = html.replace(/text\s*-\s*xs[^">]*/g, '') // Remove any remaining text-xs
+  html = html.replace(/align\s*-\s*baseline[^">;]*/g, '') // Remove any remaining align-baseline
 
   // Clean up multiple spaces but preserve intentional spacing
   html = html.replace(/\s{2,}/g, ' ').trim()

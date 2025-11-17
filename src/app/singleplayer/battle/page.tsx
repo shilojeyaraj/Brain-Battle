@@ -684,9 +684,9 @@ export default function BattlePage() {
           </div>
 
           {showResult && (
-            <div className="p-6 rounded-xl bg-secondary/50 cartoon-border mb-6">
-              <h3 className="font-black text-foreground mb-2">Explanation:</h3>
-              <p className="text-muted-foreground font-bold mb-3">{question.explanation || question.a}</p>
+            <div className="p-6 rounded-xl bg-gradient-to-br from-green-500/20 to-green-600/20 border-4 border-green-400/50 cartoon-border mb-6">
+              <h3 className="font-black text-white mb-2">Explanation:</h3>
+              <p className="text-white font-bold mb-3 leading-relaxed">{question.explanation || question.a}</p>
               
               {/* Always show correct answers for open-ended questions */}
               {question.type === "open_ended" && (
@@ -764,7 +764,7 @@ function BattleResultsScreen({
   useEffect(() => {
     const fetchUserProfile = async () => {
       try {
-        const userId = getCurrentUserId()
+        const userId = await getCurrentUserId()
         if (userId) {
           const response = await fetch(`/api/user-stats?userId=${userId}`)
           if (response.ok) {
@@ -821,6 +821,18 @@ function BattleResultsScreen({
             xpEarned={battleResults.xpEarned}
           />
         )}
+
+        {/* Back to Dashboard Button - Top of Screen */}
+        <div className="mb-6">
+          <Button 
+            onClick={onBackToDashboard}
+            variant="outline" 
+            className="font-black border-4 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70 cartoon-border cartoon-shadow"
+          >
+            <ArrowLeft className="h-5 w-5 mr-2" strokeWidth={3} />
+            Back to Dashboard
+          </Button>
+        </div>
 
         {/* Results Header */}
         <div className="text-center mb-8">
@@ -1035,14 +1047,6 @@ function BattleResultsScreen({
           >
             <Zap className="h-5 w-5 mr-2" strokeWidth={3} />
             Take Another Quiz
-          </Button>
-          <Button 
-            onClick={onBackToDashboard}
-            variant="outline" 
-            className="w-full h-12 font-black border-4 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70 cartoon-border cartoon-shadow"
-          >
-            <ArrowLeft className="h-5 w-5 mr-2" strokeWidth={3} />
-            Back to Dashboard
           </Button>
         </div>
       </div>

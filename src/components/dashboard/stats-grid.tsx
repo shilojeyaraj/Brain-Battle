@@ -116,8 +116,8 @@ export const StatsGrid = memo(function StatsGrid() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
         <Card className="p-8 bg-card cartoon-border cartoon-shadow">
           <div className="flex items-center gap-6">
-            <div className="w-16 h-16 rounded-xl bg-primary flex items-center justify-center cartoon-border cartoon-shadow">
-              <Trophy className="w-8 h-8 text-primary-foreground" strokeWidth={3} />
+            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center cartoon-border cartoon-shadow border-2 border-orange-400/50">
+              <Trophy className="w-8 h-8 text-white" strokeWidth={3} />
             </div>
             <div>
               <p className="text-base text-muted-foreground font-bold">Total Wins</p>
@@ -128,8 +128,8 @@ export const StatsGrid = memo(function StatsGrid() {
 
         <Card className="p-8 bg-card cartoon-border cartoon-shadow">
           <div className="flex items-center gap-6">
-            <div className="w-16 h-16 rounded-xl bg-secondary flex items-center justify-center cartoon-border cartoon-shadow">
-              <Target className="w-8 h-8 text-secondary-foreground" strokeWidth={3} />
+            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center cartoon-border cartoon-shadow border-2 border-blue-400/50">
+              <Target className="w-8 h-8 text-white" strokeWidth={3} />
             </div>
             <div>
               <p className="text-base text-muted-foreground font-bold">Accuracy</p>
@@ -140,8 +140,8 @@ export const StatsGrid = memo(function StatsGrid() {
 
         <Card className="p-8 bg-card cartoon-border cartoon-shadow">
           <div className="flex items-center gap-6">
-            <div className="w-16 h-16 rounded-xl bg-chart-3 flex items-center justify-center cartoon-border cartoon-shadow">
-              <Zap className="w-8 h-8 text-foreground" strokeWidth={3} />
+            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center cartoon-border cartoon-shadow border-2 border-orange-400/50">
+              <Zap className="w-8 h-8 text-white" strokeWidth={3} />
             </div>
             <div>
               <p className="text-base text-muted-foreground font-bold">Win Streak</p>
@@ -152,8 +152,8 @@ export const StatsGrid = memo(function StatsGrid() {
 
         <Card className="p-8 bg-card cartoon-border cartoon-shadow">
           <div className="flex items-center gap-6">
-            <div className="w-16 h-16 rounded-xl bg-accent flex items-center justify-center cartoon-border cartoon-shadow">
-              <Users className="w-8 h-8 text-accent-foreground" strokeWidth={3} />
+            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center cartoon-border cartoon-shadow border-2 border-blue-400/50">
+              <Users className="w-8 h-8 text-white" strokeWidth={3} />
             </div>
             <div>
               <p className="text-base text-muted-foreground font-bold">Total Games</p>

@@ -16,8 +16,8 @@ const DASHBOARD_TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'stats',
     title: 'Your Progress Stats 📊',
-    description: 'Here you can see your XP, wins, accuracy, and win streak. As you play more battles, these stats will grow!',
-    targetSelector: '[data-tutorial="stats-grid"]',
+    description: 'Click the "Show Stats" button to view your XP, wins, accuracy, and win streak. As you play more battles, these stats will grow!',
+    targetSelector: '[data-tutorial="show-stats-button"]',
     position: 'bottom',
   },
   {

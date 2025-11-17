@@ -40,16 +40,42 @@ const LazyRecentBattles = dynamicImport(() => import("@/components/dashboard/rec
 
 export default function DashboardPage() {
   const [showStats, setShowStats] = useState(true)
+  const [isTutorialActive, setIsTutorialActive] = useState(false)
 
-  // Load saved preference from localStorage
+  // Check if tutorial is active
   useEffect(() => {
+    const checkTutorial = () => {
+      const tutorialCompleted = localStorage.getItem('dashboard_tutorial_completed')
+      const isNewUser = window.location.search.includes('newUser=true') || window.location.search.includes('userId=')
+      setIsTutorialActive(!tutorialCompleted || isNewUser)
+    }
+    
+    checkTutorial()
+    // Check periodically in case tutorial state changes
+    const interval = setInterval(checkTutorial, 500)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Load saved preference from localStorage (but force show during tutorial)
+  useEffect(() => {
+    // During tutorial, always show stats
+    if (isTutorialActive) {
+      setShowStats(true)
+      return
+    }
+    
     const saved = localStorage.getItem('dashboard_stats_collapsed')
     if (saved === 'true') {
       setShowStats(false)
     }
-  }, [])
+  }, [isTutorialActive])
 
   const toggleStats = () => {
+    // Don't allow hiding stats during tutorial
+    if (isTutorialActive && showStats) {
+      return
+    }
+    
     const newState = !showStats
     setShowStats(newState)
     localStorage.setItem('dashboard_stats_collapsed', (!newState).toString())
@@ -77,6 +103,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between mb-4">
           <Button
             onClick={toggleStats}
+            data-tutorial="show-stats-button"
             className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black border-2 border-orange-400"
           >
             <BarChart3 className="h-5 w-5 mr-2" strokeWidth={3} />
