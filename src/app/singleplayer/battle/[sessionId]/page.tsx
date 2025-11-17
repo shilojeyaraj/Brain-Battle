@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo, memo } from "react"
+import { useParams } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Clock, Target, Trophy, Zap, AlertTriangle, EyeOff, X, Star, TrendingUp, FileText, Image, CheckCircle } from "lucide-react"
+import { ArrowLeft, Clock, Target, Trophy, Zap, AlertTriangle, EyeOff, X, Star, TrendingUp, FileText, Image, CheckCircle, Copy } from "lucide-react"
 import Link from "next/link"
 import { useAntiCheat, CheatEvent } from "@/hooks/use-anti-cheat"
 import { calculateXP, getXPExplanation, checkLevelUp } from "@/lib/xp-calculator"
@@ -20,6 +21,9 @@ import { RewardToast } from "@/components/feedback/GameFeedback"
 const defaultQuestions: any[] = []
 
 export default function BattlePage() {
+  const params = useParams()
+  const sessionId = params?.sessionId as string
+  
   const [currentQuestion, setCurrentQuestion] = useState(0)
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
   const [textAnswer, setTextAnswer] = useState("")
@@ -43,6 +47,7 @@ export default function BattlePage() {
     newXP: number
     xpBreakdown: string[]
     leveledUp: boolean
+    sessionId?: string
   } | null>(null)
   const [showLevelUpModal, setShowLevelUpModal] = useState(false)
   const [isSubmittingResults, setIsSubmittingResults] = useState(false)
@@ -78,6 +83,14 @@ export default function BattlePage() {
     // Check if we're on the client side
     if (typeof window === 'undefined') return
     
+    // Verify sessionId matches stored one
+    const storedSessionId = sessionStorage.getItem('quizSessionId')
+    if (storedSessionId && storedSessionId !== sessionId) {
+      console.warn('Session ID mismatch. Redirecting...')
+      window.location.href = '/singleplayer'
+      return
+    }
+    
     const storedQuestions = sessionStorage.getItem('quizQuestions')
     const storedTopic = sessionStorage.getItem('quizTopic')
     const storedDifficulty = sessionStorage.getItem('quizDifficulty')
@@ -111,7 +124,7 @@ export default function BattlePage() {
     if (storedDifficulty) {
       setDifficulty(storedDifficulty as "easy" | "medium" | "hard")
     }
-  }, [])
+  }, [sessionId])
 
   const question = useMemo(() => questions[currentQuestion] || null, [questions, currentQuestion])
 
@@ -264,7 +277,7 @@ export default function BattlePage() {
         isMultiplayer: false
       })
 
-      // Submit results to API
+      // Submit results to API with sessionId
       const userId = await getCurrentUserId()
       if (userId) {
         const response = await fetch('/api/quiz-results', {
@@ -274,6 +287,7 @@ export default function BattlePage() {
           },
           body: JSON.stringify({
             userId,
+            sessionId, // Pass the sessionId
             questions: questions,
             answers: userAnswers,
             score: score,
@@ -305,7 +319,8 @@ export default function BattlePage() {
               isPerfectScore: correctAnswers === totalQuestions,
               isMultiplayer: false
             }),
-            leveledUp
+            leveledUp,
+            sessionId: result.sessionId || sessionId
           }
           
           setBattleResults(results)
@@ -327,7 +342,7 @@ export default function BattlePage() {
       setIsSubmittingResults(false)
       setBattleComplete(true)
     }
-  }, [score, questions, userAnswers, topic, difficulty])
+  }, [score, questions, userAnswers, topic, difficulty, sessionId])
 
   const handleNext = useCallback(() => {
     if (currentQuestion < questions.length - 1) {
@@ -417,6 +432,7 @@ export default function BattlePage() {
         topic={topic}
         userAnswers={userAnswers}
         questions={questions}
+        sessionId={sessionId}
         onRetakeBattle={() => window.location.href = '/singleplayer'}
         onBackToDashboard={() => window.location.href = '/dashboard'}
       />
@@ -737,6 +753,7 @@ interface BattleResultsScreenProps {
   topic: string
   userAnswers: (number | string)[]
   questions: any[]
+  sessionId: string
   onRetakeBattle: () => void
   onBackToDashboard: () => void
 }
@@ -747,6 +764,7 @@ function BattleResultsScreen({
   topic, 
   userAnswers, 
   questions, 
+  sessionId,
   onRetakeBattle,
   onBackToDashboard
 }: BattleResultsScreenProps) {
@@ -760,6 +778,7 @@ function BattleResultsScreen({
     xpBreakdown: string[]
     leveledUp: boolean
   } | null>(null)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -795,6 +814,12 @@ function BattleResultsScreen({
       }
     }
   }, [])
+
+  const handleCopySessionId = () => {
+    navigator.clipboard.writeText(sessionId)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   const accuracy = totalQuestions > 0 ? (score / totalQuestions) * 100 : 0
   const rank = userProfile ? getRankFromXP(userProfile.stats?.xp || 0) : null
@@ -833,6 +858,28 @@ function BattleResultsScreen({
             Back to Dashboard
           </Button>
         </div>
+
+        {/* Session ID Display */}
+        <Card className="p-4 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 cartoon-border cartoon-shadow mb-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <FileText className="h-5 w-5 text-blue-400" strokeWidth={3} />
+              <div>
+                <p className="text-sm text-blue-100/70 font-bold">Session ID:</p>
+                <p className="text-base font-black text-white font-mono">{sessionId}</p>
+              </div>
+            </div>
+            <Button
+              onClick={handleCopySessionId}
+              variant="outline"
+              size="sm"
+              className="font-black border-2 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70"
+            >
+              <Copy className="h-4 w-4 mr-2" strokeWidth={3} />
+              {copied ? 'Copied!' : 'Copy'}
+            </Button>
+          </div>
+        </Card>
 
         {/* Results Header */}
         <div className="text-center mb-8">
@@ -1053,3 +1100,4 @@ function BattleResultsScreen({
     </div>
   )
 }
+

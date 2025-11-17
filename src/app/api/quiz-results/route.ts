@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { 
       userId, 
+      sessionId, // Optional: if provided, use it; otherwise generate new
       topic, 
       score, 
       totalQuestions, 
@@ -36,26 +37,110 @@ export async function POST(request: NextRequest) {
 
     // 🚀 OPTIMIZATION: Create session and insert questions in one go
     // Use admin client to bypass RLS for inserts
-    const { data: sessionData, error: sessionError } = await adminClient
-      .from('quiz_sessions')
-      .insert({
-        session_name: `Singleplayer: ${topic}`,
-        total_questions: totalQuestions,
-        time_limit: 30,
-        started_at: new Date(Date.now() - duration * 1000).toISOString(),
-        ended_at: new Date().toISOString(),
-        is_active: false,
-        room_id: null // Singleplayer
-      })
-      .select()
-      .single()
+    // If sessionId is provided, try to use it; otherwise create new session
+    let sessionData
+    if (sessionId) {
+      // Check if session already exists
+      const { data: existingSession, error: checkError } = await adminClient
+        .from('quiz_sessions')
+        .select('id')
+        .eq('id', sessionId)
+        .single()
+      
+      if (existingSession) {
+        // Update existing session
+        const { data: updatedSession, error: updateError } = await adminClient
+          .from('quiz_sessions')
+          .update({
+            session_name: `Singleplayer: ${topic}`,
+            total_questions: totalQuestions,
+            time_limit: 30,
+            started_at: new Date(Date.now() - duration * 1000).toISOString(),
+            ended_at: new Date().toISOString(),
+            is_active: false,
+            room_id: null
+          })
+          .eq('id', sessionId)
+          .select()
+          .single()
+        
+        if (updateError) {
+          console.error("❌ [QUIZ RESULTS] Error updating quiz session:", updateError)
+          return NextResponse.json({ error: "Failed to update quiz session" }, { status: 500 })
+        }
+        sessionData = updatedSession
+      } else {
+        // Create new session with provided ID (if valid UUID)
+        const { data: newSession, error: createError } = await adminClient
+          .from('quiz_sessions')
+          .insert({
+            id: sessionId,
+            session_name: `Singleplayer: ${topic}`,
+            total_questions: totalQuestions,
+            time_limit: 30,
+            started_at: new Date(Date.now() - duration * 1000).toISOString(),
+            ended_at: new Date().toISOString(),
+            is_active: false,
+            room_id: null
+          })
+          .select()
+          .single()
+        
+        if (createError) {
+          console.error("❌ [QUIZ RESULTS] Error creating quiz session with provided ID:", createError)
+          // Fall through to create new session without ID
+          const { data: fallbackSession, error: fallbackError } = await adminClient
+            .from('quiz_sessions')
+            .insert({
+              session_name: `Singleplayer: ${topic}`,
+              total_questions: totalQuestions,
+              time_limit: 30,
+              started_at: new Date(Date.now() - duration * 1000).toISOString(),
+              ended_at: new Date().toISOString(),
+              is_active: false,
+              room_id: null
+            })
+            .select()
+            .single()
+          
+          if (fallbackError) {
+            console.error("❌ [QUIZ RESULTS] Error creating fallback quiz session:", fallbackError)
+            return NextResponse.json({ error: "Failed to create quiz session" }, { status: 500 })
+          }
+          sessionData = fallbackSession
+        } else {
+          sessionData = newSession
+        }
+      }
+    } else {
+      // Create new session without provided ID
+      const { data: newSession, error: sessionError } = await adminClient
+        .from('quiz_sessions')
+        .insert({
+          session_name: `Singleplayer: ${topic}`,
+          total_questions: totalQuestions,
+          time_limit: 30,
+          started_at: new Date(Date.now() - duration * 1000).toISOString(),
+          ended_at: new Date().toISOString(),
+          is_active: false,
+          room_id: null
+        })
+        .select()
+        .single()
+      
+      if (sessionError) {
+        console.error("❌ [QUIZ RESULTS] Error creating quiz session:", sessionError)
+        return NextResponse.json({ error: "Failed to create quiz session" }, { status: 500 })
+      }
+      sessionData = newSession
+    }
 
-    if (sessionError) {
-      console.error("❌ [QUIZ RESULTS] Error creating quiz session:", sessionError)
+    if (!sessionData) {
+      console.error("❌ [QUIZ RESULTS] Failed to create or retrieve quiz session")
       return NextResponse.json({ error: "Failed to create quiz session" }, { status: 500 })
     }
 
-    console.log("✅ [QUIZ RESULTS] Created quiz session:", sessionData.id)
+    console.log("✅ [QUIZ RESULTS] Created/retrieved quiz session:", sessionData.id)
 
     // 🚀 OPTIMIZATION: Insert questions and get IDs back in one operation
     const questionsToInsert = questions.map((q: any, index: number) => {

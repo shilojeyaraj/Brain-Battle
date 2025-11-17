@@ -239,13 +239,17 @@ export default function SingleplayerPage() {
       const result = await response.json()
       
       if (result.success) {
-        // Store questions in sessionStorage for the battle page
+        // Generate unique session ID
+        const sessionId = crypto.randomUUID()
+        
+        // Store questions and session ID in sessionStorage for the battle page
         sessionStorage.setItem('quizQuestions', JSON.stringify(result.questions))
         sessionStorage.setItem('quizTopic', topic)
         sessionStorage.setItem('quizDifficulty', difficulty)
+        sessionStorage.setItem('quizSessionId', sessionId)
         
-        // Redirect to battle page
-        window.location.href = "/singleplayer/battle"
+        // Redirect to battle page with session ID in URL
+        window.location.href = `/singleplayer/battle/${sessionId}`
       } else {
         alert(`Error generating questions: ${result.error}`)
       }
@@ -294,46 +298,48 @@ export default function SingleplayerPage() {
           </div>
         </motion.div>
 
-        {/* Progress Steps */}
-        <div className="flex items-center justify-center mb-8">
-          <div className="flex items-center gap-4">
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${
-              step >= 1 
-                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white border-blue-400" 
-                : "bg-gradient-to-br from-slate-800 to-slate-900 text-blue-100/70 border-slate-600/50"
-            }`}>
-              <Upload className="h-5 w-5" strokeWidth={3} />
-              <span className="font-black">1. Upload</span>
-            </div>
-            <div className="w-8 h-1 bg-slate-700/50 rounded"></div>
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${
-              step >= 2 
-                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white border-blue-400" 
-                : "bg-gradient-to-br from-slate-800 to-slate-900 text-blue-100/70 border-slate-600/50"
-            }`}>
-              <BookOpen className="h-5 w-5" strokeWidth={3} />
-              <span className="font-black">2. Topic</span>
-            </div>
-            <div className="w-8 h-1 bg-slate-700/50 rounded"></div>
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${
-              step >= 3 
-                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white border-blue-400" 
-                : "bg-gradient-to-br from-slate-800 to-slate-900 text-blue-100/70 border-slate-600/50"
-            }`}>
-              <Brain className="h-5 w-5" strokeWidth={3} />
-              <span className="font-black">3. Notes</span>
-            </div>
-            <div className="w-8 h-1 bg-slate-700/50 rounded"></div>
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${
-              step >= 4 
-                ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white border-blue-400" 
-                : "bg-gradient-to-br from-slate-800 to-slate-900 text-blue-100/70 border-slate-600/50"
-            }`}>
-              <Zap className="h-5 w-5" strokeWidth={3} />
-              <span className="font-black">4. Battle</span>
+        {/* Progress Steps - Hide once notes are generated */}
+        {!studyNotes && (
+          <div className="flex items-center justify-center mb-8">
+            <div className="flex items-center gap-4">
+              <div className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${
+                step >= 1 
+                  ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white border-blue-400" 
+                  : "bg-gradient-to-br from-slate-800 to-slate-900 text-blue-100/70 border-slate-600/50"
+              }`}>
+                <Upload className="h-5 w-5" strokeWidth={3} />
+                <span className="font-black">1. Upload</span>
+              </div>
+              <div className="w-8 h-1 bg-slate-700/50 rounded"></div>
+              <div className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${
+                step >= 2 
+                  ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white border-blue-400" 
+                  : "bg-gradient-to-br from-slate-800 to-slate-900 text-blue-100/70 border-slate-600/50"
+              }`}>
+                <BookOpen className="h-5 w-5" strokeWidth={3} />
+                <span className="font-black">2. Topic</span>
+              </div>
+              <div className="w-8 h-1 bg-slate-700/50 rounded"></div>
+              <div className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${
+                step >= 3 
+                  ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white border-blue-400" 
+                  : "bg-gradient-to-br from-slate-800 to-slate-900 text-blue-100/70 border-slate-600/50"
+              }`}>
+                <Brain className="h-5 w-5" strokeWidth={3} />
+                <span className="font-black">3. Notes</span>
+              </div>
+              <div className="w-8 h-1 bg-slate-700/50 rounded"></div>
+              <div className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${
+                step >= 4 
+                  ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white border-blue-400" 
+                  : "bg-gradient-to-br from-slate-800 to-slate-900 text-blue-100/70 border-slate-600/50"
+              }`}>
+                <Zap className="h-5 w-5" strokeWidth={3} />
+                <span className="font-black">4. Battle</span>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Step 1: Document Upload */}
         {step === 1 && (

@@ -12,7 +12,6 @@ import {
   ChevronLeft, 
   ChevronRight,
   Download,
-  Share,
   ChevronDown,
   ChevronUp,
   Info,
@@ -35,6 +34,7 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
   const [hoveredTerm, setHoveredTerm] = useState<string | null>(null)
   const [hoveredTermPosition, setHoveredTermPosition] = useState<{ x: number; y: number; transform?: string } | null>(null)
   const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set())
+  const [currentCardIndex, setCurrentCardIndex] = useState(0)
 
   // Safety: Ensure diagrams and concepts are arrays
   const diagrams = Array.isArray(notes.diagrams) ? notes.diagrams : []
@@ -61,8 +61,17 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
   const toggleCardFlip = (index: number) => {
     const newFlipped = new Set(flippedCards)
     if (newFlipped.has(index)) {
-      newFlipped.delete(index)
+      // If card is already flipped, move to next card
+      if (index < notes.practice_questions.length - 1) {
+        setCurrentCardIndex(index + 1)
+        newFlipped.delete(index)
+        newFlipped.delete(index + 1) // Reset next card to question side
+      } else {
+        // Last card, just flip back
+        newFlipped.delete(index)
+      }
     } else {
+      // Flip to show answer
       newFlipped.add(index)
     }
     setFlippedCards(newFlipped)
@@ -670,13 +679,22 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
 
           {activeSection === "quiz" && (
             <Card className="p-6 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg">
-              <h2 className="text-2xl font-black text-white mb-4 flex items-center gap-2">
-                <Play className="h-6 w-6 text-orange-400" strokeWidth={3} />
-                Quiz Preparation
-              </h2>
-              <div className="space-y-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-2xl font-black text-white flex items-center gap-2">
+                  <Play className="h-6 w-6 text-orange-400" strokeWidth={3} />
+                  Quiz Preparation
+                </h2>
+                <div className="text-sm font-bold text-blue-100/70">
+                  {currentCardIndex + 1} / {notes.practice_questions.length}
+                </div>
+              </div>
+              <div className="relative w-full min-h-[500px]">
                 {notes.practice_questions.map((qa, index) => {
                   const isFlipped = flippedCards.has(index)
+                  const isCurrentCard = index === currentCardIndex
+                  
+                  if (!isCurrentCard) return null
+                  
                   return (
                     <div
                       key={index}
@@ -869,7 +887,9 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
                                 Topic: {qa.topic}
                               </div>
                               <div className="text-sm text-blue-100/60 font-bold mt-3 text-center">
-                                Click to flip back
+                                {index < notes.practice_questions.length - 1 
+                                  ? 'Click to go to next card' 
+                                  : 'Click to flip back'}
                               </div>
                             </div>
                           </div>
@@ -903,13 +923,6 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
               >
                 <Download className="h-5 w-5 mr-2" strokeWidth={3} />
                 Download Notes
-              </Button>
-              <Button
-                variant="outline"
-                className="w-full font-black border-2 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70"
-              >
-                <Share className="h-5 w-5 mr-2" strokeWidth={3} />
-                Share
               </Button>
             </div>
           </Card>
