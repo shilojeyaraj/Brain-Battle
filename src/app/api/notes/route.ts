@@ -890,46 +890,32 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
             return diagram
           })
         } else {
-          console.log(`⚠️ [NOTES API] Diagram analysis failed, using basic diagram info`)
-          // Fallback: create basic diagram entries from extracted images
-          analyzedDiagrams = extractedImages.map((img, idx) => ({
-            source: "file",
-            title: `Diagram ${idx + 1}`,
-            caption: `Extracted from page ${img.page}`,
-            page: img.page,
-            image_data_b64: img.image_data_b64,
-            width: img.width,
-            height: img.height,
-          }))
+          console.log(`⚠️ [NOTES API] Diagram analysis failed, will rely on text-based diagrams from OpenAI`)
+          analyzedDiagrams = []
         }
       } catch (diagramError) {
         console.error(`❌ [NOTES API] Error analyzing diagrams:`, diagramError)
-        // Fallback to basic diagram info
-        analyzedDiagrams = extractedImages.map((img, idx) => ({
-          source: "file",
-          title: `Diagram ${idx + 1}`,
-          caption: `Extracted from page ${img.page}`,
-          page: img.page,
-          image_data_b64: img.image_data_b64,
-          width: img.width,
-          height: img.height,
-        }))
+        analyzedDiagrams = []
       }
     } else {
-      // Image extraction failed, but we still have diagrams from OpenAI
+      // No images extracted (disabled for free tier), but we still have diagrams from OpenAI text analysis
       // These diagrams won't have image_data_b64, but we can enrich with web images
       if (process.env.NODE_ENV === 'development') {
-        console.log(`⚠️ [NOTES API] No images extracted from PDF, but ${analyzedDiagrams.length} diagrams found from OpenAI text analysis`)
-        console.log(`  ℹ️ [NOTES API] Will attempt to enrich with web images if keywords are available`)
-        console.log(`  💡 [NOTES API] Tip: Diagrams will still be useful for study even without original PDF images`)
+        console.log(`ℹ️ [NOTES API] PDF image extraction disabled (free tier)`)
+        console.log(`  ℹ️ [NOTES API] Using text-based diagrams from OpenAI analysis only`)
+        console.log(`  💡 [NOTES API] Diagrams will be enriched with web images if keywords are available`)
       }
       
       // Ensure diagrams from OpenAI have proper structure even without images
-      analyzedDiagrams = analyzedDiagrams.map((diagram: any) => ({
-        ...diagram,
-        source: diagram.source || 'text',
-        image_data_b64: diagram.image_data_b64 || null, // Explicitly set to null if missing
-      }))
+      if (analyzedDiagrams && analyzedDiagrams.length > 0) {
+        analyzedDiagrams = analyzedDiagrams.map((diagram: any) => ({
+          ...diagram,
+          source: diagram.source || 'text',
+          image_data_b64: diagram.image_data_b64 || null, // Explicitly set to null if missing
+        }))
+      } else {
+        analyzedDiagrams = []
+      }
     }
 
     // 5) Enrich with web images if needed (for diagrams without extracted images)
@@ -1045,12 +1031,11 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
 
 // Helper function to extract images from PDF
 async function extractImagesFromPDF(buffer: Buffer, filename: string): Promise<{ image_data_b64: string; page: number; width?: number; height?: number }[]> {
-  try {
-    return await extractPDFImages(buffer, filename)
-  } catch (error) {
-    console.error(`❌ [NOTES API] Error in extractImagesFromPDF:`, error)
-    return []
+  // Skip diagram extraction for free version - too expensive and hard to perfect
+  if (process.env.NODE_ENV === 'development') {
+    console.log(`ℹ️ [NOTES API] Skipping PDF image extraction (disabled for free tier)`)
   }
+  return []
 }
 
 // Helper function to enrich notes with web images

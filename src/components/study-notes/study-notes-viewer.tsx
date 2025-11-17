@@ -18,8 +18,9 @@ import {
   Calculator
 } from "lucide-react"
 import { StudyNotes } from "@/lib/schemas/notes-schema"
-import { formatFormulaToHTML, formatFormulaForPDF } from "@/lib/utils/formula-formatter"
+import { formatFormulaForPDF } from "@/lib/utils/formula-formatter"
 import { formatNotesToMarkdown } from "@/lib/utils/markdown-formatter"
+import { FormulaRenderer } from "@/components/ui/formula-renderer"
 
 interface StudyNotesViewerProps {
   notes: StudyNotes
@@ -625,19 +626,12 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
                       
                       {/* Formula Display */}
                       <div className="bg-slate-900/50 p-6 rounded-xl border-4 border-blue-400/30 mb-4">
-                        <div 
-                          className="text-xl md:text-2xl font-black text-blue-300 text-center font-mono leading-relaxed"
-                          dangerouslySetInnerHTML={{ 
-                            __html: formatFormulaToHTML(formula.formula) 
-                          }}
-                          style={{ 
-                            fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace',
-                            lineHeight: '1.8',
-                            wordBreak: 'break-word',
-                            overflowWrap: 'break-word',
-                            whiteSpace: 'pre-wrap'
-                          }}
-                        />
+                        <div className="text-xl md:text-2xl text-blue-300 text-center leading-relaxed flex items-center justify-center">
+                          <FormulaRenderer 
+                            formula={formula.formula}
+                            className="text-blue-300"
+                          />
+                        </div>
                       </div>
                       
                       {/* Description */}

@@ -180,7 +180,7 @@ export default function BattlePage() {
     
     setShowResult(true)
     
-    // Check if answer is correct with improved validation
+    // Check if answer is correct with improved validation using fuzzy matching
     const userAnswer = textAnswer.trim()
     const expectedAnswers = question.expected_answers || []
     
@@ -199,40 +199,48 @@ export default function BattlePage() {
             const expectedNumberMatch = expected.toString().match(/-?\d+\.?\d*/)
             if (expectedNumberMatch) {
               const expectedNumber = parseFloat(expectedNumberMatch[0])
-              // Allow 1% tolerance for floating point comparisons
-              const tolerance = Math.abs(expectedNumber * 0.01)
+              // Allow 5% tolerance for floating point comparisons (increased from 1%)
+              const tolerance = Math.abs(expectedNumber * 0.05)
               return Math.abs(userNumber - expectedNumber) <= tolerance
             }
             return false
           })
         }
       } else {
-        // For text answers, do normalized comparison (case-insensitive, trimmed)
-        const userAnswerNormalized = userAnswer.toLowerCase().trim()
-        const expectedAnswersNormalized = expectedAnswers.map((ans: string) => ans.toLowerCase().trim())
+        // For text answers - use fuzzy matching with 70% word match threshold
+        const userAnswerLower = userAnswer.toLowerCase().trim()
         
-        // Exact match or normalized match (remove extra spaces, punctuation)
-        isCorrect = expectedAnswersNormalized.some((expected: string) => {
-          const expectedNormalized = expected.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ')
-          const userNormalized = userAnswerNormalized.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ')
+        isCorrect = expectedAnswers.some((expected: string) => {
+          const expectedLower = expected.toLowerCase().trim()
           
-          // Exact match
+          // Remove punctuation and normalize whitespace
+          const normalize = (str: string) => str.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim()
+          const userNormalized = normalize(userAnswerLower)
+          const expectedNormalized = normalize(expectedLower)
+          
+          // Exact match after normalization
           if (userNormalized === expectedNormalized) return true
           
-          // For short answers, require exact match
-          if (expectedNormalized.length < 10) {
+          // For very short answers (1-2 words), require exact match
+          const expectedWordCount = expectedNormalized.split(' ').length
+          if (expectedWordCount <= 2) {
             return userNormalized === expectedNormalized
           }
           
-          // For longer answers, allow if user answer contains the key parts
-          // But be more strict - check if major words match
-          const expectedWords = expectedNormalized.split(' ').filter(w => w.length > 3)
-          const userWords = userNormalized.split(' ').filter(w => w.length > 3)
-          if (expectedWords.length > 0) {
-            return expectedWords.every(word => userWords.includes(word))
-          }
+          // For longer answers, use fuzzy matching
+          // Extract important words (length > 2) from expected answer
+          const expectedWords = expectedNormalized.split(' ').filter(w => w.length > 2)
+          const userWords = userNormalized.split(' ')
           
-          return false
+          // Check if user answer contains key phrases from expected answer
+          const matchingWords = expectedWords.filter(word => 
+            userWords.some(uw => uw.includes(word) || word.includes(uw))
+          )
+          
+          // If 70% of important words match, consider it correct
+          const matchRatio = expectedWords.length > 0 ? matchingWords.length / expectedWords.length : 0
+          
+          return matchRatio >= 0.7 // 70% word match threshold
         })
       }
     }
