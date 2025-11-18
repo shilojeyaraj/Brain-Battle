@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useMemo } from "react"
+import { useCallback, useMemo, useRef } from "react"
 import useSound from "use-sound"
 import { useSoundSettings } from "@/context/sound-settings"
 
@@ -39,12 +39,96 @@ export function useFeedback() {
 
   // Use URL paths so assets can live in /public/sounds without bundler imports
   const soundUrls = useMemo(() => ({
-    click: "/sounds/click.mp3",
-    correct: "/sounds/correct.mp3",
-    wrong: "/sounds/wrong.mp3",
-    levelup: "/sounds/level-up.mp3",
-    streak: "/sounds/streak.mp3",
+    click: "/sounds/click.ogg",
+    correct: "/sounds/correct.ogg",
+    wrong: "/sounds/wrong.ogg",
+    levelup: "/sounds/level-up.ogg",
+    streak: "/sounds/streak.ogg",
   }), [])
+
+  // Extended SFX registry for infrequent/auxiliary sounds
+  type SfxKey =
+    | "hover"
+    | "select"
+    | "back"
+    | "toggle-on"
+    | "toggle-off"
+    | "modal-open"
+    | "modal-close"
+    | "soft-impact"
+    | "hard-impact"
+    | "error"
+    | "countdown-tick"
+    | "countdown-final"
+    | "time-up"
+    | "power-up"
+    | "power-down"
+    | "combo-up"
+    | "streak-break"
+    | "win"
+    | "lose"
+    | "draw"
+    | "rank-up"
+    | "achievement"
+    | "coin"
+    | "purchase-confirm"
+    | "purchase-fail"
+    | "save"
+    | "network-error"
+
+  const sfxUrlByKey: Record<SfxKey, string> = useMemo(() => ({
+    "hover": "/sounds/hover.ogg",
+    "select": "/sounds/select.ogg",
+    "back": "/sounds/back.ogg",
+    "toggle-on": "/sounds/toggle-on.ogg",
+    "toggle-off": "/sounds/toggle-off.ogg",
+    "modal-open": "/sounds/modal-open.ogg",
+    "modal-close": "/sounds/modal-close.ogg",
+    "soft-impact": "/sounds/soft-impact.ogg",
+    "hard-impact": "/sounds/hard-impact.ogg",
+    "error": "/sounds/error.ogg",
+    "countdown-tick": "/sounds/countdown-tick.ogg",
+    "countdown-final": "/sounds/countdown-final.ogg",
+    "time-up": "/sounds/time-up.ogg",
+    "power-up": "/sounds/power-up.ogg",
+    "power-down": "/sounds/power-down.ogg",
+    "combo-up": "/sounds/combo-up.ogg",
+    "streak-break": "/sounds/streak-break.ogg",
+    "win": "/sounds/win.ogg",
+    "lose": "/sounds/lose.ogg",
+    "draw": "/sounds/draw.ogg",
+    "rank-up": "/sounds/rank-up.ogg",
+    "achievement": "/sounds/achievement.ogg",
+    "coin": "/sounds/coin.ogg",
+    "purchase-confirm": "/sounds/purchase-confirm.ogg",
+    "purchase-fail": "/sounds/purchase-fail.ogg",
+    "save": "/sounds/save.ogg",
+    "network-error": "/sounds/network-error.ogg",
+  }), [])
+
+  // Simple cache to avoid creating too many Audio objects simultaneously
+  const lastPlayRef = useRef<Record<string, number>>({})
+
+  const playSfx = useCallback((name: SfxKey) => {
+    if (!soundEnabled) return
+    try {
+      const now = Date.now()
+      const last = lastPlayRef.current[name] || 0
+      // basic de-dupe for hover-like rapid triggers (100ms)
+      if (now - last < 100) return
+      lastPlayRef.current[name] = now
+
+      const url = sfxUrlByKey[name]
+      if (!url) return
+      const audio = new Audio(url)
+      audio.volume = Math.min(1, Math.max(0, volume))
+      // no await to avoid blocking UI thread
+      // eslint-disable-next-line @typescript-eslint/no-floating-promises
+      audio.play().catch(() => playBeepFallback(volume))
+    } catch {
+      playBeepFallback(volume)
+    }
+  }, [soundEnabled, volume, sfxUrlByKey])
 
   const soundOptions = useMemo(() => ({
     volume: Math.min(1, Math.max(0, volume)),
@@ -108,6 +192,45 @@ export function useFeedback() {
     playWrong,
     playLevelUp,
     playStreak,
+
+    // generic
+    playSfx,
+
+    // convenience wrappers
+    playHover: () => playSfx("hover"),
+    playSelect: () => playSfx("select"),
+    playBack: () => playSfx("back"),
+    playToggleOn: () => playSfx("toggle-on"),
+    playToggleOff: () => playSfx("toggle-off"),
+    playModalOpen: () => playSfx("modal-open"),
+    playModalClose: () => playSfx("modal-close"),
+    playSoftImpact: () => playSfx("soft-impact"),
+    playHardImpact: () => playSfx("hard-impact"),
+    playError: () => playSfx("error"),
+
+    // game flow
+    playCountdownTick: () => playSfx("countdown-tick"),
+    playCountdownFinal: () => playSfx("countdown-final"),
+    playTimeUp: () => playSfx("time-up"),
+
+    // rewards/state
+    playPowerUp: () => playSfx("power-up"),
+    playPowerDown: () => playSfx("power-down"),
+    playComboUp: () => playSfx("combo-up"),
+    playStreakBreak: () => playSfx("streak-break"),
+
+    // results
+    playWin: () => playSfx("win"),
+    playLose: () => playSfx("lose"),
+    playDraw: () => playSfx("draw"),
+    playRankUp: () => playSfx("rank-up"),
+    playAchievement: () => playSfx("achievement"),
+    playCoin: () => playSfx("coin"),
+    playPurchaseConfirm: () => playSfx("purchase-confirm"),
+    playPurchaseFail: () => playSfx("purchase-fail"),
+    playSave: () => playSfx("save"),
+    playNetworkError: () => playSfx("network-error"),
+
     burstConfetti,
   }
 }

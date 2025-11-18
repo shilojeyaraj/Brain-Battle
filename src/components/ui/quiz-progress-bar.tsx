@@ -4,6 +4,8 @@ import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Clock, Target, Zap, TrendingUp } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
+import { useEffect, useRef } from "react"
+import { useFeedback } from "@/hooks/useFeedback"
 
 interface QuizProgressBarProps {
   currentQuestion: number
@@ -27,6 +29,21 @@ export function QuizProgressBar({
   const progress = ((currentQuestion + 1) / totalQuestions) * 100
   const accuracy = currentQuestion > 0 ? (score / currentQuestion) * 100 : 0
   const timeColor = timeLeft <= 10 ? "text-red-400" : timeLeft <= 20 ? "text-orange-400" : "text-blue-400"
+  const { playCountdownFinal } = useFeedback()
+  const lastPlayedSecondRef = useRef<number | null>(null)
+
+  // Play final countdown ticks at 3, 2, 1 seconds
+  useEffect(() => {
+    if (timeLeft <= 3 && timeLeft > 0) {
+      if (lastPlayedSecondRef.current !== timeLeft) {
+        playCountdownFinal()
+        lastPlayedSecondRef.current = timeLeft
+      }
+    }
+    if (timeLeft > 3) {
+      lastPlayedSecondRef.current = null
+    }
+  }, [timeLeft, playCountdownFinal])
 
   return (
     <Card className="p-4 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 cartoon-border cartoon-shadow mb-6">

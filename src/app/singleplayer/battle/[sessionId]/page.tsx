@@ -16,6 +16,7 @@ import { QuizProgressBar } from "@/components/ui/quiz-progress-bar"
 import { getCurrentUserId } from "@/lib/auth/session"
 import { useFeedback } from "@/hooks/useFeedback"
 import { RewardToast } from "@/components/feedback/GameFeedback"
+import { isAnswerCorrect } from "@/lib/quiz-evaluator"
 
 // Default empty questions - will be loaded from sessionStorage
 const defaultQuestions: any[] = []
@@ -76,7 +77,7 @@ export default function BattlePage() {
     onCheatDetected: handleCheatDetected
   })
 
-  const { playCorrect, playWrong, playClick, burstConfetti } = useFeedback()
+  const { playCorrect, playWrong, playClick, burstConfetti, playSelect, playTimeUp, playPurchaseConfirm } = useFeedback()
 
   // Load questions from sessionStorage on component mount
   useEffect(() => {
@@ -139,6 +140,7 @@ export default function BattlePage() {
       return () => clearTimeout(timer)
     } else if (timeLeft === 0 && !showResult) {
       // Handle time's up based on question type
+      playTimeUp()
       if (question?.type === "open_ended") {
         // For open-ended questions, just show result without submitting
         setShowResult(true)
@@ -151,11 +153,13 @@ export default function BattlePage() {
   const handleAnswer = useCallback((answerIndex: number) => {
     if (!question) return
     
+    // selection feedback
+    playSelect()
+
     setSelectedAnswer(answerIndex)
     setShowResult(true)
     
-    const correctAnswer = question.correct !== undefined ? question.correct : 0
-    const isCorrect = answerIndex === correctAnswer
+    const isCorrect = isAnswerCorrect(question, answerIndex)
     if (isCorrect) {
       setScore(prev => prev + 1)
       playCorrect()
@@ -173,78 +177,19 @@ export default function BattlePage() {
       newAnswers[currentQuestion] = answerIndex
       return newAnswers
     })
-  }, [question, currentQuestion, playCorrect, playWrong, burstConfetti])
+  }, [question, currentQuestion, playCorrect, playWrong, burstConfetti, playSelect])
 
   const handleTextAnswer = useCallback(() => {
     if (!question || !textAnswer.trim()) return
     
+    // submit/lock feedback
+    playPurchaseConfirm()
+
     setShowResult(true)
     
-    // Check if answer is correct with improved validation using fuzzy matching
     const userAnswer = textAnswer.trim()
-    const expectedAnswers = question.expected_answers || []
-    
-    let isCorrect = false
-    
-    if (expectedAnswers.length > 0) {
-      // For numerical answers, extract and compare numbers
-      if (question.answer_format === "number" || question.answer_format === "numeric") {
-        // Extract numeric value from user answer (handles "350", "350 MPa", "350.5", etc.)
-        const userNumberMatch = userAnswer.match(/-?\d+\.?\d*/)
-        const userNumber = userNumberMatch ? parseFloat(userNumberMatch[0]) : null
-        
-        if (userNumber !== null) {
-          // Check against each expected answer
-          isCorrect = expectedAnswers.some((expected: string) => {
-            const expectedNumberMatch = expected.toString().match(/-?\d+\.?\d*/)
-            if (expectedNumberMatch) {
-              const expectedNumber = parseFloat(expectedNumberMatch[0])
-              // Allow 5% tolerance for floating point comparisons (increased from 1%)
-              const tolerance = Math.abs(expectedNumber * 0.05)
-              return Math.abs(userNumber - expectedNumber) <= tolerance
-            }
-            return false
-          })
-        }
-      } else {
-        // For text answers - use fuzzy matching with 70% word match threshold
-        const userAnswerLower = userAnswer.toLowerCase().trim()
-        
-        isCorrect = expectedAnswers.some((expected: string) => {
-          const expectedLower = expected.toLowerCase().trim()
-          
-          // Remove punctuation and normalize whitespace
-          const normalize = (str: string) => str.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim()
-          const userNormalized = normalize(userAnswerLower)
-          const expectedNormalized = normalize(expectedLower)
-          
-          // Exact match after normalization
-          if (userNormalized === expectedNormalized) return true
-          
-          // For very short answers (1-2 words), require exact match
-          const expectedWordCount = expectedNormalized.split(' ').length
-          if (expectedWordCount <= 2) {
-            return userNormalized === expectedNormalized
-          }
-          
-          // For longer answers, use fuzzy matching
-          // Extract important words (length > 2) from expected answer
-          const expectedWords = expectedNormalized.split(' ').filter(w => w.length > 2)
-          const userWords = userNormalized.split(' ')
-          
-          // Check if user answer contains key phrases from expected answer
-          const matchingWords = expectedWords.filter(word => 
-            userWords.some(uw => uw.includes(word) || word.includes(uw))
-          )
-          
-          // If 70% of important words match, consider it correct
-          const matchRatio = expectedWords.length > 0 ? matchingWords.length / expectedWords.length : 0
-          
-          return matchRatio >= 0.7 // 70% word match threshold
-        })
-      }
-    }
-    
+    const isCorrect = isAnswerCorrect(question, userAnswer)
+
     if (isCorrect) {
       setScore(prev => prev + 1)
       playCorrect()
@@ -262,7 +207,7 @@ export default function BattlePage() {
       newAnswers[currentQuestion] = textAnswer.trim()
       return newAnswers
     })
-  }, [question, textAnswer, currentQuestion, playCorrect, playWrong, burstConfetti])
+  }, [question, textAnswer, currentQuestion, playCorrect, playWrong, burstConfetti, playPurchaseConfirm])
 
   const handleBattleComplete = useCallback(async () => {
     setIsSubmittingResults(true)
@@ -787,6 +732,8 @@ function BattleResultsScreen({
     leveledUp: boolean
   } | null>(null)
   const [copied, setCopied] = useState(false)
+  const { playWin, playLose, playDraw } = useFeedback()
+  const didPlayRef = useRef(false)
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -831,6 +778,21 @@ function BattleResultsScreen({
 
   const accuracy = totalQuestions > 0 ? (score / totalQuestions) * 100 : 0
   const rank = userProfile ? getRankFromXP(userProfile.stats?.xp || 0) : null
+
+  // Play a single jingle based on outcome
+  useEffect(() => {
+    if (didPlayRef.current) return
+    if (accuracy >= 80) {
+      playWin()
+      didPlayRef.current = true
+    } else if (accuracy >= 60) {
+      playDraw()
+      didPlayRef.current = true
+    } else {
+      playLose()
+      didPlayRef.current = true
+    }
+  }, [accuracy, playWin, playDraw, playLose])
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6">
@@ -1021,28 +983,28 @@ function BattleResultsScreen({
           <h3 className="text-lg font-black text-white mb-4">Question Review</h3>
           <div className="space-y-4">
             {questions.map((question, index) => {
-              const userAnswer = userAnswers[index]
+              const rawUserAnswer = userAnswers[index]
               
-              // Get the display text for user's answer
+              // Derive display user answer
               let userAnswerText = ""
               if (question.type === "multiple_choice") {
-                // Convert index to option text
-                const answerIndex = typeof userAnswer === 'number' ? userAnswer : parseInt(userAnswer as string)
-                if (question.options && answerIndex >= 0 && answerIndex < question.options.length) {
+                const answerIndex = typeof rawUserAnswer === 'number' ? rawUserAnswer : parseInt(rawUserAnswer as string)
+                if (question.options && typeof answerIndex === 'number' && answerIndex >= 0 && answerIndex < question.options.length) {
                   userAnswerText = question.options[answerIndex]
-                } else {
+                } else if (!Number.isNaN(answerIndex)) {
                   userAnswerText = `Option ${String.fromCharCode(65 + (answerIndex || 0))}`
+                } else {
+                  userAnswerText = "No answer provided"
                 }
               } else {
-                // Open-ended: use the string directly
-                userAnswerText = (userAnswer as string) || "No answer provided"
+                userAnswerText = (rawUserAnswer as string) || "No answer provided"
               }
               
-              const isCorrect = question.type === "multiple_choice" 
-                ? userAnswer === (question.correct !== undefined ? question.correct : 0)
-                : question.expected_answers?.some((ans: string) => 
-                    ans.toLowerCase().trim() === (userAnswer as string)?.toLowerCase().trim()
-                  )
+              // Compute correctness via unified evaluator
+              const coercedUserAnswer = question.type === "multiple_choice"
+                ? (typeof rawUserAnswer === 'number' ? rawUserAnswer : parseInt(rawUserAnswer as string))
+                : (typeof rawUserAnswer === 'string' ? rawUserAnswer : String(rawUserAnswer ?? ""))
+              const isCorrect = isAnswerCorrect(question, coercedUserAnswer as any)
               
               // Get correct answer text
               let correctAnswerText = ""
@@ -1054,7 +1016,6 @@ function BattleResultsScreen({
                   correctAnswerText = question.a || `Option ${String.fromCharCode(65 + correctIndex)}`
                 }
               } else {
-                // Open-ended: show expected answers
                 if (question.expected_answers && question.expected_answers.length > 0) {
                   correctAnswerText = question.expected_answers.join(", ")
                 } else {
