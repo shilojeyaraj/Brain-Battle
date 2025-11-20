@@ -5,6 +5,15 @@ import { getOrCreateStripeCustomer } from '@/lib/stripe/utils';
 
 export async function POST(request: NextRequest) {
   try {
+    // Validate Stripe is configured
+    if (!stripe) {
+      console.error('❌ [STRIPE] Stripe is not initialized. Check STRIPE_SECRET_KEY in .env.local');
+      return NextResponse.json(
+        { error: 'Stripe is not configured. Please check your API keys.' },
+        { status: 500 }
+      );
+    }
+
     const supabase = await createClient();
     const body = await request.json();
     const { priceId, mode = 'subscription', userId } = body;
@@ -31,8 +40,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate price ID
-    const validPriceIds = Object.values(STRIPE_PRICE_IDS);
+    // Validate price ID (only check against valid/configured price IDs)
+    const validPriceIds = Object.values(STRIPE_PRICE_IDS).filter(
+      (id): id is string => typeof id === 'string' && id !== 'price_xxxxx' && id !== undefined
+    );
     if (!priceId || !validPriceIds.includes(priceId)) {
       return NextResponse.json(
         { error: 'Invalid price ID' },

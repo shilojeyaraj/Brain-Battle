@@ -420,15 +420,21 @@ export async function signup(formData: FormData) {
     redirect(`/signup?error=${encodeURIComponent(result.error || "Registration failed")}`)
   }
 
-  console.log("✅ [SIGNUP] Registration successful, redirecting to dashboard...")
+  console.log("✅ [SIGNUP] Registration successful, redirecting to pricing page...")
   
   // Store user in session
-  if (result.user) {
+  if (result.user && result.user.id) {
     revalidatePath("/")
-    redirect(`/dashboard?userId=${result.user.id}&newUser=true`)
+    // Set secure session cookie instead of query parameter
+    const { setSessionCookie } = await import('@/lib/auth/session-cookies')
+    await setSessionCookie(result.user.id)
+    
+    // Redirect new users to pricing page to choose their plan
+    redirect("/pricing?newUser=true")
   } else {
     revalidatePath("/")
-    redirect("/dashboard?newUser=true")
+    // Redirect new users to pricing page to choose their plan
+    redirect("/pricing?newUser=true")
   }
 }
 
@@ -451,13 +457,15 @@ export async function login(formData: FormData) {
       redirect(`/login?error=${encodeURIComponent(result.error || "Login failed")}`)
     }
 
-    // Store user in session
+    // Store user in secure session cookie
     if (result.user) {
-      // We'll set the session on the client side after redirect
-      // For now, we'll pass the user ID as a query parameter
-      console.log("✅ [LOGIN] Authentication successful, redirecting to dashboard")
+      const { setSessionCookie } = await import('@/lib/auth/session-cookies')
+      await setSessionCookie(result.user.id)
+      
+      console.log("✅ [LOGIN] Authentication successful, session cookie set, redirecting to dashboard")
       revalidatePath("/")
-      redirect(`/dashboard?userId=${result.user.id}`)
+      // Redirect without userId query parameter - session is in cookie
+      redirect("/dashboard")
     } else {
       revalidatePath("/")
       redirect("/dashboard")
@@ -472,8 +480,10 @@ export async function login(formData: FormData) {
 }
 
 export async function logout() {
-  // Note: localStorage clearing happens client-side
-  // Server action just redirects - client should clear session
+  // Clear session cookie
+  const { clearSessionCookie } = await import('@/lib/auth/session-cookies')
+  await clearSessionCookie()
+  
   revalidatePath("/")
   redirect("/")
 }

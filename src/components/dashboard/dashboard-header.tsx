@@ -31,30 +31,43 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
 
   useEffect(() => {
     const fetchUserId = async () => {
-      // Check for userId in URL params (from login redirect)
-      const userIdFromUrl = searchParams.get('userId')
+      // Try to get userId from session cookie first (more reliable)
+      let userId: string | null = null
+      try {
+        const response = await fetch('/api/user/current')
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success && data.userId) {
+            userId = data.userId
+            console.log('✅ [DASHBOARD] User ID from session cookie:', userId)
+          }
+        }
+      } catch (e) {
+        console.warn('⚠️ [DASHBOARD] Failed to get userId from API, falling back to localStorage')
+      }
       
-      if (userIdFromUrl) {
-        // Set the session and clear the URL parameter
-        setCurrentUserId(userIdFromUrl)
-        
-        // Store the session in localStorage
-        localStorage.setItem('userId', userIdFromUrl)
-        console.log('✅ [DASHBOARD] User session stored:', userIdFromUrl)
-        
+      // Fallback to localStorage if API call failed (for backwards compatibility)
+      if (!userId) {
+        userId = await getCurrentUserId()
+        if (userId) {
+          console.log('✅ [DASHBOARD] User ID from localStorage:', userId)
+        }
+      }
+      
+      // Check for userId in URL params (legacy support - should not happen with secure cookies)
+      const userIdFromUrl = searchParams.get('userId')
+      if (userIdFromUrl && !userId) {
+        userId = userIdFromUrl
         // Clear the URL parameter without causing a page reload
         const url = new URL(window.location.href)
         url.searchParams.delete('userId')
         window.history.replaceState({}, '', url.toString())
-      } else {
-        // Try to get user ID from session
-        const userId = await getCurrentUserId()
+      }
+      
+      if (userId) {
         setCurrentUserId(userId)
-        if (userId) {
-          console.log('✅ [DASHBOARD] User session found:', userId)
-        } else {
-          console.log('❌ [DASHBOARD] No user session found')
-        }
+      } else {
+        console.log('❌ [DASHBOARD] No user session found')
       }
     }
     

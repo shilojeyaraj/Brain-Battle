@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -36,18 +36,64 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
   const [hoveredTermPosition, setHoveredTermPosition] = useState<{ x: number; y: number; transform?: string } | null>(null)
   const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set())
   const [currentCardIndex, setCurrentCardIndex] = useState(0)
+  const [isPro, setIsPro] = useState(false)
+  const [subscriptionLoading, setSubscriptionLoading] = useState(true)
 
   // Safety: Ensure diagrams and concepts are arrays
   const diagrams = Array.isArray(notes.diagrams) ? notes.diagrams : []
   const concepts = Array.isArray(notes.concepts) ? notes.concepts : []
 
-  const sections = [
+  // Check subscription status
+  useEffect(() => {
+    const checkSubscription = async () => {
+      try {
+        // Get userId from session cookie API
+        const userResponse = await fetch('/api/user/current')
+        if (userResponse.ok) {
+          const userData = await userResponse.json()
+          if (userData.success && userData.userId) {
+            const statusResponse = await fetch(`/api/subscription/status?userId=${userData.userId}`)
+            if (statusResponse.ok) {
+              const statusData = await statusResponse.json()
+              setIsPro(statusData.isPro || false)
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error checking subscription:', error)
+        // Default to free if check fails
+        setIsPro(false)
+      } finally {
+        setSubscriptionLoading(false)
+      }
+    }
+
+    checkSubscription()
+  }, [])
+
+  // Filter sections based on subscription - diagrams only for pro users
+  const allSections = [
     { id: "outline", label: "Outline", icon: BookOpen },
     { id: "concepts", label: "Concepts", icon: Lightbulb },
     { id: "diagrams", label: "Diagrams", icon: Image },
     { id: "formulas", label: "Formulas", icon: Calculator },
     { id: "quiz", label: "Quiz Prep", icon: Play }
   ] as const
+
+  const sections = allSections.filter(section => {
+    // Hide diagrams tab for free users
+    if (section.id === "diagrams" && !isPro) {
+      return false
+    }
+    return true
+  })
+
+  // If user is not pro and currently viewing diagrams, switch to outline
+  useEffect(() => {
+    if (!subscriptionLoading && activeSection === "diagrams" && !isPro) {
+      setActiveSection("outline")
+    }
+  }, [isPro, subscriptionLoading, activeSection])
 
   const toggleOutlineItem = (index: number) => {
     const newExpanded = new Set(expandedOutlineItems)

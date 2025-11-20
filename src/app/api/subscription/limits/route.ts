@@ -1,101 +1,53 @@
-/**
- * Subscription Limits API Route
- * 
- * GET /api/subscription/limits?userId=<userId>&feature=<feature>
- * 
- * Returns specific limit information for a feature.
- * Used for checking limits before performing actions.
- * 
- * Supported features:
- * - documents: Check document upload limit
- * - room-size: Check room size limit (requires requestedSize param)
- * - quiz-questions: Check quiz question limit (requires requestedQuestions param)
- */
-
 import { NextRequest, NextResponse } from 'next/server'
-import { 
-  checkDocumentLimit, 
-  checkRoomSizeLimit, 
-  checkQuizQuestionLimit,
-  getUserLimits 
-} from '@/lib/subscription/limits'
+import { getUserIdFromRequest } from '@/lib/auth/session-cookies'
+import { getUserLimits, checkDocumentLimit } from '@/lib/subscription/limits'
 
+/**
+ * Get user's subscription limits and current usage
+ */
 export async function GET(request: NextRequest) {
   try {
-    const searchParams = request.nextUrl.searchParams
-    const userId = searchParams.get('userId')
-    const feature = searchParams.get('feature')
-
+    const userId = await getUserIdFromRequest(request)
+    
     if (!userId) {
       return NextResponse.json(
-        { error: 'userId is required' },
-        { status: 400 }
+        { error: 'Unauthorized' },
+        { status: 401 }
       )
     }
 
-    if (!feature) {
-      // Return all limits if no specific feature requested
-      const limits = await getUserLimits(userId)
-      return NextResponse.json({
-        success: true,
-        limits
-      })
-    }
+    // Get limits
+    const limits = await getUserLimits(userId)
+    
+    // Get document usage
+    const docLimit = await checkDocumentLimit(userId)
 
-    switch (feature) {
-      case 'documents': {
-        const result = await checkDocumentLimit(userId)
-        return NextResponse.json({
-          success: true,
-          ...result
-        })
-      }
-
-      case 'room-size': {
-        const requestedSize = searchParams.get('requestedSize')
-        if (!requestedSize) {
-          return NextResponse.json(
-            { error: 'requestedSize parameter is required for room-size feature' },
-            { status: 400 }
-          )
-        }
-        const result = await checkRoomSizeLimit(userId, parseInt(requestedSize, 10))
-        return NextResponse.json({
-          success: true,
-          ...result
-        })
-      }
-
-      case 'quiz-questions': {
-        const requestedQuestions = searchParams.get('requestedQuestions')
-        if (!requestedQuestions) {
-          return NextResponse.json(
-            { error: 'requestedQuestions parameter is required for quiz-questions feature' },
-            { status: 400 }
-          )
-        }
-        const result = await checkQuizQuestionLimit(userId, parseInt(requestedQuestions, 10))
-        return NextResponse.json({
-          success: true,
-          ...result
-        })
-      }
-
-      default:
-        return NextResponse.json(
-          { error: `Unknown feature: ${feature}. Supported features: documents, room-size, quiz-questions` },
-          { status: 400 }
-        )
-    }
-  } catch (error) {
-    console.error('❌ [SUBSCRIPTION LIMITS API] Error:', error)
-    return NextResponse.json(
-      { 
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to check limits' 
+    return NextResponse.json({
+      success: true,
+      limits: {
+        maxDocumentsPerMonth: limits.maxDocumentsPerMonth,
+        maxQuestionsPerQuiz: limits.maxQuestionsPerQuiz,
+        maxPlayersPerRoom: limits.maxPlayersPerRoom,
+        canExport: limits.canExport,
+        hasPriorityProcessing: limits.hasPriorityProcessing,
+        hasAdvancedAnalytics: limits.hasAdvancedAnalytics,
+        hasCustomThemes: limits.hasCustomThemes,
+        hasAdvancedStudyNotes: limits.hasAdvancedStudyNotes,
       },
+      usage: {
+        documents: {
+          count: docLimit.count,
+          limit: docLimit.limit,
+          remaining: docLimit.remaining,
+          isUnlimited: docLimit.limit === Infinity,
+        },
+      },
+    })
+  } catch (error: any) {
+    console.error('❌ [LIMITS API] Error:', error)
+    return NextResponse.json(
+      { error: 'Failed to fetch limits' },
       { status: 500 }
     )
   }
 }
-

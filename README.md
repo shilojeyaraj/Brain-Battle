@@ -35,6 +35,17 @@ Brain Battle is a cutting-edge educational platform that combines artificial int
 - **Fair Play Enforcement**: Ensures competitive integrity
 - **Host Notifications**: Real-time alerts for suspicious activity
 
+## 📚 Documentation
+
+All project documentation has been organized into the `docs/` directory:
+
+- **[Documentation Index](./docs/README.md)** - Complete documentation index
+- **[Setup Guide](./docs/setup/SETUP.md)** - Initial setup instructions
+- **[Complete Technical Docs](./DOCUMENTATION.md)** - Comprehensive technical documentation
+- **[Authentication](./docs/authentication/)** - Auth system documentation
+- **[Stripe Integration](./docs/stripe/)** - Payment and subscription docs
+- **[Production Guide](./docs/production/)** - Deployment and production docs
+
 ## 🚀 Tech Stack
 
 ### **Frontend**

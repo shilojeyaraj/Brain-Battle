@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { authenticateUser } from '@/lib/actions/custom-auth'
+import { setSessionCookie } from '@/lib/auth/session-cookies'
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,7 +20,7 @@ export async function POST(request: NextRequest) {
       // Authenticate user with custom auth (using username)
       const result = await authenticateUser(email, password)
       
-      if (!result.success) {
+      if (!result.success || !result.user) {
         console.log("❌ [API LOGIN] Authentication failed:", result.error)
         return NextResponse.json(
           { success: false, error: result.error || "Login failed" },
@@ -27,10 +28,23 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      console.log("✅ [API LOGIN] Authentication successful")
+      if (!result.user?.id) {
+        return NextResponse.json(
+          { error: 'Authentication succeeded but user ID is missing' },
+          { status: 500 }
+        )
+      }
+
+      // Set secure HTTP-only session cookie
+      await setSessionCookie(result.user.id)
+      
+      console.log("✅ [API LOGIN] Authentication successful, session cookie set")
+      
+      // Return success without exposing user ID in response
       return NextResponse.json({
         success: true,
-        user: result.user
+        // Don't expose full user object - client can fetch profile if needed
+        userId: result.user.id
       })
     } catch (error) {
       console.error("❌ [API LOGIN] Server error during authentication:", error)

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
@@ -39,34 +39,20 @@ export function EmailMFAVerification({ email, password }: EmailMFAVerificationPr
       }
 
       // Get MFA factors
-      const { data: { factors }, error: factorsError } = await supabase.auth.mfa.listFactors()
+      const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors()
       
+      const factors = factorsData?.all || []
       if (factorsError || !factors || factors.length === 0) {
         setError('MFA not configured')
         setSending(false)
         return
       }
 
-      const emailFactor = factors.find(f => f.factor_type === 'email' && f.status === 'verified')
-      
-      if (!emailFactor) {
-        setError('Email MFA not enabled')
-        setSending(false)
-        return
-      }
-
-      // Challenge the email factor to send OTP
-      const { error: challengeError } = await supabase.auth.mfa.challenge({
-        factorId: emailFactor.id
-      })
-
-      if (challengeError) {
-        setError(challengeError.message || 'Failed to send email code')
-        setSending(false)
-        return
-      }
-
-      // Success - email sent
+      // Email MFA is not supported by Supabase - only TOTP, WebAuthn, and Phone
+      // This component should not be used for email MFA
+      setError('Email MFA is not supported. Please use TOTP or WebAuthn instead.')
+      setSending(false)
+      return
     } catch (err: any) {
       setError(err.message || 'Failed to send email')
     } finally {
@@ -97,38 +83,19 @@ export function EmailMFAVerification({ email, password }: EmailMFAVerificationPr
       }
 
       // Get MFA factors
-      const { data: { factors }, error: factorsError } = await supabase.auth.mfa.listFactors()
+      const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors()
       
+      const factors = factorsData?.all || []
       if (factorsError || !factors || factors.length === 0) {
         setError('MFA not configured')
         setLoading(false)
         return
       }
 
-      const emailFactor = factors.find(f => f.factor_type === 'email' && f.status === 'verified')
-      
-      if (!emailFactor) {
-        setError('Email MFA not enabled')
-        setLoading(false)
-        return
-      }
-
-      // Verify the email OTP code
-      const { data: verifyData, error: verifyError } = await supabase.auth.mfa.verify({
-        factorId: emailFactor.id,
-        code: code
-      })
-
-      if (verifyError) {
-        setError(verifyError.message || 'Invalid code. Please try again.')
-        setLoading(false)
-        return
-      }
-
-      if (verifyData.user) {
-        // Success - redirect to dashboard
-        router.push('/dashboard')
-      }
+      // Email MFA is not supported - return error
+      setError('Email MFA is not supported. Please use TOTP or WebAuthn instead.')
+      setLoading(false)
+      return
     } catch (err: any) {
       setError(err.message || 'Verification failed')
       setLoading(false)

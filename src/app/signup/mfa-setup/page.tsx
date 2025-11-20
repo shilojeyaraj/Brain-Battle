@@ -88,8 +88,8 @@ export default function MFASetupPage() {
       }
 
       if (data) {
-        setQrCode(data.qr_code || null)
-        setSecret(data.secret || null)
+        setQrCode(data.totp?.qr_code || null)
+        setSecret(data.totp?.secret || null)
         setFactorId(data.id || null)
         setStep('verify')
       }
@@ -146,10 +146,10 @@ export default function MFASetupPage() {
         return
       }
 
-      // Enroll email as MFA factor
+      // Enroll TOTP as MFA factor
       const { data, error: enrollError } = await supabase.auth.mfa.enroll({
-        factorType: 'email',
-        friendlyName: 'Email Verification'
+        factorType: 'totp',
+        friendlyName: 'Authenticator App'
       })
 
       if (enrollError) {
@@ -196,8 +196,21 @@ export default function MFASetupPage() {
     setError(null)
 
     try {
+      // Create a challenge first
+      const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({
+        factorId: factorId
+      })
+
+      if (challengeError || !challengeData) {
+        setError(challengeError?.message || 'Failed to create challenge')
+        setLoading(false)
+        return
+      }
+
+      // Verify with the challenge
       const { data, error: verifyError } = await supabase.auth.mfa.verify({
         factorId: factorId,
+        challengeId: challengeData.id,
         code: verificationCode
       })
 

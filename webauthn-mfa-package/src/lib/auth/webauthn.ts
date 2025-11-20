@@ -162,13 +162,13 @@ export async function registerCredential(
 
   // Convert options to WebAuthn API format
   const publicKeyCredentialCreationOptions: PublicKeyCredentialCreationOptions = {
-    challenge: base64UrlDecode(options.challenge),
+    challenge: base64UrlDecode(options.challenge) as BufferSource,
     rp: {
       ...options.rp,
       id: rpId // Use validated RP ID
     },
     user: {
-      id: base64UrlDecode(options.user.id),
+      id: base64UrlDecode(options.user.id) as BufferSource,
       name: options.user.name,
       displayName: options.user.displayName
     },
@@ -224,9 +224,9 @@ export async function authenticateWithCredential(
 
   // Convert options to WebAuthn API format
   const publicKeyCredentialRequestOptions: PublicKeyCredentialRequestOptions = {
-    challenge: base64UrlDecode(options.challenge),
+    challenge: base64UrlDecode(options.challenge) as BufferSource,
     allowCredentials: options.allowCredentials?.map(cred => ({
-      id: base64UrlDecode(cred.id),
+      id: base64UrlDecode(cred.id) as BufferSource,
       type: 'public-key',
       transports: cred.transports as AuthenticatorTransport[]
     })),

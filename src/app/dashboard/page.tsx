@@ -7,6 +7,7 @@ import { LobbySection } from "@/components/dashboard/lobby-section"
 import { RecentBattles } from "@/components/dashboard/recent-battles"
 import { Leaderboard } from "@/components/dashboard/leaderboard"
 import { DashboardTutorial } from "@/components/tutorial/dashboard-tutorial"
+import { SubscriptionBanner } from "@/components/dashboard/subscription-banner"
 import { Button } from "@/components/ui/button"
 import { ChevronDown, ChevronUp, BarChart3 } from "lucide-react"
 import dynamicImport from "next/dynamic"
@@ -124,6 +125,9 @@ export default function DashboardPage() {
         >
           <StatsGrid />
         </div>
+
+        {/* Subscription Banner - Shows for free users */}
+        <SubscriptionBanner />
 
         <div className="grid gap-12 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-12">

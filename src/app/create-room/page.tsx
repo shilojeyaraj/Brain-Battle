@@ -195,9 +195,9 @@ export default function CreateRoomPage() {
 
               {showUpgradePrompt && (
                 <div className="mt-4">
-                  <UpgradePrompt 
-                    feature="room size" 
-                    variant="compact"
+                  <UpgradePrompt
+                    feature="room size"
+                    limit="4 players"
                   />
                 </div>
               )}

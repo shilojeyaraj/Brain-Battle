@@ -1,6 +1,6 @@
 import "server-only"
-import { createClient } from "@/lib/supabase/server"
-import { createClient as createDbClient } from "@/db"
+import { createAdminClient } from "@/lib/supabase/server-admin"
+import { getUserIdFromSession } from "./session-cookies"
 
 export interface User {
   id: string
@@ -13,15 +13,35 @@ export interface User {
 }
 
 /**
- * Get current user session (server-side) - uses custom auth with users table
+ * Get current user session (server-side) - uses secure cookie-based session
  */
 export async function getCurrentUser(): Promise<User | null> {
   try {
-    // Custom auth: session is managed client-side via localStorage
-    // For server-side, we'd need to pass user ID from client
-    // This function is kept for compatibility but returns null
-    // Use client-side session management instead
-    return null
+    const userId = await getUserIdFromSession()
+    if (!userId) return null
+    
+    // Fetch user from database
+    const supabase = createAdminClient()
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single()
+    
+    if (error || !user) {
+      console.error('Error fetching user:', error)
+      return null
+    }
+    
+    return {
+      id: user.id,
+      email: user.email || '',
+      username: user.username,
+      avatar_url: user.avatar_url || undefined,
+      created_at: user.created_at,
+      updated_at: user.updated_at,
+      last_login: user.last_login || undefined,
+    }
   } catch (error) {
     console.error('Error getting current user:', error)
     return null
@@ -29,12 +49,11 @@ export async function getCurrentUser(): Promise<User | null> {
 }
 
 /**
- * Get current user ID (server-side)
+ * Get current user ID (server-side) - from secure session cookie
  */
 export async function getCurrentUserId(): Promise<string | null> {
   try {
-    // Custom auth: session is managed client-side
-    return null
+    return await getUserIdFromSession()
   } catch (error) {
     console.error('Error getting current user ID:', error)
     return null
@@ -46,8 +65,8 @@ export async function getCurrentUserId(): Promise<string | null> {
  */
 export async function isUserLoggedIn(): Promise<boolean> {
   try {
-    // Custom auth: session is managed client-side
-    return false
+    const userId = await getUserIdFromSession()
+    return !!userId
   } catch (error) {
     return false
   }

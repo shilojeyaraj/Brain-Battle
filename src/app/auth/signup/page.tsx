@@ -60,7 +60,7 @@ function SignupForm() {
 
       if (response.ok) {
         const result = await response.json()
-        if (result.success) {
+        if (result.success && result.user?.id) {
           // Store user in localStorage for client-side access
           localStorage.setItem('user', JSON.stringify(result.user))
           localStorage.setItem('userId', result.user.id)

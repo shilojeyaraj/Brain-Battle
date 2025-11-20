@@ -127,14 +127,26 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Check if profile exists
-    const { data: existingProfile } = await adminClient
+    // Verify user exists before creating profile (required for foreign key)
+    if (!userExists) {
+      console.error('❌ [PROFILE API] Cannot create profile: user does not exist in users table')
+      return NextResponse.json(
+        { error: 'User does not exist. Please ensure the user is created first.' },
+        { status: 400 }
+      )
+    }
+
+    // Check if profile exists (handle "not found" errors gracefully)
+    const { data: existingProfile, error: profileCheckError } = await adminClient
       .from('profiles')
       .select('user_id, username')
       .eq('user_id', user_id)
       .single()
 
-    if (existingProfile) {
+    // Only treat as existing if we have data and no error (or error is just "not found")
+    const profileExists = existingProfile && (!profileCheckError || (profileCheckError && typeof profileCheckError === 'object' && 'code' in profileCheckError && (profileCheckError as { code?: string }).code === 'PGRST116'))
+
+    if (profileExists) {
       // Update existing profile (profiles table doesn't have email column)
       const { data, error } = await adminClient
         .from('profiles')
@@ -157,11 +169,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, data })
     } else {
       // Create new profile (profiles table doesn't have email column)
+      // Ensure user exists first (should be guaranteed by check above, but double-check)
+      const finalUsername = username || `user_${user_id.slice(0, 8)}`
+      
+      console.log('📝 [PROFILE API] Creating new profile:', { user_id, username: finalUsername, userExists: !!userExists })
+      
       const { data, error } = await adminClient
         .from('profiles')
         .insert({
           user_id,
-          username: username || `user_${user_id.slice(0, 8)}`,
+          username: finalUsername,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
@@ -170,8 +187,58 @@ export async function POST(request: NextRequest) {
 
       if (error) {
         console.error('❌ [PROFILE API] Error creating profile:', error)
+        console.error('❌ [PROFILE API] Error details:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          user_id,
+          username: finalUsername,
+          userExists: !!userExists
+        })
+        
+        // Handle specific error cases
+        if (error.code === '23503') {
+          // Foreign key constraint violation - user doesn't exist in users table
+          return NextResponse.json(
+            { error: `User ${user_id} does not exist in users table. Please ensure the user is created first.` },
+            { status: 400 }
+          )
+        } else if (error.code === '23505') {
+          // Unique constraint violation (likely username already exists)
+          // Try with a more unique username
+          const uniqueUsername = `${finalUsername}_${Date.now().toString().slice(-6)}`
+          console.log('🔄 [PROFILE API] Retrying with unique username:', uniqueUsername)
+          
+          const { data: retryData, error: retryError } = await adminClient
+            .from('profiles')
+            .insert({
+              user_id,
+              username: uniqueUsername,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .select()
+            .single()
+          
+          if (retryError) {
+            return NextResponse.json(
+              { error: `Failed to create profile: ${retryError.message}` },
+              { status: 500 }
+            )
+          }
+          
+          return NextResponse.json({ success: true, data: retryData })
+        } else if (error.code === '23502') {
+          // NOT NULL constraint violation
+          return NextResponse.json(
+            { error: `Missing required field: ${error.message}` },
+            { status: 400 }
+          )
+        }
+        
         return NextResponse.json(
-          { error: 'Failed to create profile' },
+          { error: `Failed to create profile: ${error.message || 'Unknown error'}` },
           { status: 500 }
         )
       }

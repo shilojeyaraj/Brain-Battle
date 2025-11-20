@@ -91,7 +91,16 @@ export async function getUserStatsClient(userId: string): Promise<{ success: boo
             }
           }
         } else {
-          console.error('❌ [USER STATS] Failed to create profile via API:', await response.text())
+          let errorText = ''
+          let errorData: any = {}
+          try {
+            errorText = await response.text()
+            errorData = JSON.parse(errorText)
+          } catch (e) {
+            errorData = { error: errorText || 'Unknown error' }
+          }
+          console.error('❌ [USER STATS] Failed to create profile via API:', errorData)
+          console.error('❌ [USER STATS] Response status:', response.status)
         }
       } catch (apiError) {
         console.error('❌ [USER STATS] Error calling profile API:', apiError)

@@ -50,7 +50,7 @@ function LoginForm() {
         return
       }
 
-      if (result.success && result.user) {
+      if (result.success && result.user?.id) {
         // Store user ID in localStorage for session management
         localStorage.setItem('userId', result.user.id)
         // Successfully signed in, redirect to dashboard

@@ -19,6 +19,7 @@ const activeLobbies: any[] = [
 export function LobbySection() {
   const [searchQuery, setSearchQuery] = useState("")
   const [mounted, setMounted] = useState(false)
+  const [loadingButton, setLoadingButton] = useState<string | null>(null)
   const router = useRouter()
   const { playClick, burstConfetti } = useFeedback()
 
@@ -45,37 +46,49 @@ export function LobbySection() {
 
   const handleCreateLobby = () => {
     playClick()
+    setLoadingButton('create')
     console.log("Create Lobby button clicked!")
     console.log("Current URL:", window.location.href)
     console.log("Attempting to navigate to /create-room")
     try {
       router.push("/create-room")
       console.log("Navigation command sent successfully")
+      // Clear loading after navigation starts (or timeout)
+      setTimeout(() => setLoadingButton(null), 2000)
     } catch (error) {
       console.error("Navigation error:", error)
+      setLoadingButton(null)
     }
   }
 
   const handleJoinLobby = () => {
     playClick()
+    setLoadingButton('join')
     console.log("Join Lobby button clicked!")
     console.log("Attempting to navigate to /join-room")
     try {
       router.push("/join-room")
       console.log("Navigation command sent successfully")
+      // Clear loading after navigation starts (or timeout)
+      setTimeout(() => setLoadingButton(null), 2000)
     } catch (error) {
       console.error("Navigation error:", error)
+      setLoadingButton(null)
     }
   }
 
   const handleStartSingleplayer = () => {
     playClick()
+    setLoadingButton('singleplayer')
     console.log("Start Singleplayer Battle button clicked!")
     try {
       router.push("/singleplayer")
       console.log("Navigation to singleplayer sent successfully")
+      // Clear loading after navigation starts (or timeout)
+      setTimeout(() => setLoadingButton(null), 2000)
     } catch (error) {
       console.error("Navigation error:", error)
+      setLoadingButton(null)
     }
   }
 
@@ -108,6 +121,8 @@ export function LobbySection() {
           <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
             <Button 
               onClick={handleStartSingleplayer}
+              loading={loadingButton === 'singleplayer'}
+              loadingText="Loading..."
               className="bg-primary hover:bg-primary/90 text-primary-foreground font-black text-xl px-8 py-4 cartoon-border cartoon-shadow cartoon-hover cursor-pointer"
               type="button"
               data-tutorial="singleplayer-button"
@@ -119,6 +134,8 @@ export function LobbySection() {
           <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
             <Button 
               onClick={handleJoinLobby}
+              loading={loadingButton === 'join'}
+              loadingText="Loading..."
               className="bg-secondary hover:bg-secondary/90 text-secondary-foreground font-black text-xl px-8 py-4 cartoon-border cartoon-shadow cartoon-hover cursor-pointer"
               type="button"
               data-tutorial="join-lobby-button"
@@ -130,6 +147,8 @@ export function LobbySection() {
           <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
             <Button 
               onClick={handleCreateLobby}
+              loading={loadingButton === 'create'}
+              loadingText="Loading..."
               className="bg-accent hover:bg-accent/90 text-accent-foreground font-black text-xl px-8 py-4 cartoon-border cartoon-shadow cartoon-hover cursor-pointer"
               type="button"
               data-tutorial="create-lobby-button"

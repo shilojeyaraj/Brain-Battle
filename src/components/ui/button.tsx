@@ -1,4 +1,4 @@
-\"use client\"
+"use client"
 
 import * as React from "react"
 import { Slot } from "@radix-ui/react-slot"
@@ -57,16 +57,14 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         disabled={isDisabled}
         onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
           try { playHover() } catch {}
-          // @ts-expect-error allow forwarding for Slot or native button
-          props.onMouseEnter?.(e)
+          props.onMouseEnter?.(e as any)
         }}
         onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
           if (!isDisabled) {
             try { playClick() } catch {}
           }
           // Preserve any consumer onClick
-          // @ts-expect-error allow forwarding for Slot or native button
-          props.onClick?.(e)
+          props.onClick?.(e as any)
         }}
         {...props}
       >

@@ -1,17 +1,18 @@
 "use client"
 
-import { useState, useRef, useCallback, useMemo } from "react"
+import { useState, useRef, useCallback, useMemo, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Upload, FileText, BookOpen, Brain, Zap, X, Plus, CheckCircle, AlertCircle, FileIcon, Loader2 } from "lucide-react"
+import { ArrowLeft, Upload, FileText, BookOpen, Brain, Zap, X, Plus, CheckCircle, AlertCircle, FileIcon, Loader2, Crown } from "lucide-react"
 import Link from "next/link"
 import { generateQuizQuestions, extractTextFromFile } from "@/lib/actions/quiz-generation"
 import { StudyNotesViewer } from "@/components/study-notes/study-notes-viewer"
 import { StudyContextChatbot } from "@/components/study-assistant/study-context-chatbot"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { motion } from "framer-motion"
+import { UpgradePrompt } from "@/components/subscription/upgrade-prompt"
 
 export default function SingleplayerPage() {
   const [step, setStep] = useState(1)
@@ -27,7 +28,26 @@ export default function SingleplayerPage() {
   const [uploadErrors, setUploadErrors] = useState<string[]>([])
   const [isUploading, setIsUploading] = useState(false)
   const [studyContext, setStudyContext] = useState<any>(null)
+  const [subscriptionLimits, setSubscriptionLimits] = useState<any>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Fetch subscription limits
+  useEffect(() => {
+    const fetchLimits = async () => {
+      try {
+        const response = await fetch('/api/subscription/limits')
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success) {
+            setSubscriptionLimits(data)
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching subscription limits:', error)
+      }
+    }
+    fetchLimits()
+  }, [])
 
   // File validation - memoized to prevent unnecessary recalculations
   const validateFiles = useCallback((files: File[]): { validFiles: File[], errors: string[] } => {
@@ -430,6 +450,27 @@ export default function SingleplayerPage() {
                   <p className="text-sm text-blue-100/60 font-bold mt-4">
                     Multiple files supported • Max 10MB per file
                   </p>
+                  {/* Document Limit Indicator */}
+                  {subscriptionLimits && !subscriptionLimits.usage.documents.isUnlimited && (
+                    <div className="mt-4 p-3 rounded-lg bg-slate-700/50 border-2 border-slate-600/50">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-blue-100/70 font-bold">
+                          Documents this month:
+                        </span>
+                        <span className="text-white font-black">
+                          {subscriptionLimits.usage.documents.count} / {subscriptionLimits.usage.documents.limit}
+                        </span>
+                      </div>
+                      {subscriptionLimits.usage.documents.remaining === 0 && (
+                        <UpgradePrompt
+                          feature="documents"
+                          limit={subscriptionLimits.usage.documents.limit}
+                          current={subscriptionLimits.usage.documents.count}
+                          className="mt-3"
+                        />
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -616,6 +657,21 @@ export default function SingleplayerPage() {
                       }
                     </span>
                   </div>
+                  {/* Quiz Question Limit Indicator */}
+                  {subscriptionLimits && subscriptionLimits.limits.maxQuestionsPerQuiz !== Infinity && (
+                    <div className="flex justify-between items-center pt-2 border-t border-slate-600/50">
+                      <span className="text-blue-100/70 font-bold flex items-center gap-2">
+                        <Brain className="w-4 h-4" />
+                        Quiz Questions:
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-white">
+                          {subscriptionLimits.limits.maxQuestionsPerQuiz} per quiz
+                        </span>
+                        <Crown className="w-4 h-4 text-orange-400" />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

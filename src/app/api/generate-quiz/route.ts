@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           { 
             success: false, 
-            error: `Free users are limited to ${questionLimit.limit} questions per quiz. Upgrade to Pro for unlimited questions.`,
+            error: `Free users are limited to ${questionLimit.limit} questions per quiz. Upgrade to Pro for unlimited questions and advanced features!`,
             requiresPro: questionLimit.requiresPro,
             limit: questionLimit.limit,
             requested: totalQuestions

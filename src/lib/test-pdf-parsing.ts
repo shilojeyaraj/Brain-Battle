@@ -92,8 +92,8 @@ export async function testPDFImageExtraction(
       page: img.page,
       width: img.width,
       height: img.height,
-      type: img.type || 'unknown',
-      dataSize: img.image_data_b64.length,
+      type: 'png', // Default type for extracted images
+      dataSize: img.image_data_b64?.length || 0,
     }))
     
     return {

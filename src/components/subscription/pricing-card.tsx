@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Check, Zap } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface PricingCardProps {
   name: string;
@@ -27,8 +28,25 @@ export function PricingCard({
   const handleSubscribe = async () => {
     setLoading(true);
     try {
-      // Get userId from localStorage (your app's auth system)
-      const userId = localStorage.getItem('userId');
+      // Get userId from session cookie (more secure than localStorage)
+      let userId: string | null = null;
+      try {
+        const response = await fetch('/api/user/current');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.userId) {
+            userId = data.userId;
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to get userId from API, falling back to localStorage');
+      }
+      
+      // Fallback to localStorage for backwards compatibility
+      if (!userId) {
+        userId = localStorage.getItem('userId');
+      }
+      
       if (!userId) {
         alert('Please log in to subscribe');
         setLoading(false);
@@ -66,15 +84,17 @@ export function PricingCard({
 
   return (
     <div
-      className={`relative rounded-2xl border-2 p-8 ${
+      className={`relative rounded-2xl border-4 p-8 backdrop-blur-sm transition-all ${
         popular
-          ? 'border-blue-500 bg-gradient-to-br from-blue-50 to-indigo-50 shadow-xl'
-          : 'border-gray-200 bg-white'
+          ? 'border-orange-500/70 bg-gradient-to-br from-slate-800/90 to-slate-900/90 shadow-2xl shadow-orange-500/20 scale-105'
+          : currentPlan
+          ? 'border-slate-600/50 bg-gradient-to-br from-slate-800/80 to-slate-900/80'
+          : 'border-slate-600/50 bg-gradient-to-br from-slate-800/80 to-slate-900/80 hover:border-slate-500/70'
       }`}
     >
       {popular && (
-        <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-          <span className="bg-blue-500 text-white px-4 py-1 rounded-full text-sm font-semibold flex items-center gap-1">
+        <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-10">
+          <span className="bg-gradient-to-r from-orange-500 to-orange-600 text-white px-4 py-1 rounded-full text-sm font-semibold flex items-center gap-1 shadow-lg border-2 border-orange-400">
             <Zap className="w-4 h-4" />
             Most Popular
           </span>
@@ -82,39 +102,43 @@ export function PricingCard({
       )}
 
       <div className="text-center mb-8">
-        <h3 className="text-2xl font-bold text-gray-900 mb-2">{name}</h3>
+        <h3 className={`text-2xl font-bold mb-2 ${
+          popular ? 'text-white' : 'text-slate-200'
+        }`}>{name}</h3>
         <div className="flex items-baseline justify-center gap-1">
-          <span className="text-5xl font-bold text-gray-900">${price}</span>
-          <span className="text-gray-600">/{period}</span>
+          <span className={`text-5xl font-bold ${
+            popular ? 'text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-blue-400' : 'text-white'
+          }`}>${price}</span>
+          <span className="text-slate-400">/{period}</span>
         </div>
       </div>
 
       <ul className="space-y-4 mb-8">
         {features.map((feature, index) => (
           <li key={index} className="flex items-start gap-3">
-            <Check className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-            <span className="text-gray-700">{feature}</span>
+            <Check className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
+              popular ? 'text-orange-400' : 'text-blue-400'
+            }`} />
+            <span className="text-slate-300">{feature}</span>
           </li>
         ))}
       </ul>
 
-      <button
+      <Button
         onClick={handleSubscribe}
-        disabled={loading || currentPlan}
+        disabled={currentPlan}
+        loading={loading}
+        loadingText="Loading..."
         className={`w-full py-3 px-6 rounded-lg font-semibold transition-all ${
           currentPlan
-            ? 'bg-gray-200 text-gray-500 cursor-not-allowed'
+            ? 'bg-slate-700/50 text-slate-500 cursor-not-allowed border-2 border-slate-600/50'
             : popular
-            ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transform hover:scale-105'
-            : 'bg-gray-900 hover:bg-gray-800 text-white'
+            ? 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white shadow-lg hover:shadow-xl hover:shadow-orange-500/50 transform hover:scale-105 border-2 border-orange-400/50'
+            : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg hover:shadow-xl border-2 border-blue-500/50'
         }`}
       >
-        {loading
-          ? 'Loading...'
-          : currentPlan
-          ? 'Current Plan'
-          : 'Subscribe Now'}
-      </button>
+        {currentPlan ? 'Current Plan' : 'Subscribe Now'}
+      </Button>
     </div>
   );
 }

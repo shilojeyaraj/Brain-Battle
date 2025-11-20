@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { stripe } from './config';
 import type { SubscriptionTier, SubscriptionStatus } from './config';
+import type Stripe from 'stripe';
 
 export interface SubscriptionInfo {
   tier: SubscriptionTier;
@@ -26,8 +27,24 @@ export async function getOrCreateStripeCustomer(
     .eq('id', userId)
     .single();
 
-  if (user?.stripe_customer_id) {
-    return user.stripe_customer_id;
+  // If user has a customer ID, verify it exists in Stripe
+  if (user?.stripe_customer_id && stripe) {
+    try {
+      // Verify the customer exists in Stripe
+      await stripe.customers.retrieve(user.stripe_customer_id);
+      console.log('✅ [STRIPE] Using existing customer:', user.stripe_customer_id);
+      return user.stripe_customer_id;
+    } catch (error: any) {
+      // Customer doesn't exist in Stripe (might have been deleted or from different account)
+      console.warn('⚠️ [STRIPE] Customer ID in database does not exist in Stripe:', user.stripe_customer_id);
+      console.warn('⚠️ [STRIPE] Creating new customer...');
+      // Clear the invalid customer ID from database
+      await supabase
+        .from('users')
+        .update({ stripe_customer_id: null })
+        .eq('id', userId);
+      // Fall through to create a new customer
+    }
   }
 
   // Create a new Stripe customer (only if Stripe is configured)
@@ -38,6 +55,7 @@ export async function getOrCreateStripeCustomer(
     return `placeholder_customer_${userId}`;
   }
 
+  console.log('📝 [STRIPE] Creating new Stripe customer for user:', userId);
   const customer = await stripe.customers.create({
     email,
     metadata: {
@@ -51,6 +69,7 @@ export async function getOrCreateStripeCustomer(
     .update({ stripe_customer_id: customer.id })
     .eq('id', userId);
 
+  console.log('✅ [STRIPE] Created new customer:', customer.id);
   return customer.id;
 }
 
@@ -118,7 +137,7 @@ export async function hasProSubscription(userId: string): Promise<boolean> {
   }
   
   const subscription = await getUserSubscription(userId);
-  return subscription?.isActive && subscription.tier === 'pro';
+  return !!(subscription?.isActive && subscription.tier === 'pro');
 }
 
 /**

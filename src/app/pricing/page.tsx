@@ -3,52 +3,120 @@
 import { PricingCard } from '@/components/subscription/pricing-card';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { motion } from 'framer-motion';
+import Link from 'next/link';
+import { ArrowRight, ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 export default function PricingPage() {
   const searchParams = useSearchParams();
   const canceled = searchParams.get('canceled');
+  const isNewUser = searchParams.get('newUser') === 'true';
   const [subscriptionStatus, setSubscriptionStatus] = useState<any>(null);
 
   useEffect(() => {
-    // Get userId from localStorage (your app's auth system)
-    const userId = localStorage.getItem('userId');
-    if (!userId) return;
+    // Get userId from session cookie (more secure)
+    const fetchStatus = async () => {
+      try {
+        // Try to get userId from session cookie first
+        let userId: string | null = null;
+        try {
+          const response = await fetch('/api/user/current');
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.userId) {
+              userId = data.userId;
+            }
+          }
+        } catch (e) {
+          // Fallback to localStorage
+          userId = localStorage.getItem('userId');
+        }
 
-    // Fetch current subscription status
-    fetch(`/api/stripe/subscription-status?userId=${userId}`)
-      .then((res) => res.json())
-      .then((data) => setSubscriptionStatus(data))
-      .catch((err) => console.error('Error fetching subscription:', err));
+        if (!userId) return;
+
+        // Fetch current subscription status
+        const res = await fetch(`/api/stripe/subscription-status?userId=${userId}`);
+        const data = await res.json();
+        setSubscriptionStatus(data);
+      } catch (err) {
+        console.error('Error fetching subscription:', err);
+      }
+    };
+
+    fetchStatus();
   }, []);
 
-  // Replace these with your actual Stripe Price IDs from your Stripe Dashboard
+  // Get Stripe Price IDs from environment variables
   const PRO_MONTHLY_PRICE_ID = process.env.NEXT_PUBLIC_STRIPE_PRO_MONTHLY_PRICE_ID || 'price_xxxxx';
-  const PRO_YEARLY_PRICE_ID = process.env.NEXT_PUBLIC_STRIPE_PRO_YEARLY_PRICE_ID || 'price_xxxxx';
+  const PRO_YEARLY_PRICE_ID = process.env.NEXT_PUBLIC_STRIPE_PRO_YEARLY_PRICE_ID;
+  
+  // Only show yearly option if it's configured
+  const hasYearlyPlan = PRO_YEARLY_PRICE_ID && PRO_YEARLY_PRICE_ID !== 'price_xxxxx';
 
   const isPro = subscriptionStatus?.isActive && subscriptionStatus?.tier === 'pro';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 py-16 px-4">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold text-gray-900 mb-4">
-            Choose Your Plan
-          </h1>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Unlock advanced features and take your study sessions to the next
-            level
-          </p>
-        </div>
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl animate-float" />
+        <div
+          className="absolute -bottom-40 -left-40 w-80 h-80 bg-orange-500/20 rounded-full blur-3xl animate-float"
+          style={{ animationDelay: "1s" }}
+        />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 w-96 h-96 bg-blue-400/10 rounded-full blur-3xl animate-pulse" />
+      </div>
 
-        {/* Canceled Message */}
-        {canceled && (
-          <div className="max-w-2xl mx-auto mb-8 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <p className="text-yellow-800">
-              Checkout was canceled. You can try again anytime.
+      <div className="relative z-10 py-16 px-4">
+        <div className="max-w-7xl mx-auto">
+          {/* Back to Dashboard Button */}
+          <div className="mb-8">
+            <Link href="/dashboard">
+              <Button
+                variant="outline"
+                className="bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 border-2 border-slate-600/50 hover:border-slate-500/70"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Dashboard
+              </Button>
+            </Link>
+          </div>
+
+          {/* Header */}
+          <div className="text-center mb-12">
+            {isNewUser && (
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-6 inline-block"
+              >
+                <div className="bg-gradient-to-r from-orange-500/20 to-blue-500/20 border-4 border-orange-500/50 rounded-lg px-6 py-3 backdrop-blur-sm">
+                  <p className="text-orange-200 font-bold text-lg">
+                    🎉 Welcome to Brain Battle! Choose your plan to get started
+                  </p>
+                </div>
+              </motion.div>
+            )}
+            <h1 className="text-5xl md:text-6xl font-bold text-white mb-4 bg-gradient-to-r from-orange-400 to-blue-400 bg-clip-text text-transparent">
+              Choose Your Plan
+            </h1>
+            <p className="text-xl text-slate-300 max-w-2xl mx-auto">
+              {isNewUser 
+                ? "Start your learning journey with the perfect plan for you"
+                : "Unlock advanced features and take your study sessions to the next level"
+              }
             </p>
           </div>
-        )}
+
+          {/* Canceled Message */}
+          {canceled && (
+            <div className="max-w-2xl mx-auto mb-8 p-4 bg-orange-500/20 border-4 border-orange-500/50 rounded-lg backdrop-blur-sm">
+              <p className="text-orange-200">
+                Checkout was canceled. You can try again anytime.
+              </p>
+            </div>
+          )}
 
         {/* Pricing Cards */}
         <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto mb-12">
@@ -59,9 +127,9 @@ export default function PricingPage() {
             period="month"
             priceId=""
             features={[
-              '5 documents per month',
+              '3 documents per month',
               'Basic AI study notes',
-              '10 quiz questions per session',
+              '8 quiz questions per session',
               'Basic multiplayer rooms (up to 4 players)',
               'Standard XP system',
               'Basic analytics',
@@ -72,7 +140,7 @@ export default function PricingPage() {
           {/* Pro Plan - Monthly */}
           <PricingCard
             name="Pro"
-            price="9.99"
+            price="4.99"
             period="month"
             priceId={PRO_MONTHLY_PRICE_ID}
             features={[
@@ -92,56 +160,73 @@ export default function PricingPage() {
           />
         </div>
 
-        {/* Yearly Option */}
-        <div className="max-w-md mx-auto">
-          <PricingCard
-            name="Pro (Yearly)"
-            price="99.99"
-            period="year"
-            priceId={PRO_YEARLY_PRICE_ID}
-            features={[
-              'Everything in Pro Monthly',
-              'Save 17% with annual billing',
-              'Priority support',
-              'Early access to new features',
-            ]}
-            currentPlan={false}
-          />
-        </div>
+        {/* Yearly Option - Only show if configured */}
+        {hasYearlyPlan && (
+          <div className="max-w-md mx-auto">
+            <PricingCard
+              name="Pro (Yearly)"
+              price="49.99"
+              period="year"
+              priceId={PRO_YEARLY_PRICE_ID}
+              features={[
+                'Everything in Pro Monthly',
+                'Save 17% with annual billing ($4.99/month)',
+                'Priority support',
+                'Early access to new features',
+              ]}
+              currentPlan={false}
+            />
+          </div>
+        )}
 
-        {/* FAQ Section */}
-        <div className="mt-16 max-w-3xl mx-auto">
-          <h2 className="text-3xl font-bold text-center mb-8">
-            Frequently Asked Questions
-          </h2>
-          <div className="space-y-6">
-            <div className="bg-white rounded-lg p-6 shadow-sm">
-              <h3 className="font-semibold text-lg mb-2">
-                Can I cancel anytime?
-              </h3>
-              <p className="text-gray-600">
-                Yes! You can cancel your subscription at any time. You'll
-                continue to have access to Pro features until the end of your
-                billing period.
-              </p>
+          {/* New User CTA - Continue with Free */}
+          {isNewUser && (
+            <div className="mt-12 text-center">
+              <p className="text-slate-400 mb-4">Not ready to upgrade yet?</p>
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center gap-2 bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 font-semibold px-6 py-3 rounded-lg transition-all border-2 border-slate-600/50 hover:border-slate-500/70"
+              >
+                Continue with Free Plan
+                <ArrowRight className="w-4 h-4" />
+              </Link>
             </div>
-            <div className="bg-white rounded-lg p-6 shadow-sm">
-              <h3 className="font-semibold text-lg mb-2">
-                What payment methods do you accept?
-              </h3>
-              <p className="text-gray-600">
-                We accept all major credit cards, debit cards, and other payment
-                methods supported by Stripe.
-              </p>
-            </div>
-            <div className="bg-white rounded-lg p-6 shadow-sm">
-              <h3 className="font-semibold text-lg mb-2">
-                Will I lose my data if I cancel?
-              </h3>
-              <p className="text-gray-600">
-                No, your data is safe. You can export all your study materials
-                and progress before canceling.
-              </p>
+          )}
+
+          {/* FAQ Section */}
+          <div className="mt-16 max-w-3xl mx-auto">
+            <h2 className="text-3xl font-bold text-center mb-8 text-white">
+              Frequently Asked Questions
+            </h2>
+            <div className="space-y-6">
+              <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 rounded-lg p-6 shadow-lg backdrop-blur-sm">
+                <h3 className="font-semibold text-lg mb-2 text-orange-400">
+                  Can I cancel anytime?
+                </h3>
+                <p className="text-slate-300">
+                  Yes! You can cancel your subscription at any time. You'll
+                  continue to have access to Pro features until the end of your
+                  billing period.
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 rounded-lg p-6 shadow-lg backdrop-blur-sm">
+                <h3 className="font-semibold text-lg mb-2 text-orange-400">
+                  What payment methods do you accept?
+                </h3>
+                <p className="text-slate-300">
+                  We accept all major credit cards, debit cards, and other payment
+                  methods supported by Stripe.
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 rounded-lg p-6 shadow-lg backdrop-blur-sm">
+                <h3 className="font-semibold text-lg mb-2 text-orange-400">
+                  Will I lose my data if I cancel?
+                </h3>
+                <p className="text-slate-300">
+                  No, your data is safe. You can export all your study materials
+                  and progress before canceling.
+                </p>
+              </div>
             </div>
           </div>
         </div>

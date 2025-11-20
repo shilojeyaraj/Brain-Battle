@@ -18,7 +18,25 @@ export const StatsGrid = memo(function StatsGrid() {
     setLoading(true)
     setError(null)
     try {
-      const userId = await getCurrentUserId()
+      // Try to get userId from session cookie first (more reliable)
+      let userId: string | null = null
+      try {
+        const response = await fetch('/api/user/current')
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success && data.userId) {
+            userId = data.userId
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to get userId from API, falling back to localStorage')
+      }
+      
+      // Fallback to localStorage if API call failed
+      if (!userId) {
+        userId = await getCurrentUserId()
+      }
+      
       if (!userId) {
         setError("User not authenticated")
         setLoading(false)

@@ -114,7 +114,7 @@ export default function ProPage() {
 
             <div className="text-center mb-6">
               <h2 className="text-2xl font-black text-white mb-2">Pro Plan</h2>
-              <div className="text-4xl font-black text-yellow-400 mb-1">$9.99</div>
+              <div className="text-4xl font-black text-yellow-400 mb-1">$4.99</div>
               <p className="text-blue-100/70 font-bold">per month</p>
             </div>
             

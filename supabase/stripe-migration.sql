@@ -44,6 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_subscription_history_user_id ON subscription_hist
 CREATE INDEX IF NOT EXISTS idx_users_stripe_customer_id ON users(stripe_customer_id);
 
 -- Create function to update subscription status
+-- Using CREATE OR REPLACE to allow re-running the migration
 CREATE OR REPLACE FUNCTION update_user_subscription_status()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -60,6 +61,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Create trigger to automatically update users table when subscription changes
+-- Drop trigger if it exists first (to allow re-running the migration)
+DROP TRIGGER IF EXISTS trigger_update_user_subscription ON subscriptions;
 CREATE TRIGGER trigger_update_user_subscription
 AFTER INSERT OR UPDATE ON subscriptions
 FOR EACH ROW

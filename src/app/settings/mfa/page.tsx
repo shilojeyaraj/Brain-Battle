@@ -50,12 +50,14 @@ export default function MFASetupPage() {
       }
 
       // Check Supabase MFA factors (TOTP, Email)
-      const { data, error } = await supabase.auth.mfa.listFactors()
+      const { data: factorsData, error } = await supabase.auth.mfa.listFactors()
       
       if (error) {
         console.error('Error checking MFA status:', error)
         return
       }
+      
+      const data = { all: factorsData?.all || [] }
 
       const factors = data?.all || []
 

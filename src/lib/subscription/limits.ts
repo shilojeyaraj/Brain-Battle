@@ -67,10 +67,11 @@ export async function getUserLimits(userId: string): Promise<FeatureLimits> {
     }
   }
   
-  // Free tier limits
+  // Free tier limits - Designed to encourage upgrades
+  // These limits are restrictive enough to show value but generous enough to try the product
   return {
-    maxDocumentsPerMonth: 5,
-    maxQuestionsPerQuiz: 10,
+    maxDocumentsPerMonth: 3, // Reduced from 5 to encourage upgrades
+    maxQuestionsPerQuiz: 8,  // Reduced from 10 to encourage upgrades
     maxPlayersPerRoom: 4,
     canExport: false,
     hasPriorityProcessing: false,
@@ -171,7 +172,7 @@ export async function checkQuizQuestionLimit(
   return {
     allowed: requestedQuestions <= maxAllowed,
     limit: maxAllowed,
-    requiresPro: requestedQuestions > 10 && limits.maxQuestionsPerQuiz === 10
+    requiresPro: requestedQuestions > 8 && limits.maxQuestionsPerQuiz === 8
   }
 }
 
@@ -193,7 +194,7 @@ export async function getSubscriptionStatusWithLimits(userId: string): Promise<{
   return {
     subscription,
     limits,
-    isPro
+    isPro: !!isPro
   }
 }
 

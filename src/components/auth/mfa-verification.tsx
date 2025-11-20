@@ -43,8 +43,9 @@ export function MFAVerification({ email, password }: MFAVerificationProps) {
       }
 
       // Get the MFA factors to find the TOTP factor
-      const { data: { factors }, error: factorsError } = await supabase.auth.mfa.listFactors()
+      const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors()
       
+      const factors = factorsData?.all || []
       if (factorsError || !factors || factors.length === 0) {
         setError('MFA not configured')
         setLoading(false)

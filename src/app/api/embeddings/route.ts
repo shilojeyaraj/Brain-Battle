@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { 
           success: false, 
-          error: `You've reached your monthly limit of ${docLimit.limit} documents. Upgrade to Pro for unlimited uploads.`,
+          error: `You've reached your monthly limit of ${docLimit.limit} documents. Upgrade to Pro for unlimited uploads and advanced features!`,
           requiresPro: true,
           count: docLimit.count,
           limit: docLimit.limit,

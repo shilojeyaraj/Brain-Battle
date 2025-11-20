@@ -73,7 +73,7 @@ ${input.extractedImages.map((img, idx) =>
   `Image ${idx + 1}:
   - Page: ${img.page}
   - Dimensions: ${img.width}x${img.height}px
-  - Type: ${img.type || 'unknown'}
+  - Page: ${img.page || 'unknown'}
   - [Base64 image data available]
 `).join('\n')}
 

@@ -1,20 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server-admin'
+import { getUserIdFromRequest } from '@/lib/auth/session-cookies'
 
 export async function GET(request: NextRequest) {
   try {
-    // Use admin client to bypass RLS for reading stats
-    // Custom auth doesn't set auth.uid(), so we need admin client
-    const supabase = createAdminClient()
-
-    const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId')
+    // Get userId from secure session cookie instead of query parameter
+    const userId = await getUserIdFromRequest(request)
     
     if (!userId || typeof userId !== 'string' || userId.trim() === '') {
-      console.error('❌ [USER STATS] Invalid userId:', userId)
+      console.error('❌ [USER STATS] No authenticated session found')
       return NextResponse.json(
-        { error: 'Valid userId parameter is required' },
-        { status: 400 }
+        { error: 'Unauthorized - please log in' },
+        { status: 401 }
       )
     }
 
@@ -26,10 +23,14 @@ export async function GET(request: NextRequest) {
     if (!uuidRegex.test(userIdString)) {
       console.error('❌ [USER STATS] Invalid userId format:', userIdString)
       return NextResponse.json(
-        { error: 'Invalid userId format' },
-        { status: 400 }
+        { error: 'Invalid session' },
+        { status: 401 }
       )
     }
+
+    // Use admin client to bypass RLS for reading stats
+    // Custom auth doesn't set auth.uid(), so we need admin client
+    const supabase = createAdminClient()
 
     console.log('📊 [USER STATS] Fetching stats for user:', userIdString)
 

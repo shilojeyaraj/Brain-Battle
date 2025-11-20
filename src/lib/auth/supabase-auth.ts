@@ -235,7 +235,7 @@ export async function authenticateUser(
     }
 
     // Check if MFA is required
-    if (authData.session === null && authData.user.factors && authData.user.factors.length > 0) {
+    if (authData.session === null && authData.user && 'factors' in authData.user && authData.user.factors && Array.isArray(authData.user.factors) && authData.user.factors.length > 0) {
       console.log('🔐 [AUTH] MFA required for user:', authData.user.id)
       return {
         success: false,
@@ -315,10 +315,35 @@ export async function verifyMFA(
       return { success: false, error: 'Invalid email or password' }
     }
 
-    // Verify TOTP
-    const { data: verifyData, error: verifyError } = await supabase.auth.verifyOtp({
-      token: totpCode,
-      type: 'totp'
+    // Verify TOTP - use mfa.verify instead of verifyOtp for TOTP codes
+    // First get the TOTP factor
+    const { data: factorsData, error: factorsError } = await supabase.auth.mfa.listFactors()
+    
+    const factors = factorsData?.all || []
+    if (factorsError || !factors || factors.length === 0) {
+      return { success: false, error: 'MFA not configured' }
+    }
+    
+    const totpFactor = factors.find(f => f.factor_type === 'totp' && f.status === 'verified')
+    
+    if (!totpFactor) {
+      return { success: false, error: 'No verified TOTP factor found' }
+    }
+    
+    // Create challenge
+    const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({
+      factorId: totpFactor.id
+    })
+    
+    if (challengeError || !challengeData) {
+      return { success: false, error: challengeError?.message || 'Failed to create challenge' }
+    }
+    
+    // Verify with challenge
+    const { data: verifyData, error: verifyError } = await supabase.auth.mfa.verify({
+      factorId: totpFactor.id,
+      challengeId: challengeData.id,
+      code: totpCode
     })
 
     if (verifyError || !verifyData.user) {

@@ -9,10 +9,10 @@ export async function GET(request: NextRequest) {
   try {
     const adminClient = createAdminClient()
     
-    // Fetch top 3 players by XP
+    // Fetch top 3 players by XP, including previous_rank for trend calculation
     const { data: playersData, error: playersError } = await adminClient
       .from('player_stats')
-      .select('user_id, level, xp, total_wins, total_games')
+      .select('user_id, level, xp, total_wins, total_games, previous_rank')
       .order('xp', { ascending: false })
       .order('total_games', { ascending: false }) // Secondary sort
       .limit(3)
@@ -64,12 +64,26 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Determine trends (simplified: compare with previous rank based on XP)
-    // For now, we'll randomly assign trends, but in production you'd track previous positions
+    // Determine trends based on actual previous_rank from database
     const playersWithTrends = players.map((player, index) => {
-      // Simple trend: if higher XP than next player by significant margin, trend up
-      // Otherwise random for demo purposes
-      const trend = index < 2 ? 'up' : (Math.random() > 0.5 ? 'up' : 'down')
+      const currentRank = index + 1
+      const playerData = playersData[index]
+      const previousRank = playerData?.previous_rank
+      
+      let trend: 'up' | 'down' | 'stable' = 'stable'
+      
+      if (previousRank !== null && previousRank !== undefined) {
+        if (previousRank > currentRank) {
+          trend = 'up' // Rank improved (lower number = better)
+        } else if (previousRank < currentRank) {
+          trend = 'down' // Rank worsened
+        } else {
+          trend = 'stable' // Rank unchanged
+        }
+      } else {
+        // No previous rank data - default to stable for new players
+        trend = 'stable'
+      }
       
       return {
         ...player,

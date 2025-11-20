@@ -30,6 +30,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!stripe) {
+      return NextResponse.json(
+        { error: 'Stripe is not configured' },
+        { status: 500 }
+      );
+    }
+
     // Resume subscription (remove cancel_at_period_end)
     await stripe.subscriptions.update(subscription.stripe_subscription_id, {
       cancel_at_period_end: false,
