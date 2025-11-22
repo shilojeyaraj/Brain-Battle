@@ -62,9 +62,11 @@ export async function GET(request: NextRequest) {
           rank,
           xp_earned,
           completed_at,
-          quiz_sessions!inner(
+          session_id,
+          quiz_sessions(
             id,
-            session_name
+            session_name,
+            room_id
           )
         `)
         .eq('user_id', userIdString)
@@ -105,12 +107,27 @@ export async function GET(request: NextRequest) {
 
     console.log('✅ [USER STATS] Stats fetched successfully')
 
+    // Transform recent games to match expected format
+    const formattedRecentGames = (recentGames || []).map((game: any) => ({
+      id: game.id,
+      session_id: game.session_id || game.quiz_sessions?.id,
+      name: game.quiz_sessions?.session_name || 'Unknown Battle',
+      subject: game.quiz_sessions?.session_name?.replace('Singleplayer: ', '') || 'Unknown',
+      result: game.correct_answers >= game.questions_answered * 0.6 ? "Won" : "Lost",
+      score: `${game.correct_answers}/${game.questions_answered}`,
+      duration: `${Math.round(game.total_time || 0)}s`,
+      players: game.quiz_sessions?.room_id ? "Multiplayer" : "1",
+      date: new Date(game.completed_at).toLocaleDateString(),
+      xpEarned: game.xp_earned || 0,
+      percentage: Math.round((game.correct_answers / game.questions_answered) * 100)
+    }))
+
     // 🚀 OPTIMIZATION: Return data directly (already filtered by select())
     return NextResponse.json({
       success: true,
       profile,
       stats,
-      recentGames: recentGames || [],
+      recentGames: formattedRecentGames,
       achievements: achievements || []
     })
 

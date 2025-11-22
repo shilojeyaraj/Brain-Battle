@@ -13,6 +13,8 @@ import { StudyContextChatbot } from "@/components/study-assistant/study-context-
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { motion } from "framer-motion"
 import { UpgradePrompt } from "@/components/subscription/upgrade-prompt"
+import { getCurrentUserId } from "@/lib/auth/session"
+import { QuizConfigModal, QuizConfig } from "@/components/quiz/quiz-config-modal"
 
 export default function SingleplayerPage() {
   const [step, setStep] = useState(1)
@@ -29,6 +31,8 @@ export default function SingleplayerPage() {
   const [isUploading, setIsUploading] = useState(false)
   const [studyContext, setStudyContext] = useState<any>(null)
   const [subscriptionLimits, setSubscriptionLimits] = useState<any>(null)
+  const [showQuizConfig, setShowQuizConfig] = useState(false)
+  const [quizConfig, setQuizConfig] = useState<QuizConfig | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Fetch subscription limits
@@ -47,6 +51,20 @@ export default function SingleplayerPage() {
       }
     }
     fetchLimits()
+  }, [])
+
+  // Check for quiz config from dashboard
+  useEffect(() => {
+    const storedConfig = sessionStorage.getItem('quizConfig')
+    if (storedConfig) {
+      try {
+        const config = JSON.parse(storedConfig)
+        setQuizConfig(config)
+        sessionStorage.removeItem('quizConfig') // Clear after reading
+      } catch (error) {
+        console.error('Error parsing stored quiz config:', error)
+      }
+    }
   }, [])
 
   // File validation - memoized to prevent unnecessary recalculations
@@ -232,10 +250,29 @@ export default function SingleplayerPage() {
     }
   }
 
-  const handleStartBattle = async () => {
+  const handleStartBattleClick = () => {
+    // Show configuration modal
+    setShowQuizConfig(true)
+  }
+
+  const handleStartBattle = async (config?: QuizConfig) => {
+    // Use provided config, stored config, or default
+    const activeConfig = config || quizConfig || {
+      totalQuestions: defaultQuestions,
+      questionTypes: {
+        multiple_choice: true,
+        open_ended: true,
+        true_false: true
+      }
+    }
+    setShowQuizConfig(false)
+    setQuizConfig(config)
     setIsGenerating(true)
     
     try {
+      // Get current user ID
+      const userId = await getCurrentUserId()
+      
       const formData = new FormData()
       if (uploadedFiles.length > 0) {
         uploadedFiles.forEach(file => {
@@ -244,6 +281,11 @@ export default function SingleplayerPage() {
       }
       formData.append('topic', topic)
       formData.append('difficulty', difficulty)
+      formData.append('totalQuestions', activeConfig.totalQuestions.toString())
+      formData.append('questionTypes', JSON.stringify(activeConfig.questionTypes))
+      if (userId) {
+        formData.append('userId', userId)
+      }
       if (studyContext) {
         formData.append('studyContext', JSON.stringify(studyContext))
       }
@@ -271,7 +313,16 @@ export default function SingleplayerPage() {
         // Redirect to battle page with session ID in URL
         window.location.href = `/singleplayer/battle/${sessionId}`
       } else {
-        alert(`Error generating questions: ${result.error}`)
+        // Check if it's a subscription limit error
+        if (response.status === 403 && result.requiresPro) {
+          // Show upgrade prompt for subscription limits
+          const upgrade = confirm(`${result.error}\n\nWould you like to upgrade to Pro?`)
+          if (upgrade) {
+            window.location.href = '/pricing'
+          }
+        } else {
+          alert(`Error generating questions: ${result.error || 'Unknown error occurred'}`)
+        }
       }
     } catch (error) {
       console.error("Error starting battle:", error)
@@ -281,8 +332,19 @@ export default function SingleplayerPage() {
     }
   }
 
+  const maxQuestions = subscriptionLimits?.limits?.maxQuestionsPerQuiz || 8
+  const defaultQuestions = Math.min(maxQuestions, 5)
+
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6">
+      {/* Quiz Configuration Modal */}
+      <QuizConfigModal
+        isOpen={showQuizConfig}
+        onClose={() => setShowQuizConfig(false)}
+        onStart={handleStartBattle}
+        maxQuestions={maxQuestions}
+        defaultQuestions={defaultQuestions}
+      />
       {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
@@ -300,10 +362,10 @@ export default function SingleplayerPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
         >
-          {/* Back button in top right corner */}
-          <div className="absolute right-0 top-0">
+          {/* Back button in top left corner */}
+          <div className="absolute left-0 top-0">
             <Link href="/dashboard">
-              <Button className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black border-2 border-orange-400">
+              <Button className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black border-2 border-orange-400 shadow-lg hover:shadow-xl hover:shadow-orange-500/50">
                 <ArrowLeft className="h-4 w-4 mr-2" strokeWidth={3} />
                 Back to Dashboard
               </Button>
@@ -607,7 +669,7 @@ export default function SingleplayerPage() {
                 </Button>
                 <Button
                   onClick={() => setStep(3)}
-                  disabled={!topic.trim()}
+                  disabled={uploadedFiles.length === 0}
                   className="flex-1 h-12 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-black text-lg border-2 border-blue-400 disabled:opacity-50"
                 >
                   Next: Generate Notes
@@ -711,41 +773,7 @@ export default function SingleplayerPage() {
             <StudyNotesViewer 
               notes={studyNotes}
               fileNames={processedFileNames}
-              onStartBattle={async () => {
-                try {
-                  // Generate proper quiz questions using AI
-                  const response = await fetch('/api/generate-quiz', {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                      topic: topic,
-                      difficulty: difficulty,
-                      studyNotes: studyNotes,
-                      userId: 'temp-user' // In production, get from auth
-                    })
-                  })
-                  
-                  const result = await response.json()
-                  
-                  if (result.success) {
-                    // Store quiz data in sessionStorage
-                    sessionStorage.setItem('quizQuestions', JSON.stringify(result.questions))
-                    sessionStorage.setItem('quizTopic', topic)
-                    sessionStorage.setItem('quizDifficulty', difficulty)
-                    
-                    // Redirect to battle page
-                    window.location.href = '/singleplayer/battle'
-                  } else {
-                    console.error('Failed to generate quiz:', result.error)
-                    alert('Failed to generate quiz questions. Please try again.')
-                  }
-                } catch (error) {
-                  console.error('Error generating quiz:', error)
-                  alert('Error generating quiz questions. Please try again.')
-                }
-              }}
+              onStartBattle={handleStartBattleClick}
             />
           </div>
         )}

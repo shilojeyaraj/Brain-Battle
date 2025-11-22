@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, memo } from "react"
 import { Card } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { TrendingUp, Crown, Users, Loader2, RefreshCw } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { TrendingUp, Crown, Users, Loader2, RefreshCw, Search, X } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { getCurrentUserId } from "@/lib/auth/session"
 import { getRankFromXP, getRankIcon, formatXP } from "@/lib/rank-system"
@@ -21,11 +22,13 @@ interface LeaderboardPlayer {
 
 const Leaderboard = memo(function Leaderboard() {
   const [topPlayers, setTopPlayers] = useState<LeaderboardPlayer[]>([])
+  const [allPlayers, setAllPlayers] = useState<LeaderboardPlayer[]>([]) // Store all players for search
   const [currentUserRank, setCurrentUserRank] = useState<LeaderboardPlayer | null>(null)
   const [totalPlayers, setTotalPlayers] = useState(0)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState("")
 
   const fetchLeaderboard = useCallback(async (isRefresh = false) => {
     try {
@@ -39,13 +42,13 @@ const Leaderboard = memo(function Leaderboard() {
       const supabase = createClient()
       const currentUserId = await getCurrentUserId()
 
-      // Fetch all players with stats (including those with 0 games)
+      // Fetch top 5 players with stats
       const { data: playersData, error: playersError } = await supabase
         .from('player_stats')
         .select('user_id, level, xp, total_wins, total_games')
         .order('xp', { ascending: false })
         .order('total_games', { ascending: false }) // Secondary sort by games played
-        .limit(10)
+        .limit(5)
 
       if (playersError) {
         const errorDetails = {
@@ -161,8 +164,48 @@ const Leaderboard = memo(function Leaderboard() {
         }
       }) || []
 
+      // Fetch all players for search functionality
+      const { data: allPlayersData, error: allPlayersError } = await supabase
+        .from('player_stats')
+        .select('user_id, level, xp, total_wins, total_games')
+        .order('xp', { ascending: false })
+        .order('total_games', { ascending: false })
+
+      if (!allPlayersError && allPlayersData) {
+        const allUserIds = allPlayersData.map(p => p.user_id)
+        const { data: allProfilesData } = await supabase
+          .from('profiles')
+          .select('user_id, username, avatar_url')
+          .in('user_id', allUserIds)
+
+        const allProfilesMap = new Map(
+          (allProfilesData || []).map(p => [p.user_id, { username: p.username || 'Unknown', avatar_url: p.avatar_url }])
+        )
+
+        // Calculate ranks for all players
+        const allPlayersWithRank = allPlayersData.map((player, index) => {
+          const profile = allProfilesMap.get(player.user_id)
+          return {
+            rank: index + 1,
+            user_id: player.user_id,
+            username: profile?.username || 'Unknown',
+            level: player.level,
+            xp: player.xp,
+            wins: player.total_wins,
+            avatar_url: profile?.avatar_url
+          }
+        })
+
+        setAllPlayers(allPlayersWithRank)
+      }
+
       setTopPlayers(playersWithRank)
-      setCurrentUserRank(userRank)
+      // Only set currentUserRank if they're not in top 5
+      if (userRank && userRank.rank > 5) {
+        setCurrentUserRank(userRank)
+      } else {
+        setCurrentUserRank(null)
+      }
       setTotalPlayers(totalCount || 0)
 
     } catch (err) {
@@ -250,17 +293,59 @@ const Leaderboard = memo(function Leaderboard() {
         </button>
       </div>
 
+      {/* Search Bar */}
+      <div className="mb-6 relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-blue-100/70" />
+        <Input
+          type="text"
+          placeholder="Search by username..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-10 pr-10 bg-slate-700/50 border-4 border-slate-600/50 text-white placeholder:text-blue-100/50 font-bold focus:border-blue-400/50"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-1 hover:bg-slate-600/50 rounded transition-colors"
+          >
+            <X className="h-4 w-4 text-blue-100/70" />
+          </button>
+        )}
+      </div>
+
       <div className="space-y-6">
-        {topPlayers.length === 0 ? (
-          <div className="text-center py-8">
-            <Users className="h-12 w-12 text-blue-300/50 mx-auto mb-4" strokeWidth={1} />
-            <h3 className="text-lg font-bold text-white mb-2">No Players Yet</h3>
-            <p className="text-sm text-blue-100/70">
-              Be the first to complete a battle and appear on the leaderboard!
-            </p>
-          </div>
-        ) : (
-          topPlayers.map((player) => {
+        {(() => {
+          // Filter players based on search query
+          let displayPlayers = topPlayers
+          if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase().trim()
+            displayPlayers = allPlayers.filter(p => 
+              p.username.toLowerCase().includes(query)
+            )
+          } else {
+            // Show top 5, then current user if not in top 5
+            displayPlayers = topPlayers
+          }
+
+          if (displayPlayers.length === 0) {
+            return (
+              <div className="text-center py-8">
+                <Users className="h-12 w-12 text-blue-300/50 mx-auto mb-4" strokeWidth={1} />
+                <h3 className="text-lg font-bold text-white mb-2">
+                  {searchQuery ? "No players found" : "No Players Yet"}
+                </h3>
+                <p className="text-sm text-blue-100/70">
+                  {searchQuery 
+                    ? `No players match "${searchQuery}"`
+                    : "Be the first to complete a battle and appear on the leaderboard!"}
+                </p>
+              </div>
+            )
+          }
+
+          return (
+            <>
+              {displayPlayers.map((player) => {
             const rank = getRankFromXP(player.xp)
             const isCurrentUser = currentUserRank?.user_id === player.user_id
             
@@ -331,8 +416,51 @@ const Leaderboard = memo(function Leaderboard() {
                 </div>
               </div>
             )
-          })
-        )}
+          })}
+          
+          {/* Show current user if not in top 5 and not searching */}
+          {!searchQuery && currentUserRank && currentUserRank.rank > 5 && (
+            <div className="mt-4 pt-4 border-t-4 border-slate-600/50">
+              <div
+                className="p-6 rounded-xl border-4 bg-gradient-to-br from-slate-700/50 to-slate-800/50 border-blue-400/50 shadow-lg"
+              >
+                <div className="flex items-center gap-6">
+                  <div className="relative">
+                    <div className="text-2xl font-black w-12 h-12 rounded-full flex items-center justify-center border-4 bg-gradient-to-br from-blue-500/20 to-blue-600/20 text-blue-300 border-blue-400/50">
+                      {currentUserRank.rank}
+                    </div>
+                  </div>
+
+                  <Avatar className="h-14 w-14 border-4 border-blue-400/50">
+                    <AvatarImage src={currentUserRank.avatar_url || "/placeholder.svg"} />
+                    <AvatarFallback className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 text-blue-300 border-2 border-blue-400/50 font-black">
+                      {currentUserRank.username.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
+                  </Avatar>
+
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3">
+                      <p className="font-black text-white truncate text-xl">{currentUserRank.username}</p>
+                      <Badge className="bg-blue-500/20 text-blue-300 border-2 border-blue-400/50 text-sm px-2 py-1">You</Badge>
+                    </div>
+                    <div className="flex items-center gap-3 text-base text-blue-100/70 font-bold">
+                      <span>{formatXP(currentUserRank.xp)} XP</span>
+                      <span>•</span>
+                      <span>{currentUserRank.wins} wins</span>
+                      <span>•</span>
+                      <div className="flex items-center gap-2">
+                        {getRankIcon(getRankFromXP(currentUserRank.xp), "h-4 w-4")}
+                        <span>{getRankFromXP(currentUserRank.xp).name}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+            </>
+          )
+        })()}
       </div>
 
       {/* Show current user's rank if not in top 10 */}

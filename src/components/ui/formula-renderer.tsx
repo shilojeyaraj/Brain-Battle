@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import katex from 'katex'
+import DOMPurify from 'dompurify'
 import 'katex/dist/katex.min.css'
 
 interface FormulaRendererProps {
@@ -14,7 +15,21 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
   const containerRef = useRef<HTMLSpanElement>(null)
 
   useEffect(() => {
-    if (!containerRef.current || !formula) return
+    if (!containerRef.current) return
+
+    // Log if formula is missing or empty
+    if (!formula || formula.trim() === '') {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('FormulaRenderer: Empty or missing formula string')
+      }
+      if (containerRef.current) {
+        // SECURITY: Use textContent instead of innerHTML to prevent XSS
+        containerRef.current.textContent = 'Formula not available'
+        containerRef.current.style.color = '#888'
+        containerRef.current.style.fontStyle = 'italic'
+      }
+      return
+    }
 
     try {
       // Clean the formula first - remove any malformed HTML
@@ -28,6 +43,32 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
         .replace(/align\s*-\s*baseline[^">;]*/g, '') // Remove align-baseline fragments
         .trim()
 
+      // SECURITY: Sanitize formula content to prevent XSS
+      cleanFormula = DOMPurify.sanitize(cleanFormula, {
+        ALLOWED_TAGS: [], // No HTML tags allowed
+        ALLOWED_ATTR: [], // No attributes allowed
+        KEEP_CONTENT: true, // Keep text content
+      })
+
+      // Check if formula is empty after cleaning
+      if (!cleanFormula || cleanFormula.length === 0) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('FormulaRenderer: Formula became empty after cleaning. Original:', formula)
+        }
+        if (containerRef.current) {
+          // SECURITY: Use textContent instead of innerHTML
+          containerRef.current.textContent = 'Formula not available'
+          containerRef.current.style.color = '#888'
+          containerRef.current.style.fontStyle = 'italic'
+        }
+        return
+      }
+
+      // Log the formula being rendered (in development)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('FormulaRenderer: Rendering formula:', cleanFormula)
+      }
+
       // Try to render as LaTeX
       katex.render(cleanFormula, containerRef.current, {
         throwOnError: false,
@@ -36,10 +77,27 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
       })
     } catch (error) {
       // Fallback to plain text if KaTeX fails
+      console.error('KaTeX rendering error:', error, 'Formula:', formula)
       if (containerRef.current) {
-        containerRef.current.textContent = formula.replace(/<[^>]+>/g, '')
+        // SECURITY: Sanitize before displaying
+        const sanitized = DOMPurify.sanitize(formula, {
+          ALLOWED_TAGS: [],
+          ALLOWED_ATTR: [],
+          KEEP_CONTENT: true,
+        }).replace(/<[^>]+>/g, '').trim()
+        
+        // If we have cleaned text, show it as plain text
+        if (sanitized) {
+          containerRef.current.textContent = sanitized
+          containerRef.current.style.fontSize = '1.2em'
+          containerRef.current.style.fontFamily = 'monospace'
+        } else {
+          // SECURITY: Use textContent instead of innerHTML
+          containerRef.current.textContent = 'Formula not available'
+          containerRef.current.style.color = '#888'
+          containerRef.current.style.fontStyle = 'italic'
+        }
       }
-      console.warn('KaTeX rendering failed, falling back to plain text:', error)
     }
   }, [formula, displayMode])
 

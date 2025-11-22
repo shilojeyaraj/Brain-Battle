@@ -53,12 +53,16 @@ export default function StudyNotesPage() {
         topic: qa.topic
       }))
       
+      // Generate unique session ID
+      const sessionId = crypto.randomUUID()
+      
       sessionStorage.setItem('quizQuestions', JSON.stringify(battleQuestions))
       sessionStorage.setItem('quizTopic', notes.title)
       sessionStorage.setItem('quizDifficulty', notes.difficulty_level || 'medium')
+      sessionStorage.setItem('quizSessionId', sessionId)
       
-      // Redirect to battle
-      window.location.href = "/singleplayer/battle"
+      // Redirect to battle page with session ID
+      window.location.href = `/singleplayer/battle/${sessionId}`
     } else {
       alert('No practice questions available. Please generate notes first.')
     }

@@ -63,13 +63,43 @@ export const joinRoomSchema = z.object({
     .toUpperCase(),
 })
 
-// Quiz generation
+// Quiz generation (for API routes)
 export const generateQuizSchema = z.object({
-  room_id: z.string().uuid('Invalid room ID'),
-  unit_id: z.string().uuid('Invalid unit ID').optional(),
-  total_questions: z.number().int().min(1).max(50).default(10),
+  topic: z.string().max(500, 'Topic must be less than 500 characters').trim().optional(),
   difficulty: z.enum(['easy', 'medium', 'hard']).default('medium'),
-  time_limit: z.number().int().min(10).max(300).default(30),
+  totalQuestions: z.number().int().min(1).max(50).default(10).optional(),
+  questionTypes: z.object({
+    multiple_choice: z.boolean().optional(),
+    open_ended: z.boolean().optional(),
+    true_false: z.boolean().optional(),
+  }).optional(),
+  sessionId: z.string().uuid('Invalid session ID').optional(),
+  instructions: z.string().max(1000, 'Instructions too long').trim().optional(),
+})
+
+// Notes generation
+export const notesGenerationSchema = z.object({
+  topic: z.string().max(500, 'Topic must be less than 500 characters').trim().optional(),
+  difficulty: z.enum(['easy', 'medium', 'hard']).default('medium'),
+  instructions: z.string().max(1000, 'Instructions too long').trim().optional(),
+})
+
+// Player stats update
+export const playerStatsSchema = z.object({
+  stats: z.object({
+    level: z.number().int().min(1).max(1000).optional(),
+    xp: z.number().int().min(0).optional(),
+    total_wins: z.number().int().min(0).optional(),
+    total_losses: z.number().int().min(0).optional(),
+    total_games: z.number().int().min(0).optional(),
+    win_streak: z.number().int().min(0).optional(),
+    best_streak: z.number().int().min(0).optional(),
+    total_questions_answered: z.number().int().min(0).optional(),
+    correct_answers: z.number().int().min(0).optional(),
+    accuracy: z.number().min(0).max(100).optional(),
+    average_response_time: z.number().min(0).optional(),
+    favorite_subject: z.string().max(100).trim().nullable().optional(),
+  }).optional(),
 })
 
 // Answer submission
@@ -165,7 +195,7 @@ export function sanitizeString(input: string): string {
 }
 
 /**
- * Validate file upload
+ * Validate file upload with enhanced security
  */
 export function validateFile(file: File): {
   valid: boolean
@@ -177,8 +207,11 @@ export function validateFile(file: File): {
     'text/plain',
     'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-powerpoint',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   ]
 
+  // Check file size
   if (file.size > maxSize) {
     return {
       valid: false,
@@ -186,10 +219,19 @@ export function validateFile(file: File): {
     }
   }
 
+  // Check for empty files
+  if (file.size === 0) {
+    return {
+      valid: false,
+      error: 'File is empty',
+    }
+  }
+
+  // Validate file type
   if (!allowedTypes.includes(file.type)) {
     return {
       valid: false,
-      error: 'File type not allowed. Only PDF, DOC, DOCX, and TXT files are allowed.',
+      error: 'File type not allowed. Only PDF, DOC, DOCX, PPT, PPTX, and TXT files are allowed.',
     }
   }
 
@@ -198,7 +240,25 @@ export function validateFile(file: File): {
   if (sanitizedName !== file.name) {
     return {
       valid: false,
-      error: 'Invalid filename',
+      error: 'Invalid filename. Filename contains invalid characters.',
+    }
+  }
+
+  // Check filename length
+  if (file.name.length > 255) {
+    return {
+      valid: false,
+      error: 'Filename too long. Maximum 255 characters.',
+    }
+  }
+
+  // Check for dangerous file extensions (even if MIME type seems safe)
+  const dangerousExtensions = ['.exe', '.bat', '.cmd', '.com', '.pif', '.scr', '.vbs', '.js', '.jar']
+  const lowerName = file.name.toLowerCase()
+  if (dangerousExtensions.some(ext => lowerName.endsWith(ext))) {
+    return {
+      valid: false,
+      error: 'File type not allowed for security reasons.',
     }
   }
 

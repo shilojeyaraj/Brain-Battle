@@ -92,14 +92,14 @@ export const StatsGrid = memo(function StatsGrid() {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[...Array(4)].map((_, i) => (
-          <Card key={i} className="p-6 bg-card cartoon-border cartoon-shadow">
+          <Card key={i} className="p-6 bg-slate-700/50 border-4 border-slate-600/50 cartoon-shadow">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-xl bg-muted flex items-center justify-center cartoon-border cartoon-shadow">
-                <Loader2 className="w-6 h-6 text-muted-foreground animate-spin" strokeWidth={3} />
+              <div className="w-12 h-12 rounded-xl bg-slate-600/50 flex items-center justify-center border-4 border-slate-500/50">
+                <Loader2 className="w-6 h-6 text-white/70 animate-spin" strokeWidth={3} />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground font-bold">Loading...</p>
-                <p className="text-2xl font-black text-foreground">-</p>
+                <p className="text-sm text-white/70 font-bold">Loading...</p>
+                <p className="text-2xl font-black text-white">-</p>
               </div>
             </div>
           </Card>
@@ -111,10 +111,10 @@ export const StatsGrid = memo(function StatsGrid() {
   if (error || !userProfile) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="p-6 bg-card cartoon-border cartoon-shadow md:col-span-2 lg:col-span-4">
+        <Card className="p-6 bg-slate-700/50 border-4 border-slate-600/50 cartoon-shadow md:col-span-2 lg:col-span-4">
           <div className="text-center">
-            <p className="text-sm text-muted-foreground font-bold">Failed to load stats</p>
-            <p className="text-foreground">{error || "User profile not found"}</p>
+            <p className="text-sm text-white/70 font-bold">Failed to load stats</p>
+            <p className="text-white">{error || "User profile not found"}</p>
           </div>
         </Card>
       </div>
@@ -126,56 +126,56 @@ export const StatsGrid = memo(function StatsGrid() {
   return (
     <div className="space-y-8" data-tutorial="stats-grid">
       {/* XP Progress Bar */}
-      <Card className="p-8 bg-card cartoon-border cartoon-shadow">
+      <Card className="p-8 bg-slate-700/50 border-4 border-slate-600/50 cartoon-shadow">
         <CompactXPBar xp={stats.xp} />
       </Card>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-        <Card className="p-8 bg-card cartoon-border cartoon-shadow">
+        <Card className="p-8 bg-slate-700/50 border-4 border-slate-600/50 cartoon-shadow">
           <div className="flex items-center gap-6">
-            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center cartoon-border cartoon-shadow border-2 border-orange-400/50">
+            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center border-4 border-orange-400/50">
               <Trophy className="w-8 h-8 text-white" strokeWidth={3} />
             </div>
             <div>
-              <p className="text-base text-muted-foreground font-bold">Total Wins</p>
-              <p className="text-3xl font-black text-foreground">{stats.total_wins}</p>
+              <p className="text-base text-white/70 font-bold">Total Wins</p>
+              <p className="text-3xl font-black text-white">{stats.total_wins}</p>
             </div>
           </div>
         </Card>
 
-        <Card className="p-8 bg-card cartoon-border cartoon-shadow">
+        <Card className="p-8 bg-slate-700/50 border-4 border-slate-600/50 cartoon-shadow">
           <div className="flex items-center gap-6">
-            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center cartoon-border cartoon-shadow border-2 border-blue-400/50">
+            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center border-4 border-blue-400/50">
               <Target className="w-8 h-8 text-white" strokeWidth={3} />
             </div>
             <div>
-              <p className="text-base text-muted-foreground font-bold">Accuracy</p>
-              <p className="text-3xl font-black text-foreground">{stats.accuracy.toFixed(1)}%</p>
+              <p className="text-base text-white/70 font-bold">Accuracy</p>
+              <p className="text-3xl font-black text-white">{stats.accuracy.toFixed(1)}%</p>
             </div>
           </div>
         </Card>
 
-        <Card className="p-8 bg-card cartoon-border cartoon-shadow">
+        <Card className="p-8 bg-slate-700/50 border-4 border-slate-600/50 cartoon-shadow">
           <div className="flex items-center gap-6">
-            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center cartoon-border cartoon-shadow border-2 border-orange-400/50">
+            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center border-4 border-orange-400/50">
               <Zap className="w-8 h-8 text-white" strokeWidth={3} />
             </div>
             <div>
-              <p className="text-base text-muted-foreground font-bold">Win Streak</p>
-              <p className="text-3xl font-black text-foreground">{stats.win_streak}</p>
+              <p className="text-base text-white/70 font-bold">Win Streak</p>
+              <p className="text-3xl font-black text-white">{stats.win_streak}</p>
             </div>
           </div>
         </Card>
 
-        <Card className="p-8 bg-card cartoon-border cartoon-shadow">
+        <Card className="p-8 bg-slate-700/50 border-4 border-slate-600/50 cartoon-shadow">
           <div className="flex items-center gap-6">
-            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center cartoon-border cartoon-shadow border-2 border-blue-400/50">
+            <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center border-4 border-blue-400/50">
               <Users className="w-8 h-8 text-white" strokeWidth={3} />
             </div>
             <div>
-              <p className="text-base text-muted-foreground font-bold">Total Games</p>
-              <p className="text-3xl font-black text-foreground">{stats.total_games}</p>
+              <p className="text-base text-white/70 font-bold">Total Games</p>
+              <p className="text-3xl font-black text-white">{stats.total_games}</p>
             </div>
           </div>
         </Card>
@@ -183,30 +183,30 @@ export const StatsGrid = memo(function StatsGrid() {
 
       {/* Additional Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <Card className="p-8 bg-card cartoon-border cartoon-shadow">
+        <Card className="p-8 bg-slate-700/50 border-4 border-slate-600/50 cartoon-shadow">
           <div className="text-center">
             <div className="flex items-center justify-center gap-3 mb-3">
               {getRankIcon(rank, "h-8 w-8")}
-              <p className="text-base text-muted-foreground font-bold">Current Rank</p>
+              <p className="text-base text-white/70 font-bold">Current Rank</p>
             </div>
-            <p className="text-2xl font-black text-foreground">{rank.name}</p>
-            <p className="text-sm text-muted-foreground">Level {stats.level}</p>
+            <p className="text-2xl font-black text-white">{rank.name}</p>
+            <p className="text-sm text-white/70">Level {stats.level}</p>
           </div>
         </Card>
 
-        <Card className="p-8 bg-card cartoon-border cartoon-shadow">
+        <Card className="p-8 bg-slate-700/50 border-4 border-slate-600/50 cartoon-shadow">
           <div className="text-center">
-            <p className="text-base text-muted-foreground font-bold mb-3">Win Rate</p>
-            <p className="text-2xl font-black text-foreground">{winRate.toFixed(1)}%</p>
-            <p className="text-sm text-muted-foreground">{stats.total_wins}/{stats.total_games} games</p>
+            <p className="text-base text-white/70 font-bold mb-3">Win Rate</p>
+            <p className="text-2xl font-black text-white">{winRate.toFixed(1)}%</p>
+            <p className="text-sm text-white/70">{stats.total_wins}/{stats.total_games} games</p>
           </div>
         </Card>
 
-        <Card className="p-8 bg-card cartoon-border cartoon-shadow">
+        <Card className="p-8 bg-slate-700/50 border-4 border-slate-600/50 cartoon-shadow">
           <div className="text-center">
-            <p className="text-base text-muted-foreground font-bold mb-3">Questions Answered</p>
-            <p className="text-2xl font-black text-foreground">{stats.total_questions_answered}</p>
-            <p className="text-sm text-muted-foreground">{stats.correct_answers} correct</p>
+            <p className="text-base text-white/70 font-bold mb-3">Questions Answered</p>
+            <p className="text-2xl font-black text-white">{stats.total_questions_answered}</p>
+            <p className="text-sm text-white/70">{stats.correct_answers} correct</p>
           </div>
         </Card>
       </div>

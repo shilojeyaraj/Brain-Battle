@@ -1,21 +1,22 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/server-admin"
+import { sanitizeError, sanitizeDatabaseError, createSafeErrorResponse } from "@/lib/utils/error-sanitizer"
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    const adminClient = createAdminClient() // Use admin client for inserts to bypass RLS
+    // SECURITY: Get userId from session cookie, not request body
+    const { getUserIdFromRequest } = await import('@/lib/auth/session-cookies')
+    const userId = await getUserIdFromRequest(request)
     
-    // Verify user is authenticated
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
+
+    const adminClient = createAdminClient() // Use admin client for inserts to bypass RLS
     
     const body = await request.json()
     const { 
-      userId, 
       sessionId, // Optional: if provided, use it; otherwise generate new
       topic, 
       score, 
@@ -25,6 +26,7 @@ export async function POST(request: NextRequest) {
       questions, 
       answers 
     } = body
+    // userId is now from session, not body
 
     console.log("🎯 [QUIZ RESULTS] Saving quiz results:", {
       userId,
@@ -48,6 +50,13 @@ export async function POST(request: NextRequest) {
         .single()
       
       if (existingSession) {
+        // First, get the current session to check room_id
+        const { data: currentSession, error: fetchError } = await adminClient
+          .from('quiz_sessions')
+          .select('id, room_id')
+          .eq('id', sessionId)
+          .single()
+        
         // Update existing session
         const { data: updatedSession, error: updateError } = await adminClient
           .from('quiz_sessions')
@@ -58,10 +67,10 @@ export async function POST(request: NextRequest) {
             started_at: new Date(Date.now() - duration * 1000).toISOString(),
             ended_at: new Date().toISOString(),
             is_active: false,
-            room_id: null
+            room_id: null // Ensure it's explicitly null for singleplayer
           })
           .eq('id', sessionId)
-          .select()
+          .select('id, room_id, session_name, total_questions, started_at, ended_at, is_active')
           .single()
         
         if (updateError) {
@@ -83,7 +92,7 @@ export async function POST(request: NextRequest) {
             is_active: false,
             room_id: null
           })
-          .select()
+          .select('id, room_id, session_name, total_questions, started_at, ended_at, is_active')
           .single()
         
         if (createError) {
@@ -100,7 +109,7 @@ export async function POST(request: NextRequest) {
               is_active: false,
               room_id: null
             })
-            .select()
+            .select('id, room_id, session_name, total_questions, started_at, ended_at, is_active')
             .single()
           
           if (fallbackError) {
@@ -125,7 +134,7 @@ export async function POST(request: NextRequest) {
           is_active: false,
           room_id: null
         })
-        .select()
+        .select('id, room_id, session_name, total_questions, started_at, ended_at, is_active')
         .single()
       
       if (sessionError) {
@@ -276,19 +285,22 @@ export async function POST(request: NextRequest) {
     if (statsFetchError || !currentStats) {
       console.error("❌ [QUIZ RESULTS] Error fetching current stats:", statsFetchError)
       // Try to create stats if they don't exist
+      // IMPORTANT: Check if this is singleplayer before creating stats
+      const isSingleplayerForNewStats = sessionData?.room_id === null || sessionData?.room_id === undefined
+      
       if (statsFetchError?.code === 'PGRST116' || !currentStats) {
-        console.log("📝 [QUIZ RESULTS] Creating initial player stats for user:", userId)
+        console.log("📝 [QUIZ RESULTS] Creating initial player stats for user:", userId, "isSingleplayer:", isSingleplayerForNewStats)
         const { data: newStats, error: createError } = await adminClient
           .from('player_stats')
           .insert({
             user_id: userId,
             level: 1,
             xp: xpEarned,
-            total_games: 1,
-            total_wins: 1,
+            total_games: isSingleplayerForNewStats ? 0 : 1,
+            total_wins: isSingleplayerForNewStats ? 0 : 1,
             total_losses: 0,
-            win_streak: 1,
-            best_streak: 1,
+            win_streak: isSingleplayerForNewStats ? 0 : 1,
+            best_streak: isSingleplayerForNewStats ? 0 : 1,
             total_questions_answered: totalQuestions,
             correct_answers: correctAnswers,
             accuracy: (correctAnswers / totalQuestions) * 100,
@@ -319,9 +331,29 @@ export async function POST(request: NextRequest) {
     }
 
     // 7. Update player stats manually (ensure it works even if trigger doesn't exist)
-    const newTotalGames = (currentStats.total_games || 0) + 1
-    const newTotalWins = (currentStats.total_wins || 0) + 1 // Singleplayer completion counts as a win
-    const newWinStreak = (currentStats.win_streak || 0) + 1
+    // IMPORTANT: Singleplayer battles (room_id IS NULL or undefined) should NOT count as wins/games
+    // Determine if this is singleplayer (sessionData is already set)
+    const isSingleplayer = !sessionData.room_id || sessionData.room_id === null || sessionData.room_id === undefined
+    
+    // Debug log to verify singleplayer detection
+    console.log("🎮 [QUIZ RESULTS] Session type check:", {
+      sessionId: sessionData.id,
+      room_id: sessionData.room_id,
+      room_id_type: typeof sessionData.room_id,
+      isSingleplayer: isSingleplayer,
+      sessionName: sessionData.session_name
+    })
+    
+    // Only update games/wins for multiplayer battles
+    const newTotalGames = isSingleplayer 
+      ? (currentStats.total_games || 0) 
+      : (currentStats.total_games || 0) + 1
+    const newTotalWins = isSingleplayer
+      ? (currentStats.total_wins || 0)
+      : (currentStats.total_wins || 0) + 1 // Only multiplayer wins count
+    const newWinStreak = isSingleplayer
+      ? (currentStats.win_streak || 0) // Don't update streak for singleplayer
+      : (currentStats.win_streak || 0) + 1
     const newBestStreak = Math.max(currentStats.best_streak || 0, newWinStreak)
     const newTotalQuestions = (currentStats.total_questions_answered || 0) + totalQuestions
     const newCorrectAnswers = (currentStats.correct_answers || 0) + correctAnswers
@@ -331,6 +363,7 @@ export async function POST(request: NextRequest) {
 
     console.log("📊 [QUIZ RESULTS] Updating stats:", {
       userId,
+      isSingleplayer,
       oldGames: currentStats.total_games,
       newGames: newTotalGames,
       oldXP: currentStats.xp,
@@ -380,9 +413,11 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error("❌ [QUIZ RESULTS] Error saving quiz results:", error)
+    // SECURITY: Sanitize error message
+    const sanitized = sanitizeError(error, 'Failed to save quiz results')
     return NextResponse.json(
-      { error: "Failed to save quiz results" },
-      { status: 500 }
+      createSafeErrorResponse(error, 'Failed to save quiz results'),
+      { status: sanitized.statusCode }
     )
   }
 }
@@ -444,9 +479,11 @@ export async function GET(request: NextRequest) {
 
   } catch (error) {
     console.error("❌ [QUIZ RESULTS] Error fetching recent battles:", error)
+    // SECURITY: Sanitize error message
+    const sanitized = sanitizeError(error, 'Failed to fetch recent battles')
     return NextResponse.json(
-      { error: "Failed to fetch recent battles" },
-      { status: 500 }
+      createSafeErrorResponse(error, 'Failed to fetch recent battles'),
+      { status: sanitized.statusCode }
     )
   }
 }

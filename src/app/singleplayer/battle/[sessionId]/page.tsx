@@ -29,6 +29,7 @@ export default function BattlePage() {
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
   const [textAnswer, setTextAnswer] = useState("")
   const [showResult, setShowResult] = useState(false)
+  const [currentAnswerIsCorrect, setCurrentAnswerIsCorrect] = useState<boolean | null>(null)
   const [showRewardToast, setShowRewardToast] = useState(false)
   const [rewardMessage, setRewardMessage] = useState<string>("")
   const [score, setScore] = useState(0)
@@ -160,6 +161,8 @@ export default function BattlePage() {
     setShowResult(true)
     
     const isCorrect = isAnswerCorrect(question, answerIndex)
+    setCurrentAnswerIsCorrect(isCorrect)
+    
     if (isCorrect) {
       setScore(prev => prev + 1)
       playCorrect()
@@ -189,6 +192,7 @@ export default function BattlePage() {
     
     const userAnswer = textAnswer.trim()
     const isCorrect = isAnswerCorrect(question, userAnswer)
+    setCurrentAnswerIsCorrect(isCorrect)
 
     if (isCorrect) {
       setScore(prev => prev + 1)
@@ -303,6 +307,7 @@ export default function BattlePage() {
       setSelectedAnswer(null)
       setTextAnswer("")
       setShowResult(false)
+      setCurrentAnswerIsCorrect(null)
       // Set different timer based on question type
       const nextQuestion = questions[currentQuestion + 1]
       setTimeLeft(nextQuestion?.type === "open_ended" ? 60 : 30)
@@ -557,15 +562,28 @@ export default function BattlePage() {
                   let buttonClass = "w-full p-4 text-left font-bold text-lg rounded-xl cartoon-border cartoon-shadow transition-all duration-200 "
                   
                   if (showResult) {
-                    if (index === (question.correct !== undefined ? question.correct : 0)) {
-                      buttonClass += "bg-chart-3 text-foreground border-chart-3"
-                    } else if (index === selectedAnswer && index !== (question.correct !== undefined ? question.correct : 0)) {
-                      buttonClass += "bg-destructive text-destructive-foreground border-destructive"
+                    const correctIndex = question.correct !== undefined ? question.correct : 0
+                    const isCorrect = index === correctIndex
+                    const isSelected = index === selectedAnswer
+                    
+                    if (isCorrect) {
+                      // Correct answer - always green
+                      buttonClass += "bg-green-500/20 text-green-300 border-green-400/50"
+                    } else if (isSelected && !isCorrect) {
+                      // Wrong selected answer - red
+                      buttonClass += "bg-red-500/20 text-red-300 border-red-400/50"
                     } else {
-                      buttonClass += "bg-muted text-muted-foreground"
+                      // Other options - muted
+                      buttonClass += "bg-slate-600/50 text-slate-300 border-slate-500/50"
                     }
                   } else {
-                    buttonClass += "bg-card hover:bg-muted hover:border-primary cartoon-hover"
+                    // Before answer is submitted
+                    if (index === selectedAnswer) {
+                      // Selected but not yet submitted - show selection
+                      buttonClass += "bg-blue-500/20 text-blue-300 border-blue-400/50"
+                    } else {
+                      buttonClass += "bg-slate-700/50 hover:bg-slate-600/50 hover:border-blue-400/50 text-white border-slate-600/50"
+                    }
                   }
                   
                   return (
@@ -576,12 +594,14 @@ export default function BattlePage() {
                       className={buttonClass}
                     >
                       <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black ${
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black border-2 ${
                           showResult && index === (question.correct !== undefined ? question.correct : 0)
-                            ? "bg-foreground text-chart-3"
+                            ? "bg-green-500 text-white border-green-400"
                             : showResult && index === selectedAnswer && index !== (question.correct !== undefined ? question.correct : 0)
-                            ? "bg-foreground text-destructive"
-                            : "bg-muted text-muted-foreground"
+                            ? "bg-red-500 text-white border-red-400"
+                            : index === selectedAnswer && !showResult
+                            ? "bg-blue-500 text-white border-blue-400"
+                            : "bg-slate-600 text-slate-300 border-slate-500"
                         }`}>
                           {String.fromCharCode(65 + index)}
                         </div>
@@ -653,8 +673,16 @@ export default function BattlePage() {
           </div>
 
           {showResult && (
-            <div className="p-6 rounded-xl bg-gradient-to-br from-green-500/20 to-green-600/20 border-4 border-green-400/50 cartoon-border mb-6">
-              <h3 className="font-black text-white mb-2">Explanation:</h3>
+            <div className={`p-6 rounded-xl border-4 cartoon-border mb-6 ${
+              currentAnswerIsCorrect === true
+                ? "bg-gradient-to-br from-green-500/20 to-green-600/20 border-green-400/50"
+                : currentAnswerIsCorrect === false
+                ? "bg-gradient-to-br from-red-500/20 to-red-600/20 border-red-400/50"
+                : "bg-gradient-to-br from-green-500/20 to-green-600/20 border-green-400/50"
+            }`}>
+              <h3 className="font-black text-white mb-2">
+                {currentAnswerIsCorrect === false ? "❌ Incorrect" : currentAnswerIsCorrect === true ? "✅ Correct" : ""} Explanation:
+              </h3>
               <p className="text-white font-bold mb-3 leading-relaxed">{question.explanation || question.a}</p>
               
               {/* Always show correct answers for open-ended questions */}

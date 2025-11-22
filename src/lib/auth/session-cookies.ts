@@ -2,7 +2,19 @@ import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 
-const SECRET_KEY = process.env.SESSION_SECRET || 'your-secret-key-change-in-production'
+// CRITICAL: SESSION_SECRET must be set in production
+const SECRET_KEY = process.env.SESSION_SECRET
+if (!SECRET_KEY || SECRET_KEY === 'your-secret-key-change-in-production') {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      '❌ CRITICAL: SESSION_SECRET environment variable must be set in production. ' +
+      'Generate a secure secret: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'base64\'))"'
+    )
+  }
+  // Allow default in development only
+  console.warn('⚠️ [SECURITY] Using default SESSION_SECRET in development. Set SESSION_SECRET in production!')
+}
+
 const SESSION_COOKIE_NAME = 'brain-brawl-session'
 const SESSION_MAX_AGE = 60 * 60 * 24 * 7 // 7 days
 
@@ -10,6 +22,9 @@ const SESSION_MAX_AGE = 60 * 60 * 24 * 7 // 7 days
  * Create a signed session token
  */
 export async function createSessionToken(userId: string): Promise<string> {
+  if (!SECRET_KEY) {
+    throw new Error('SESSION_SECRET not configured')
+  }
   const secret = new TextEncoder().encode(SECRET_KEY)
   
   const token = await new SignJWT({ userId })
@@ -26,6 +41,10 @@ export async function createSessionToken(userId: string): Promise<string> {
  */
 export async function verifySessionToken(token: string): Promise<string | null> {
   try {
+    if (!SECRET_KEY) {
+      console.error('❌ [SESSION] SESSION_SECRET not configured')
+      return null
+    }
     const secret = new TextEncoder().encode(SECRET_KEY)
     const { payload } = await jwtVerify(token, secret)
     

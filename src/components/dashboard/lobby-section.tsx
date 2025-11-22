@@ -10,6 +10,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import { useFeedback } from "@/hooks/useFeedback"
+import { QuizConfigModal, QuizConfig } from "@/components/quiz/quiz-config-modal"
 
 const activeLobbies: any[] = [
   // Empty array - no active lobbies yet
@@ -20,11 +21,31 @@ export function LobbySection() {
   const [searchQuery, setSearchQuery] = useState("")
   const [mounted, setMounted] = useState(false)
   const [loadingButton, setLoadingButton] = useState<string | null>(null)
+  const [showQuizConfig, setShowQuizConfig] = useState(false)
+  const [subscriptionLimits, setSubscriptionLimits] = useState<any>(null)
   const router = useRouter()
   const { playClick, burstConfetti } = useFeedback()
 
   useEffect(() => {
     setMounted(true)
+  }, [])
+
+  // Fetch subscription limits for quiz config
+  useEffect(() => {
+    const fetchLimits = async () => {
+      try {
+        const response = await fetch('/api/subscription/limits')
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success) {
+            setSubscriptionLimits(data)
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching subscription limits:', error)
+      }
+    }
+    fetchLimits()
   }, [])
 
   // Fire a single confetti burst on lobby load (respects Reduced Motion)
@@ -46,15 +67,12 @@ export function LobbySection() {
 
   const handleCreateLobby = () => {
     playClick()
+    // Set loading immediately for visual feedback
     setLoadingButton('create')
-    console.log("Create Lobby button clicked!")
-    console.log("Current URL:", window.location.href)
-    console.log("Attempting to navigate to /create-room")
     try {
       router.push("/create-room")
-      console.log("Navigation command sent successfully")
-      // Clear loading after navigation starts (or timeout)
-      setTimeout(() => setLoadingButton(null), 2000)
+      // Keep loading state until navigation completes (Next.js handles this)
+      // Don't clear immediately - let the navigation happen
     } catch (error) {
       console.error("Navigation error:", error)
       setLoadingButton(null)
@@ -63,14 +81,11 @@ export function LobbySection() {
 
   const handleJoinLobby = () => {
     playClick()
+    // Set loading immediately for visual feedback
     setLoadingButton('join')
-    console.log("Join Lobby button clicked!")
-    console.log("Attempting to navigate to /join-room")
     try {
       router.push("/join-room")
-      console.log("Navigation command sent successfully")
-      // Clear loading after navigation starts (or timeout)
-      setTimeout(() => setLoadingButton(null), 2000)
+      // Keep loading state until navigation completes
     } catch (error) {
       console.error("Navigation error:", error)
       setLoadingButton(null)
@@ -79,13 +94,19 @@ export function LobbySection() {
 
   const handleStartSingleplayer = () => {
     playClick()
+    setShowQuizConfig(true)
+  }
+
+  const handleStartBattle = async (config: QuizConfig) => {
+    setShowQuizConfig(false)
+    // Set loading immediately for visual feedback
     setLoadingButton('singleplayer')
-    console.log("Start Singleplayer Battle button clicked!")
+    
     try {
+      // Store config in sessionStorage to pass to singleplayer page
+      sessionStorage.setItem('quizConfig', JSON.stringify(config))
       router.push("/singleplayer")
-      console.log("Navigation to singleplayer sent successfully")
-      // Clear loading after navigation starts (or timeout)
-      setTimeout(() => setLoadingButton(null), 2000)
+      // Keep loading state until navigation completes
     } catch (error) {
       console.error("Navigation error:", error)
       setLoadingButton(null)

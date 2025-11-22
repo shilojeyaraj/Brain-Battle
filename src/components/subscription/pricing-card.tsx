@@ -84,7 +84,7 @@ export function PricingCard({
 
   return (
     <div
-      className={`relative rounded-2xl border-4 p-8 backdrop-blur-sm transition-all ${
+      className={`relative rounded-2xl border-4 p-8 backdrop-blur-sm transition-all flex flex-col h-full ${
         popular
           ? 'border-orange-500/70 bg-gradient-to-br from-slate-800/90 to-slate-900/90 shadow-2xl shadow-orange-500/20 scale-105'
           : currentPlan
@@ -113,7 +113,7 @@ export function PricingCard({
         </div>
       </div>
 
-      <ul className="space-y-4 mb-8">
+      <ul className="space-y-4 mb-8 flex-grow">
         {features.map((feature, index) => (
           <li key={index} className="flex items-start gap-3">
             <Check className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
@@ -129,7 +129,7 @@ export function PricingCard({
         disabled={currentPlan}
         loading={loading}
         loadingText="Loading..."
-        className={`w-full py-3 px-6 rounded-lg font-semibold transition-all ${
+        className={`w-full py-3 px-6 rounded-lg font-semibold transition-all mt-auto ${
           currentPlan
             ? 'bg-slate-700/50 text-slate-500 cursor-not-allowed border-2 border-slate-600/50'
             : popular

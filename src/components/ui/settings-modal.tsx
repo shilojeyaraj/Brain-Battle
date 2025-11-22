@@ -17,24 +17,24 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-lg bg-card cartoon-border cartoon-shadow p-6">
+    <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50 p-4 pb-24">
+      <Card className="w-full max-w-lg bg-slate-700/50 border-4 border-slate-600/50 shadow-lg p-6">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-black text-foreground">Settings</h2>
-          <Button onClick={onClose} className="bg-card hover:bg-muted rounded-xl cartoon-border cartoon-shadow cartoon-hover">
-            <X className="h-5 w-5 text-foreground" strokeWidth={3} />
+          <h2 className="text-xl font-black text-white">Settings</h2>
+          <Button onClick={onClose} className="bg-slate-600/50 hover:bg-slate-600 rounded-xl border-4 border-slate-500/50">
+            <X className="h-5 w-5 text-white" strokeWidth={3} />
           </Button>
         </div>
 
         <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
-              <Label className="font-bold text-foreground">Sound</Label>
-              <p className="text-sm text-muted-foreground">Enable or disable all sound effects</p>
+              <Label className="font-bold text-white">Sound</Label>
+              <p className="text-sm text-white/70">Enable or disable all sound effects</p>
             </div>
             <Button
               onClick={() => setSoundEnabled(!soundEnabled)}
-              className={`rounded-xl cartoon-border cartoon-shadow ${soundEnabled ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}
+              className={`rounded-xl border-4 ${soundEnabled ? "bg-blue-500/20 text-blue-300 border-blue-400/50" : "bg-slate-600/50 text-white/70 border-slate-500/50"}`}
             >
               {soundEnabled ? "On" : "Off"}
             </Button>
@@ -42,8 +42,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
           <div>
             <div className="flex items-center justify-between mb-2">
-              <Label className="font-bold text-foreground">Volume</Label>
-              <span className="text-sm font-bold text-muted-foreground">{Math.round(volume * 100)}%</span>
+              <Label className="font-bold text-white">Volume</Label>
+              <span className="text-sm font-bold text-white/70">{Math.round(volume * 100)}%</span>
             </div>
             <input
               type="range"
@@ -51,18 +51,18 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
               max={100}
               value={Math.round(volume * 100)}
               onChange={(e) => setVolume(Number(e.target.value) / 100)}
-              className="w-full"
+              className="w-full accent-blue-500"
             />
           </div>
 
           <div className="flex items-center justify-between">
             <div>
-              <Label className="font-bold text-foreground">Reduced Motion</Label>
-              <p className="text-sm text-muted-foreground">Limit animations and disable particles</p>
+              <Label className="font-bold text-white">Reduced Motion</Label>
+              <p className="text-sm text-white/70">Limit animations and disable particles</p>
             </div>
             <Button
               onClick={() => setReducedMotion(!reducedMotion)}
-              className={`rounded-xl cartoon-border cartoon-shadow ${reducedMotion ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"}`}
+              className={`rounded-xl border-4 ${reducedMotion ? "bg-blue-500/20 text-blue-300 border-blue-400/50" : "bg-slate-600/50 text-white/70 border-slate-500/50"}`}
             >
               {reducedMotion ? "On" : "Off"}
             </Button>

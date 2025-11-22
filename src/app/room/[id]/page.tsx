@@ -58,6 +58,7 @@ export default function RoomPage() {
   const [cheatAlerts, setCheatAlerts] = useState<CheatAlertData[]>([])
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [isHost, setIsHost] = useState(false)
+  const [loadingButton, setLoadingButton] = useState<string | null>(null)
   const [isRefreshingMembers, setIsRefreshingMembers] = useState(false)
   const [memberNotification, setMemberNotification] = useState<{ type: 'join' | 'leave', username: string } | null>(null)
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
@@ -1975,12 +1976,19 @@ export default function RoomPage() {
                       <p className="text-sm text-chart-3 font-bold mb-4">
                         The quiz has started! Join the battle to compete with other players.
                       </p>
-                      <Link href={`/room/${roomId}/battle`}>
-                        <Button className="w-full bg-chart-3 hover:bg-chart-3/90 text-foreground font-black cartoon-border cartoon-shadow cartoon-hover">
-                          <Zap className="h-5 w-5 mr-2" strokeWidth={3} />
-                          Join Battle
-                        </Button>
-                      </Link>
+                      <Button
+                        className="w-full bg-chart-3 hover:bg-chart-3/90 text-foreground font-black cartoon-border cartoon-shadow cartoon-hover"
+                        loading={loadingButton === 'battle'}
+                        loadingText="Joining Battle..."
+                        onClick={() => {
+                          setLoadingButton('battle')
+                          router.push(`/room/${roomId}/battle`)
+                          setTimeout(() => setLoadingButton(null), 1000)
+                        }}
+                      >
+                        <Zap className="h-5 w-5 mr-2" strokeWidth={3} />
+                        Join Battle
+                      </Button>
                     </div>
                   )}
                 </div>

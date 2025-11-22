@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { createClient } from '@/lib/supabase/server'
 import { checkQuizQuestionLimit } from '@/lib/subscription/limits'
+import { generateQuizSchema } from '@/lib/validation/schemas'
+import { sanitizeError, createSafeErrorResponse } from '@/lib/utils/error-sanitizer'
+import { z } from 'zod'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -9,9 +12,20 @@ const openai = new OpenAI({
 
 export async function POST(request: NextRequest) {
   try {
+    // SECURITY: Get userId from session cookie, not request body
+    const { getUserIdFromRequest } = await import('@/lib/auth/session-cookies')
+    const userId = await getUserIdFromRequest(request)
+    
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized - please log in' },
+        { status: 401 }
+      )
+    }
+
     // Check if this is a JSON request (multiplayer) or form data (singleplayer)
     const contentType = request.headers.get('content-type')
-    let topic, difficulty, totalQuestions, sessionId, instructions, notes, studyContextStr, userId
+    let topic, difficulty, totalQuestions, sessionId, instructions, notes, studyContextStr
     let files: File[] = []
     let studyContext = null
 
@@ -20,9 +34,9 @@ export async function POST(request: NextRequest) {
       const body = await request.json()
       topic = body.topic
       difficulty = body.difficulty
-      totalQuestions = body.totalQuestions || 10
+      totalQuestions = body.totalQuestions
       sessionId = body.sessionId
-      userId = body.userId
+      // userId is now from session, not body
       notes = body.studyNotes ? JSON.stringify(body.studyNotes) : body.notes
       studyContextStr = body.studyContext ? JSON.stringify(body.studyContext) : null
       files = []
@@ -41,11 +55,21 @@ export async function POST(request: NextRequest) {
       files = form.getAll("files") as File[]
       topic = form.get("topic") as string
       difficulty = form.get("difficulty") as string
-      totalQuestions = parseInt(form.get("totalQuestions") as string) || 10
-      userId = form.get("userId") as string
+      const totalQuestionsStr = form.get("totalQuestions") as string
+      totalQuestions = totalQuestionsStr ? parseInt(totalQuestionsStr) : undefined
+      // userId is now from session, not form data
       instructions = form.get("instructions") as string
       notes = form.get("notes") as string
       studyContextStr = form.get("studyContext") as string
+      const questionTypesStr = form.get("questionTypes") as string
+      let questionTypes = null
+      if (questionTypesStr) {
+        try {
+          questionTypes = JSON.parse(questionTypesStr)
+        } catch (e) {
+          console.log("⚠️ [QUIZ API] Failed to parse question types:", e)
+        }
+      }
       
       if (studyContextStr) {
         try {
@@ -67,11 +91,59 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (!topic || !difficulty) {
+    // SECURITY: Validate and sanitize inputs
+    try {
+      // Validate difficulty
+      if (!difficulty || !['easy', 'medium', 'hard'].includes(difficulty)) {
+        return NextResponse.json(
+          { success: false, error: 'Invalid difficulty. Must be easy, medium, or hard.' },
+          { status: 400 }
+        )
+      }
+
+      // Validate totalQuestions if provided
+      if (totalQuestions !== undefined) {
+        if (!Number.isInteger(totalQuestions) || totalQuestions < 1 || totalQuestions > 50) {
+          return NextResponse.json(
+            { success: false, error: 'Invalid question count. Must be between 1 and 50.' },
+            { status: 400 }
+          )
+        }
+      }
+
+      // Sanitize topic (max 500 chars, trim)
+      if (topic) {
+        topic = topic.trim().slice(0, 500)
+      }
+    } catch (validationError) {
       return NextResponse.json(
-        { success: false, error: 'Topic and difficulty are required' },
+        { success: false, error: 'Invalid input data' },
         { status: 400 }
       )
+    }
+    
+    // Topic is optional - if not provided, will be determined from file content
+    if (!topic || !topic.trim()) {
+      console.log("📄 [QUIZ API] No topic provided, will determine from file content")
+    }
+
+    // Get user's subscription limits to determine default question count
+    let userQuestionLimit = 8 // Default to free tier limit (safer default)
+    if (userId) {
+      try {
+        const { getUserLimits } = await import('@/lib/subscription/limits')
+        const limits = await getUserLimits(userId)
+        userQuestionLimit = limits.maxQuestionsPerQuiz === Infinity ? 10 : limits.maxQuestionsPerQuiz
+      } catch (error) {
+        console.warn('⚠️ [QUIZ API] Failed to get user limits, using default:', error)
+        // Keep default of 8 (free tier limit)
+      }
+    }
+
+    // If totalQuestions not provided, use user's limit (or 8 as safe fallback)
+    if (!totalQuestions) {
+      totalQuestions = userQuestionLimit
+      console.log(`📊 [QUIZ API] No totalQuestions specified, using user limit: ${totalQuestions}`)
     }
 
     // Check subscription limits for quiz questions
@@ -261,7 +333,10 @@ export async function POST(request: NextRequest) {
     // Create a comprehensive prompt for quiz generation
     const numQuestions = totalQuestions || 5
     const prompt = `
-Generate ${numQuestions} quiz questions about "${topic}" with ${difficulty} difficulty level.${contextInstructions}
+${topic && topic.trim() 
+  ? `Generate ${numQuestions} quiz questions about "${topic}" with ${difficulty} difficulty level.${contextInstructions}`
+  : `Generate ${numQuestions} quiz questions based on the content from the uploaded documents. Analyze the document content to determine the subject matter and create questions accordingly. Use ${difficulty} difficulty level.${contextInstructions}`
+}
 
 ${complexityAnalysis ? `
 COMPLEXITY ANALYSIS (use this to match question difficulty to content level):
@@ -491,12 +566,14 @@ STRICT RULES:
 
   } catch (error) {
     console.error("Error generating quiz:", error)
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: error instanceof Error ? error.message : "Failed to generate quiz questions" 
-      },
-      { status: 500 }
-    )
+      // SECURITY: Sanitize error message before sending to client
+      const sanitized = sanitizeError(error, 'Failed to generate quiz questions')
+      return NextResponse.json(
+        { 
+          success: false, 
+          ...createSafeErrorResponse(error, 'Failed to generate quiz questions')
+        },
+        { status: sanitized.statusCode }
+      )
   }
 }

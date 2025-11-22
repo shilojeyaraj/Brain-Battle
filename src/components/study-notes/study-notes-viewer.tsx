@@ -659,54 +659,74 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
               </h2>
               {notes.formulas && notes.formulas.length > 0 ? (
                 <div className="space-y-6">
-                  {notes.formulas.map((formula, index) => (
-                    <Card key={index} className="p-6 bg-slate-700/50 border-4 border-slate-600/50">
-                      <div className="flex items-start justify-between mb-3">
-                        <h3 className="text-lg font-black text-white">{formula.name}</h3>
-                        {formula.page && (
-                          <Badge className="border-2 border-blue-400/50 bg-blue-500/20 text-blue-300 font-bold">
-                            Page {formula.page}
-                          </Badge>
-                        )}
-                      </div>
-                      
-                      {/* Formula Display */}
-                      <div className="bg-slate-900/50 p-6 rounded-xl border-4 border-blue-400/30 mb-4">
-                        <div className="text-xl md:text-2xl text-blue-300 text-center leading-relaxed flex items-center justify-center">
-                          <FormulaRenderer 
-                            formula={formula.formula}
-                            className="text-blue-300"
-                          />
+                  {notes.formulas.map((formula, index) => {
+                    // Debug: Log formula data
+                    if (process.env.NODE_ENV === 'development') {
+                      console.log(`[Formula ${index}] "${formula.name}":`, {
+                        name: formula.name,
+                        formula: formula.formula,
+                        formulaLength: formula.formula?.length || 0,
+                        description: formula.description,
+                        variables: formula.variables
+                      })
+                    }
+                    
+                    return (
+                      <Card key={index} className="p-6 bg-slate-700/50 border-4 border-slate-600/50">
+                        <div className="flex items-start justify-between mb-3">
+                          <h3 className="text-lg font-black text-white">{formula.name}</h3>
+                          {formula.page && (
+                            <Badge className="border-2 border-blue-400/50 bg-blue-500/20 text-blue-300 font-bold">
+                              Page {formula.page}
+                            </Badge>
+                          )}
                         </div>
-                      </div>
-                      
-                      {/* Description */}
-                      <p className="text-white font-bold mb-3">{formula.description}</p>
-                      
-                      {/* Variables */}
-                      {formula.variables && formula.variables.length > 0 && (
-                        <div className="mb-3">
-                          <h4 className="text-sm font-black text-white mb-2">Variables:</h4>
-                          <div className="space-y-1">
-                            {formula.variables.map((variable, varIndex) => (
-                              <div key={varIndex} className="flex items-start gap-2 text-sm">
-                                <span className="font-black text-blue-300 font-mono">{variable.symbol}:</span>
-                                <span className="text-blue-100/70 font-bold">{variable.meaning}</span>
-                              </div>
-                            ))}
+                        
+                        {/* Formula Display */}
+                        <div className="bg-slate-900/50 p-6 rounded-xl border-4 border-blue-400/30 mb-4 min-h-[80px] flex items-center justify-center">
+                          <div className="text-xl md:text-2xl text-blue-300 text-center leading-relaxed flex items-center justify-center">
+                            {formula.formula && formula.formula.trim() ? (
+                              <FormulaRenderer 
+                                formula={formula.formula}
+                                className="text-blue-300"
+                                displayMode={true}
+                              />
+                            ) : (
+                              <span className="text-blue-300/50 italic">
+                                Formula not available{process.env.NODE_ENV === 'development' ? ` (check console for details)` : ''}
+                              </span>
+                            )}
                           </div>
                         </div>
-                      )}
-                      
-                      {/* Example */}
-                      {formula.example && (
-                        <div className="mt-3 p-3 bg-green-500/10 rounded-lg border-2 border-green-500/30">
-                          <h4 className="text-sm font-black text-white mb-1">Example:</h4>
-                          <p className="text-sm text-green-300 font-bold">{formula.example}</p>
-                        </div>
-                      )}
-                    </Card>
-                  ))}
+                        
+                        {/* Description */}
+                        <p className="text-white font-bold mb-3">{formula.description}</p>
+                        
+                        {/* Variables */}
+                        {formula.variables && formula.variables.length > 0 && (
+                          <div className="mb-3">
+                            <h4 className="text-sm font-black text-white mb-2">Variables:</h4>
+                            <div className="space-y-1">
+                              {formula.variables.map((variable, varIndex) => (
+                                <div key={varIndex} className="flex items-start gap-2 text-sm">
+                                  <span className="font-black text-blue-300 font-mono">{variable.symbol}:</span>
+                                  <span className="text-blue-100/70 font-bold">{variable.meaning}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Example */}
+                        {formula.example && (
+                          <div className="mt-3 p-3 bg-green-500/10 rounded-lg border-2 border-green-500/30">
+                            <h4 className="text-sm font-black text-white mb-1">Example:</h4>
+                            <p className="text-sm text-green-300 font-bold">{formula.example}</p>
+                          </div>
+                        )}
+                      </Card>
+                    )
+                  })}
                 </div>
               ) : (
                 <div className="text-center py-8">
@@ -746,7 +766,7 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
                       {/* Simple Card - No 3D flip, just show/hide */}
                       {!isFlipped ? (
                         /* Front of Card (Question) */
-                        <div className="w-full p-8 rounded-xl bg-gradient-to-br from-slate-700/80 to-slate-800/80 border-4 border-slate-600/50 shadow-lg min-h-[500px] flex flex-col practice-card-hover transition-all duration-300">
+                        <div className="w-full p-8 rounded-xl bg-gradient-to-br from-slate-700/80 to-slate-800/80 border-4 border-blue-400/50 shadow-xl min-h-[500px] flex flex-col transition-all duration-300 hover:scale-[1.02] hover:shadow-2xl">
                           <div className="flex items-center justify-between mb-6">
                             <span className="text-xl font-black text-blue-400">Q{index + 1}:</span>
                             <div className="flex gap-3">
@@ -805,7 +825,7 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
                         </div>
                       ) : (
                         /* Back of Card (Answer) */
-                        <div className="w-full p-8 rounded-xl bg-gradient-to-br from-blue-500/10 to-blue-600/10 border-4 border-blue-400/30 shadow-lg min-h-[500px] flex flex-col">
+                        <div className="w-full p-8 rounded-xl bg-gradient-to-br from-blue-500/10 to-blue-600/10 border-4 border-blue-400/50 shadow-xl min-h-[500px] flex flex-col">
                           <div className="flex items-center justify-between mb-6">
                             <span className="text-xl font-black text-blue-400">Q{index + 1}:</span>
                             <div className="flex gap-3">
@@ -926,11 +946,26 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
                               <div className="text-base text-blue-100/70 font-bold">
                                 Topic: {qa.topic}
                               </div>
-                              <div className="text-sm text-blue-100/60 font-bold mt-3 text-center">
-                                {index < notes.practice_questions.length - 1 
-                                  ? 'Click to go to next card' 
-                                  : 'Click to flip back'}
-                              </div>
+                              {index < notes.practice_questions.length - 1 ? (
+                                <div className="relative mt-3 text-center group/tooltip">
+                                  <div className="text-sm text-blue-100/60 font-bold cursor-pointer inline-block px-4 py-2 rounded-lg bg-blue-500/20 border-2 border-blue-400/50 hover:bg-blue-500/30 transition-colors">
+                                    Click to go to next card
+                                  </div>
+                                  {/* Tooltip bubble */}
+                                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 opacity-0 group-hover/tooltip:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
+                                    <div className="bg-blue-600 text-white text-xs font-bold px-3 py-2 rounded-lg shadow-lg border-2 border-blue-400 whitespace-nowrap">
+                                      Click anywhere on the card to continue
+                                      <div className="absolute top-full left-1/2 transform -translate-x-1/2 -mt-1">
+                                        <div className="w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-blue-600"></div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="text-sm text-blue-100/60 font-bold mt-3 text-center">
+                                  Click to flip back
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>

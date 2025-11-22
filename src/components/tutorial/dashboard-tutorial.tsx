@@ -35,17 +35,17 @@ const DASHBOARD_TUTORIAL_STEPS: TutorialStep[] = [
     position: 'right',
   },
   {
-    id: 'create-lobby',
-    title: 'Create a Room 🏠',
-    description: 'Start your own study battle! Create a room, invite friends with a room code, and compete together in real-time.',
-    targetSelector: '[data-tutorial="create-lobby-button"]',
-    position: 'right',
-  },
-  {
     id: 'join-lobby',
     title: 'Join a Room 🔗',
     description: 'Got a room code from a friend? Click here to join their study battle and compete together!',
     targetSelector: '[data-tutorial="join-lobby-button"]',
+    position: 'right',
+  },
+  {
+    id: 'create-lobby',
+    title: 'Create a Room 🏠',
+    description: 'Start your own study battle! Create a room, invite friends with a room code, and compete together in real-time.',
+    targetSelector: '[data-tutorial="create-lobby-button"]',
     position: 'right',
   },
   {

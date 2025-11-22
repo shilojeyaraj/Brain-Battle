@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { CheckCircle, Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 export default function SuccessPage() {
   const searchParams = useSearchParams();
@@ -10,6 +11,7 @@ export default function SuccessPage() {
   const sessionId = searchParams.get('session_id');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadingButton, setLoadingButton] = useState<string | null>(null);
 
   useEffect(() => {
     if (sessionId) {
@@ -43,12 +45,18 @@ export default function SuccessPage() {
             Something went wrong
           </h1>
           <p className="text-gray-600 mb-6">{error}</p>
-          <button
-            onClick={() => router.push('/dashboard')}
+          <Button
+            onClick={() => {
+              setLoadingButton('dashboard')
+              router.push('/dashboard')
+              setTimeout(() => setLoadingButton(null), 1000)
+            }}
+            loading={loadingButton === 'dashboard'}
+            loadingText="Loading..."
             className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700"
           >
             Go to Dashboard
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -66,18 +74,30 @@ export default function SuccessPage() {
           now active and you have access to all Pro features.
         </p>
         <div className="space-y-3">
-          <button
-            onClick={() => router.push('/dashboard')}
+          <Button
+            onClick={() => {
+              setLoadingButton('dashboard')
+              router.push('/dashboard')
+              setTimeout(() => setLoadingButton(null), 1000)
+            }}
+            loading={loadingButton === 'dashboard'}
+            loadingText="Loading..."
             className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 font-semibold"
           >
             Go to Dashboard
-          </button>
-          <button
-            onClick={() => router.push('/pricing')}
+          </Button>
+          <Button
+            onClick={() => {
+              setLoadingButton('pricing')
+              router.push('/pricing')
+              setTimeout(() => setLoadingButton(null), 1000)
+            }}
+            loading={loadingButton === 'pricing'}
+            loadingText="Loading..."
             className="w-full bg-gray-200 text-gray-700 px-6 py-3 rounded-lg hover:bg-gray-300 font-semibold"
           >
             View Plans
-          </button>
+          </Button>
         </div>
       </div>
     </div>

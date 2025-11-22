@@ -74,10 +74,9 @@ export default function PricingPage() {
           <div className="mb-8">
             <Link href="/dashboard">
               <Button
-                variant="outline"
-                className="bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 border-2 border-slate-600/50 hover:border-slate-500/70"
+                className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black border-2 border-orange-400 shadow-lg hover:shadow-xl hover:shadow-orange-500/50"
               >
-                <ArrowLeft className="w-4 h-4 mr-2" />
+                <ArrowLeft className="w-4 h-4 mr-2" strokeWidth={3} />
                 Back to Dashboard
               </Button>
             </Link>

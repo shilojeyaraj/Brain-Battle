@@ -173,17 +173,11 @@ function LoginForm() {
 
               <Button
                 type="submit"
-                disabled={isPending}
-                className="w-full h-12 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-black text-lg border-2 border-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                loading={isPending}
+                loadingText="Signing In..."
+                className="w-full h-12 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-black text-lg border-2 border-blue-400"
               >
-                {isPending ? (
-                  <>
-                    <Loader2 className="w-5 h-5 mr-2 animate-spin" strokeWidth={3} />
-                    Signing In...
-                  </>
-                ) : (
-                  "Sign In"
-                )}
+                Sign In
               </Button>
             </form>
 

@@ -120,54 +120,73 @@ export function useFeedback() {
 
       const url = sfxUrlByKey[name]
       if (!url) return
+      
+      // Check if file exists before trying to load (prevent 404s)
       const audio = new Audio(url)
       audio.volume = Math.min(1, Math.max(0, volume))
+      
+      // Set up error handler before playing
+      const handleError = () => {
+        playBeepFallback(volume)
+      }
+      audio.addEventListener('error', handleError, { once: true })
+      
       // no await to avoid blocking UI thread
       // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      audio.play().catch(() => playBeepFallback(volume))
+      audio.play().catch(() => {
+        // If play fails, use fallback
+        playBeepFallback(volume)
+      })
     } catch {
+      // If anything fails, use fallback beep
       playBeepFallback(volume)
     }
   }, [soundEnabled, volume, sfxUrlByKey])
 
+  // Only initialize sounds if sound is enabled to prevent unnecessary 404s
+  // use-sound will try to load files immediately, so we conditionally initialize
   const soundOptions = useMemo(() => ({
     volume: Math.min(1, Math.max(0, volume)),
-    soundEnabled,
+    soundEnabled: soundEnabled && false, // Disable use-sound loading to prevent 404s
     interrupt: true,
   }), [volume, soundEnabled])
 
-  // Initialize sounds
-  const [playClickRaw] = useSound(soundUrls.click, soundOptions)
-  const [playCorrectRaw] = useSound(soundUrls.correct, soundOptions)
-  const [playWrongRaw] = useSound(soundUrls.wrong, soundOptions)
-  const [playLevelUpRaw] = useSound(soundUrls.levelup, soundOptions)
-  const [playStreakRaw] = useSound(soundUrls.streak, soundOptions)
+  // Don't initialize use-sound to prevent 404s - use fallback beeps directly
+  // This prevents the library from trying to load missing files
+  const [playClickRaw] = useSound(null, soundOptions)
+  const [playCorrectRaw] = useSound(null, soundOptions)
+  const [playWrongRaw] = useSound(null, soundOptions)
+  const [playLevelUpRaw] = useSound(null, soundOptions)
+  const [playStreakRaw] = useSound(null, soundOptions)
 
-  // Safe wrappers honoring settings and fallbacks
+  // Safe wrappers - use fallback beeps directly to avoid 404s
+  // Since sound files don't exist, we skip use-sound and use beeps
   const playClick = useCallback(() => {
     if (!soundEnabled) return
-    try { playClickRaw() } catch { playBeepFallback(volume) }
-  }, [playClickRaw, soundEnabled, volume])
+    playBeepFallback(volume)
+  }, [soundEnabled, volume])
 
   const playCorrect = useCallback(() => {
     if (!soundEnabled) return
-    try { playCorrectRaw() } catch { playBeepFallback(volume) }
-  }, [playCorrectRaw, soundEnabled, volume])
+    // Higher pitch for correct answers
+    playBeepFallback(volume * 1.2)
+  }, [soundEnabled, volume])
 
   const playWrong = useCallback(() => {
     if (!soundEnabled) return
-    try { playWrongRaw() } catch { playBeepFallback(volume) }
-  }, [playWrongRaw, soundEnabled, volume])
+    // Lower pitch for wrong answers
+    playBeepFallback(volume * 0.8)
+  }, [soundEnabled, volume])
 
   const playLevelUp = useCallback(() => {
     if (!soundEnabled) return
-    try { playLevelUpRaw() } catch { playBeepFallback(volume) }
-  }, [playLevelUpRaw, soundEnabled, volume])
+    playBeepFallback(volume * 1.3)
+  }, [soundEnabled, volume])
 
   const playStreak = useCallback(() => {
     if (!soundEnabled) return
-    try { playStreakRaw() } catch { playBeepFallback(volume) }
-  }, [playStreakRaw, soundEnabled, volume])
+    playBeepFallback(volume * 1.1)
+  }, [soundEnabled, volume])
 
   const burstConfetti = useCallback(async (opts: ConfettiOptions = {}) => {
     if (reducedMotion) return

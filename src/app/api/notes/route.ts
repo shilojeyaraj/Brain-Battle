@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server"
 import { extractImagesFromPDF as extractPDFImages } from "@/lib/pdf-image-extractor"
 import { DiagramAnalyzerAgent } from "@/lib/agents/diagram-analyzer-agent"
 import { validateAndFilterVideos } from "@/lib/utils/youtube-validator"
+import { notesGenerationSchema, validateFile } from "@/lib/validation/schemas"
+import { sanitizeError, createSafeErrorResponse } from "@/lib/utils/error-sanitizer"
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -43,6 +45,66 @@ export async function POST(req: NextRequest) {
     if (!files.length) {
       console.log("❌ [NOTES API] No files provided")
       return NextResponse.json({ error: "No files provided" }, { status: 400 })
+    }
+
+    // SECURITY: Validate and sanitize inputs
+    try {
+      // Validate difficulty
+      if (difficulty && !['easy', 'medium', 'hard'].includes(difficulty)) {
+        return NextResponse.json(
+          { error: 'Invalid difficulty. Must be easy, medium, or hard.' },
+          { status: 400 }
+        )
+      }
+
+      // Sanitize topic (max 500 chars, trim)
+      if (topic) {
+        topic = topic.trim().slice(0, 500)
+      }
+
+      // Sanitize instructions (max 1000 chars, trim)
+      if (instructions) {
+        instructions = instructions.trim().slice(0, 1000)
+      }
+
+      // SECURITY: Validate all files
+      for (const file of files) {
+        const validation = validateFile(file)
+        if (!validation.valid) {
+          return NextResponse.json(
+            { error: validation.error || 'Invalid file' },
+            { status: 400 }
+          )
+        }
+
+        // Additional security: Check file size (10MB limit)
+        const maxSize = 10 * 1024 * 1024 // 10MB
+        if (file.size > maxSize) {
+          return NextResponse.json(
+            { error: `File ${file.name} exceeds maximum size of 10MB` },
+            { status: 400 }
+          )
+        }
+
+        // Check file type by content, not just extension
+        const allowedMimeTypes = [
+          'application/pdf',
+          'text/plain',
+          'application/msword',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ]
+        if (!allowedMimeTypes.includes(file.type)) {
+          return NextResponse.json(
+            { error: `File type not allowed: ${file.name}` },
+            { status: 400 }
+          )
+        }
+      }
+    } catch (validationError) {
+      return NextResponse.json(
+        { error: 'Invalid input data' },
+        { status: 400 }
+      )
     }
 
     // Deduplicate files by name + size (same file uploaded multiple times)
@@ -450,11 +512,16 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
       studyTopic = `Study materials from uploaded documents: ${firstLines}...`
     }
 
+    // Build topic instruction - if topic is provided, use it; otherwise instruct AI to determine from content
+    const topicInstruction = studyTopic && studyTopic !== `Content from uploaded documents: ${fileNames.join(', ')}`
+      ? `STUDY TOPIC: ${studyTopic}`
+      : `STUDY TOPIC: Analyze the uploaded documents and determine the subject matter from their content. Extract the main topic, theme, or subject from the document text itself.`
+    
     const userPrompt = `Generate comprehensive study notes based on the ACTUAL CONTENT from these specific documents:
 
-STUDY TOPIC: ${studyTopic}
+${topicInstruction}
 DIFFICULTY: ${difficulty || 'medium'}
-STUDY INSTRUCTIONS: ${instructions || 'Analyze the uploaded documents and create comprehensive study notes based on their actual content. Extract key concepts, terms, and topics from the documents themselves.'}
+STUDY INSTRUCTIONS: ${instructions || 'Analyze the uploaded documents and create comprehensive study notes based on their actual content. Extract key concepts, terms, and topics from the documents themselves. Determine the subject matter from the document content if no specific topic was provided.'}
 
 ⚠️ CRITICAL REQUIREMENT: You MUST extract and use ONLY the ACTUAL content from these documents. 
 - If the document is about chemistry, create chemistry notes
@@ -1019,12 +1086,14 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
     if (error instanceof Error && error.stack) {
       console.error(`❌ [NOTES API] Stack trace:`, error.stack)
     }
+    // SECURITY: Sanitize error message before sending to client
+    const sanitized = sanitizeError(error, 'Failed to generate notes')
     return NextResponse.json(
       { 
         success: false, 
-        error: error instanceof Error ? error.message : "Failed to generate notes" 
+        ...createSafeErrorResponse(error, 'Failed to generate notes')
       },
-      { status: 500 }
+      { status: sanitized.statusCode }
     )
   }
 }

@@ -6,6 +6,7 @@ import { Brain, Users, Zap, Trophy, Star, Rocket, Target, Award, BookOpen, Gamep
 import Link from "next/link"
 import Image from "next/image"
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 
 const container = {
   hidden: { opacity: 0 },
@@ -127,9 +128,11 @@ const featureCards: FeatureCard[] = [
 ]
 
 export default function HomePage() {
+  const router = useRouter()
   const [leaderboardPlayers, setLeaderboardPlayers] = useState<LeaderboardPlayer[]>([])
   const [leaderboardLoading, setLeaderboardLoading] = useState(true)
   const [currentCardIndex, setCurrentCardIndex] = useState(0)
+  const [loadingButton, setLoadingButton] = useState<string | null>(null)
 
   const fetchLeaderboard = async () => {
     try {
@@ -225,19 +228,31 @@ export default function HomePage() {
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5, delay: 0.2 }}
           >
-            <Link href="/login">
-              <Button
-                variant="outline"
-                className="border-4 border-blue-400 text-blue-300 hover:bg-blue-500/20 bg-transparent font-bold text-sm h-10"
-              >
-                Sign In
-              </Button>
-            </Link>
-            <Link href="/signup">
-              <Button className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold border-2 border-blue-400 h-10 text-sm">
-                Join Now
-              </Button>
-            </Link>
+            <Button
+              variant="outline"
+              className="border-4 border-blue-400 text-blue-300 hover:bg-blue-500/20 bg-transparent font-bold text-sm h-10"
+              loading={loadingButton === 'login'}
+              loadingText="Loading..."
+              onClick={() => {
+                setLoadingButton('login')
+                router.push('/login')
+                setTimeout(() => setLoadingButton(null), 1000)
+              }}
+            >
+              Sign In
+            </Button>
+            <Button
+              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold border-2 border-blue-400 h-10 text-sm"
+              loading={loadingButton === 'signup'}
+              loadingText="Loading..."
+              onClick={() => {
+                setLoadingButton('signup')
+                router.push('/signup')
+                setTimeout(() => setLoadingButton(null), 1000)
+              }}
+            >
+              Join Now
+            </Button>
           </motion.div>
         </header>
 

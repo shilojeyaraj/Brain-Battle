@@ -22,23 +22,36 @@ export async function middleware(request: NextRequest) {
   // Session validation happens in API routes and page components
   // Middleware here focuses on rate limiting and monitoring
 
-  // Rate limiting for API routes
+  // Enhanced rate limiting for API routes with per-endpoint limits
   if (path.startsWith('/api/')) {
     const identifier = getRateLimitIdentifier(request)
-    const rateLimitResult = rateLimit(identifier, {
-      interval: 60000, // 1 minute
-      limit: 100 // 100 requests per minute
-    })
+    
+    // Define stricter limits for expensive/security-sensitive endpoints
+    let rateLimitConfig = { interval: 60000, limit: 100 } // Default: 100/min
+    
+    // Stricter limits for expensive operations
+    if (path.includes('/generate-quiz') || path.includes('/notes')) {
+      rateLimitConfig = { interval: 60000, limit: 10 } // 10 AI requests per minute
+    } else if (path.includes('/embeddings')) {
+      rateLimitConfig = { interval: 60000, limit: 20 } // 20 embedding requests per minute
+    } else if (path.includes('/auth/') || path.includes('/stripe/')) {
+      rateLimitConfig = { interval: 60000, limit: 20 } // 20 auth requests per minute
+    } else if (path.includes('/upload') || path.includes('/file')) {
+      rateLimitConfig = { interval: 60000, limit: 30 } // 30 file uploads per minute
+    }
+    
+    const rateLimitResult = rateLimit(identifier, rateLimitConfig)
     
     if (!rateLimitResult.success) {
       return NextResponse.json(
-        { error: 'Too many requests' },
+        { error: 'Too many requests. Please try again later.' },
         { 
           status: 429,
           headers: {
             'X-RateLimit-Limit': rateLimitResult.limit.toString(),
             'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
             'X-RateLimit-Reset': new Date(rateLimitResult.reset).toISOString(),
+            'Retry-After': Math.ceil((rateLimitResult.reset - Date.now()) / 1000).toString(),
           }
         }
       )
