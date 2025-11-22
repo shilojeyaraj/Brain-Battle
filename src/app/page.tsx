@@ -312,12 +312,12 @@ export default function HomePage() {
 
           {/* Horizontal Carousel of Feature Cards - Right side under leaderboard */}
           <motion.div
-            className="absolute top-[calc(10%+400px)] right-4 md:right-10 opacity-90 md:opacity-100 hidden lg:block"
+            className="absolute top-[calc(10%+360px)] right-4 md:right-10 opacity-90 md:opacity-100 hidden lg:block"
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 1.1 }}
           >
-            <div className="relative w-72 md:w-[420px] lg:w-[490px] xl:w-[560px] h-[154px] md:h-[166px] lg:h-[205px] overflow-hidden">
+            <div className="relative w-64 md:w-[360px] lg:w-[420px] xl:w-[480px] h-[130px] md:h-[140px] lg:h-[170px] overflow-hidden">
               <div className="relative w-full h-full">
                 {featureCards.map((card, index) => {
                   const Icon = card.icon
@@ -392,7 +392,7 @@ export default function HomePage() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.8, delay: 0.9 }}
           >
-            <div className="w-72 md:w-[420px] lg:w-[490px] xl:w-[560px] bg-gradient-to-br from-slate-800/95 to-slate-900/95 rounded-2xl border-4 border-blue-400/30 backdrop-blur-lg p-3 md:p-4 shadow-2xl max-h-[380px] md:max-h-[400px] overflow-y-auto mb-4">
+            <div className="w-64 md:w-[360px] lg:w-[420px] xl:w-[480px] bg-gradient-to-br from-slate-800/95 to-slate-900/95 rounded-2xl border-4 border-blue-400/30 backdrop-blur-lg p-3 md:p-4 shadow-2xl mb-4">
               <div className="flex items-center gap-2 mb-3">
                 <Trophy className="w-5 h-5 text-yellow-400" />
                 <h3 className="text-sm md:text-base font-black text-white">Live Leaderboard</h3>

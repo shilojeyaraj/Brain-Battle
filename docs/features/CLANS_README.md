@@ -1,0 +1,128 @@
+# Clans/Classrooms System - Documentation Index
+
+## Overview
+
+The Brain Battle clan system implements a **freemium model** that makes classroom and study group features accessible without requiring every participant to have a Pro account.
+
+## Core Principle
+
+**"One Pro account enables unlimited free participation"**
+
+Only the **clan creator/organizer** needs Pro, while all **members/participants** can use the free tier.
+
+## Documentation
+
+### 📖 User Guides
+
+1. **[Quick Start Guide](./CLANS_QUICK_START.md)**
+   - Fast setup instructions
+   - Example workflows
+   - Common use cases
+
+2. **[Freemium Model Guide](./CLANS_FREEMIUM_GUIDE.md)**
+   - Business model explanation
+   - Access levels and limits
+   - Real-world scenarios
+   - Marketing messages
+
+3. **[Model Overview](./CLAN_SYSTEM_MODEL.md)**
+   - Access model breakdown
+   - Feature comparison table
+   - Use cases and benefits
+
+### 🔧 Technical Documentation
+
+4. **[Implementation Guide](./CLANS_IMPLEMENTATION.md)**
+   - Database schema
+   - API routes
+   - Permission flow
+   - Code structure
+   - Security considerations
+
+## Quick Reference
+
+### Access Levels
+
+| Feature | Pro (Creator) | Free (Member) |
+|---------|---------------|---------------|
+| Create Clans | ✅ Yes | ❌ No |
+| Join Clans | ✅ Up to 10 | ✅ Up to 3 |
+| Host Sessions | ✅ Yes | ❌ No |
+| Join Sessions | ✅ Yes | ✅ Yes |
+| View Stats | ✅ Yes | ✅ Yes |
+
+### Limits
+
+- **Pro Users**: Can create unlimited clans, join up to 10
+- **Free Users**: Can join up to 3 clans
+- **Clan Size**: Up to 50 members per clan
+- **Scale**: 1 Pro account = up to 500 participants (10 clans × 50 members)
+
+## Use Cases
+
+### 1. Classroom
+- Teacher (Pro) creates classroom
+- Students (Free) join with code
+- Teacher hosts quiz sessions
+- **Cost**: $4.99/month (teacher only)
+
+### 2. Study Group
+- Leader (Pro) creates group
+- Friends (Free) join
+- Leader hosts practice sessions
+- **Cost**: $4.99/month (leader only)
+
+### 3. Multiple Classes
+- Teacher (Pro) creates 5-10 classrooms
+- Each class has 20-50 students (Free)
+- **Cost**: $4.99/month (teacher only)
+- **Scale**: 1 Pro = 150+ students
+
+## API Endpoints
+
+| Endpoint | Method | Pro Required? | Free Allowed? |
+|----------|--------|---------------|---------------|
+| `/api/clans/create` | POST | ✅ Yes | ❌ No |
+| `/api/clans/join` | POST | ❌ No | ✅ Yes |
+| `/api/clans/list` | GET | ❌ No | ✅ Yes |
+| `/api/clans/leave` | POST | ❌ No | ✅ Yes |
+| `/api/clans/members` | GET | ❌ No | ✅ Yes |
+| `/api/clans/stats` | GET | ❌ No | ✅ Yes |
+| `/api/clans/sessions/create` | POST | ✅ Yes* | ❌ No* |
+
+*Only clan owners/admins can create sessions (usually Pro users)
+
+## Database Migration
+
+Run the migration to set up the clan system:
+
+```sql
+-- File: supabase/migrations/create-clans-system.sql
+```
+
+This creates:
+- `clans` table
+- `clan_members` table
+- `clan_sessions` table
+- Helper functions
+- RLS policies
+
+## Getting Started
+
+1. **Run the migration** in Supabase SQL Editor
+2. **Test API routes** to verify setup
+3. **Create UI components** for clan management
+4. **Test the freemium model** with Pro and Free accounts
+
+## Support
+
+For questions or issues:
+- Check the [Freemium Guide](./CLANS_FREEMIUM_GUIDE.md)
+- Review [Implementation Guide](./CLANS_IMPLEMENTATION.md)
+- Contact support@brainbattle.app
+
+---
+
+**Status**: ✅ Production Ready  
+**Last Updated**: November 2025
+

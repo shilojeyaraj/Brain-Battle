@@ -22,6 +22,14 @@ Brain Battle is a cutting-edge educational platform that combines artificial int
 - **Live Member Updates**: Real-time notifications when members join/leave
 - **Host Controls**: Configurable study session duration and settings
 
+### 👥 **Clans/Classrooms (Pro Feature)**
+- **Freemium Model**: Only creators need Pro - members join for free
+- **Classroom Management**: Teachers create clans, students join with codes
+- **Clan-Wide Sessions**: Host Kahoot-style quiz sessions for entire clan
+- **Clan Leaderboards**: Track stats and rankings within your group
+- **Member Management**: Role-based permissions (owner/admin/member)
+- **Scale**: One Pro account = up to 500 participants (10 clans × 50 members)
+
 ### 🎮 **Gamification System**
 - **Advanced XP System**: Detailed scoring based on accuracy, speed, and difficulty
 - **Level Progression**: 20+ levels with unique rank names and icons
@@ -45,6 +53,8 @@ All project documentation has been organized into the `docs/` directory:
 - **[Authentication](./docs/authentication/)** - Auth system documentation
 - **[Stripe Integration](./docs/stripe/)** - Payment and subscription docs
 - **[Production Guide](./docs/production/)** - Deployment and production docs
+- **[Clans/Classrooms](./docs/features/CLANS_FREEMIUM_GUIDE.md)** - Clan system freemium model guide
+- **[Clans Implementation](./docs/features/CLANS_IMPLEMENTATION.md)** - Technical implementation details
 
 ## 🚀 Tech Stack
 

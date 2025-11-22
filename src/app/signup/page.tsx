@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { Sparkles, Mail, Lock, User, ArrowLeft, Loader2, AlertCircle, CheckCircle2, Brain } from "lucide-react"
 import Link from "next/link"
-import { registerUser } from "@/lib/actions/custom-auth"
+import { signup } from "@/lib/actions/custom-auth"
 import { useEffect, useState, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { motion } from "framer-motion"
@@ -75,43 +75,21 @@ function SignupForm() {
         return
       }
 
-      // Sign up with custom auth
-      const result = await registerUser(
-        email.trim().toLowerCase(),
-        password,
-        username
-      )
+      // Sign up using server action (handles session cookie and redirect)
+      const formDataObj = new FormData()
+      formDataObj.append('username', username)
+      formDataObj.append('email', email.trim().toLowerCase())
+      formDataObj.append('password', password)
+      formDataObj.append('confirmPassword', confirmPassword)
 
-      if (result.error) {
-        setError(result.error || "Sign up failed")
-        setIsPending(false)
-        return
-      }
-
-      if (result.success && result.user) {
-        // Verify user ID is valid before storing
-        if (!result.user?.id || result.user.id.trim() === '') {
-          console.error('❌ [SIGNUP] Invalid user ID received:', result.user?.id)
-          setError('Registration succeeded but user ID is invalid. Please contact support.')
-          setIsPending(false)
-          return
-        }
-        
-        // Store user ID in localStorage for session management
-        localStorage.setItem('userId', result.user.id)
-        console.log('✅ [SIGNUP] User ID stored in localStorage:', result.user.id)
-        setSuccessMessage("Account created successfully! Redirecting...")
-        setTimeout(() => {
-          if (result.user?.id) {
-            router.push(`/dashboard?userId=${result.user.id}&newUser=true`)
-          } else {
-            router.push('/pricing?newUser=true')
-          }
-        }, 1500)
-      } else {
-        setError('Sign up failed')
-        setIsPending(false)
-      }
+      // Call server action - it will handle redirect to pricing page
+      await signup(formDataObj)
+      
+      // If we reach here, the redirect didn't happen (shouldn't normally occur)
+      setSuccessMessage("Account created successfully! Redirecting...")
+      setTimeout(() => {
+        router.push('/pricing?newUser=true')
+      }, 1500)
     } catch (err: any) {
       setError(err.message || 'Sign up failed')
       setIsPending(false)

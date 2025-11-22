@@ -23,6 +23,10 @@ export interface FeatureLimits {
   hasAdvancedAnalytics: boolean
   hasCustomThemes: boolean
   hasAdvancedStudyNotes: boolean
+  canCreateClans: boolean // Pro feature - only Pro users can CREATE clans
+  canJoinClans: boolean // Both Pro and Free users can JOIN clans
+  maxClansPerUser: number // How many clans a user can join (Pro: 10, Free: 3)
+  maxClanMembers: number // Max members per clan (same for all)
 }
 
 /**
@@ -48,6 +52,11 @@ export interface RoomSizeLimitResult {
 /**
  * Get feature limits for a user based on their subscription tier
  * 
+ * FREEMIUM MODEL FOR CLANS:
+ * - Pro users can CREATE clans (teachers/organizers)
+ * - Free users can JOIN clans (students/participants)
+ * - This allows one Pro account to enable unlimited free participation
+ * 
  * @param userId - The user's ID
  * @returns Feature limits object
  */
@@ -64,6 +73,11 @@ export async function getUserLimits(userId: string): Promise<FeatureLimits> {
       hasAdvancedAnalytics: true,
       hasCustomThemes: true,
       hasAdvancedStudyNotes: true,
+      // CLAN FEATURES (Pro)
+      canCreateClans: true, // Pro users can CREATE clans (teachers/organizers)
+      canJoinClans: true, // Pro users can join clans
+      maxClansPerUser: 10, // Pro users can join up to 10 clans
+      maxClanMembers: 50, // Max members per clan (allows up to 500 participants per Pro account)
     }
   }
   
@@ -78,6 +92,12 @@ export async function getUserLimits(userId: string): Promise<FeatureLimits> {
     hasAdvancedAnalytics: false,
     hasCustomThemes: false,
     hasAdvancedStudyNotes: false,
+    // CLAN FEATURES (Free)
+    // FREEMIUM MODEL: Free users can JOIN but not CREATE
+    canCreateClans: false, // Free users CANNOT create clans (teacher needs Pro)
+    canJoinClans: true, // Free users CAN join clans (students can participate)
+    maxClansPerUser: 3, // Free users can join up to 3 clans (prevents abuse, allows multiple classes)
+    maxClanMembers: 50, // Same max members (set by clan creator)
   }
 }
 

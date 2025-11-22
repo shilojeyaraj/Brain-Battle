@@ -157,6 +157,40 @@ export const sessionEventSchema = z.object({
   payload: z.record(z.any()),
 })
 
+// Clan creation
+export const createClanSchema = z.object({
+  name: z
+    .string()
+    .min(3, 'Clan name must be at least 3 characters')
+    .max(100, 'Clan name must be less than 100 characters')
+    .trim(),
+  description: z.string().max(500, 'Description too long').trim().optional(),
+  is_private: z.boolean().default(true),
+  max_members: z.number().int().min(2).max(100).default(50),
+})
+
+// Join clan
+export const joinClanSchema = z.object({
+  code: z
+    .string()
+    .length(8, 'Clan code must be 8 characters')
+    .regex(/^[A-Z0-9]+$/, 'Clan code must contain only uppercase letters and numbers')
+    .toUpperCase(),
+})
+
+// Create clan session
+export const createClanSessionSchema = z.object({
+  clan_id: z.string().uuid('Invalid clan ID'),
+  topic: z.string().max(500, 'Topic too long').trim().optional(),
+  difficulty: z.enum(['easy', 'medium', 'hard']).default('medium'),
+  total_questions: z.number().int().min(1).max(50).default(10),
+  question_types: z.object({
+    multiple_choice: z.boolean().optional(),
+    open_ended: z.boolean().optional(),
+    true_false: z.boolean().optional(),
+  }).optional(),
+})
+
 /**
  * Validate and sanitize input data
  */

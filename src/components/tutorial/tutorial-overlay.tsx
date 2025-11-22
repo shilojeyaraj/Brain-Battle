@@ -335,7 +335,7 @@ export function TutorialOverlay({
         <>
           {/* Top dimmed area */}
           <div
-            className="fixed z-[9998] bg-black/70 pointer-events-auto transition-all duration-300"
+            className="fixed z-[99998] bg-black/70 pointer-events-auto transition-all duration-300"
             onClick={handleSkip}
             style={{
               top: 0,
@@ -346,7 +346,7 @@ export function TutorialOverlay({
           />
           {/* Bottom dimmed area */}
           <div
-            className="fixed z-[9998] bg-black/70 pointer-events-auto transition-all duration-300"
+            className="fixed z-[99998] bg-black/70 pointer-events-auto transition-all duration-300"
             onClick={handleSkip}
             style={{
               top: `${targetRect.bottom}px`,
@@ -357,7 +357,7 @@ export function TutorialOverlay({
           />
           {/* Left dimmed area */}
           <div
-            className="fixed z-[9998] bg-black/70 pointer-events-auto transition-all duration-300"
+            className="fixed z-[99998] bg-black/70 pointer-events-auto transition-all duration-300"
             onClick={handleSkip}
             style={{
               top: `${targetRect.top}px`,
@@ -368,7 +368,7 @@ export function TutorialOverlay({
           />
           {/* Right dimmed area */}
           <div
-            className="fixed z-[9998] bg-black/70 pointer-events-auto transition-all duration-300"
+            className="fixed z-[99998] bg-black/70 pointer-events-auto transition-all duration-300"
             onClick={handleSkip}
             style={{
               top: `${targetRect.top}px`,
@@ -384,7 +384,7 @@ export function TutorialOverlay({
       {targetRect && (
         <div
           ref={spotlightRef}
-          className="fixed z-[9999] pointer-events-none transition-all duration-300"
+          className="fixed z-[99999] pointer-events-none transition-all duration-300"
           style={{
             top: `${targetRect.top - 4}px`,
             left: `${targetRect.left - 4}px`,
@@ -400,7 +400,7 @@ export function TutorialOverlay({
 
       {/* Tutorial Card */}
       <div
-        className="fixed z-[10000] bg-card rounded-2xl cartoon-border cartoon-shadow-lg p-6 pointer-events-auto"
+        className="fixed z-[99999] bg-card rounded-2xl cartoon-border cartoon-shadow-lg p-6 pointer-events-auto"
         style={{
           ...cardPosition,
           position: 'fixed',
@@ -445,9 +445,8 @@ export function TutorialOverlay({
               </Button>
             )}
             <Button
-              variant="ghost"
               onClick={handleSkip}
-              className="font-bold text-muted-foreground hover:text-foreground"
+              className="bg-slate-700/50 hover:bg-slate-600/50 text-white font-bold border-4 border-slate-600/50 hover:border-slate-500/50 cartoon-border cartoon-shadow cartoon-hover"
             >
               Skip Tutorial
             </Button>
