@@ -8,12 +8,35 @@ import { createAdminClient } from '@/lib/supabase/server-admin'
 export async function POST(request: NextRequest) {
   try {
     const adminClient = createAdminClient()
-    const body = await request.json()
+    
+    // Parse request body with error handling
+    let body: any = {}
+    try {
+      body = await request.json()
+    } catch (parseError) {
+      console.error('❌ [PROFILE API] Failed to parse request body:', parseError)
+      return NextResponse.json(
+        { error: 'Invalid request body. Expected JSON.' },
+        { status: 400 }
+      )
+    }
+    
     const { user_id, username } = body
+    
+    console.log('📝 [PROFILE API] Received request:', { user_id, username, hasUserId: !!user_id })
 
     if (!user_id) {
+      console.error('❌ [PROFILE API] Missing user_id in request body')
       return NextResponse.json(
         { error: 'user_id is required' },
+        { status: 400 }
+      )
+    }
+    
+    if (typeof user_id !== 'string' || user_id.trim() === '') {
+      console.error('❌ [PROFILE API] Invalid user_id format:', user_id)
+      return NextResponse.json(
+        { error: 'user_id must be a non-empty string' },
         { status: 400 }
       )
     }
@@ -136,6 +159,24 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Fetch the username from users table if not provided
+    let actualUsername = username
+    if (!actualUsername) {
+      const { data: userData } = await adminClient
+        .from('users')
+        .select('username')
+        .eq('id', user_id)
+        .single()
+      
+      if (userData?.username) {
+        actualUsername = userData.username
+        console.log('✅ [PROFILE API] Fetched username from users table:', actualUsername)
+      } else {
+        actualUsername = `user_${user_id.slice(0, 8)}`
+        console.log('⚠️ [PROFILE API] Username not found in users table, using generated:', actualUsername)
+      }
+    }
+
     // Check if profile exists (handle "not found" errors gracefully)
     const { data: existingProfile, error: profileCheckError } = await adminClient
       .from('profiles')
@@ -151,7 +192,7 @@ export async function POST(request: NextRequest) {
       const { data, error } = await adminClient
         .from('profiles')
         .update({
-          username: username || existingProfile.username,
+          username: actualUsername || existingProfile.username,
           updated_at: new Date().toISOString()
         })
         .eq('user_id', user_id)
@@ -170,7 +211,7 @@ export async function POST(request: NextRequest) {
     } else {
       // Create new profile (profiles table doesn't have email column)
       // Ensure user exists first (should be guaranteed by check above, but double-check)
-      const finalUsername = username || `user_${user_id.slice(0, 8)}`
+      const finalUsername = actualUsername || `user_${user_id.slice(0, 8)}`
       
       console.log('📝 [PROFILE API] Creating new profile:', { user_id, username: finalUsername, userExists: !!userExists })
       
@@ -246,9 +287,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: true, data })
     }
   } catch (error) {
-    console.error('❌ [PROFILE API] Error:', error)
+    console.error('❌ [PROFILE API] Unexpected error:', error)
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error'
+    const errorStack = error instanceof Error ? error.stack : undefined
+    
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { 
+        error: 'Internal server error',
+        message: errorMessage,
+        ...(process.env.NODE_ENV === 'development' && { stack: errorStack })
+      },
       { status: 500 }
     )
   }

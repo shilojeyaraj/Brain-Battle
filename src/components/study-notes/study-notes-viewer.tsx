@@ -4,18 +4,19 @@ import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { 
-  BookOpen, 
-  Lightbulb, 
-  Image, 
-  Play, 
-  ChevronLeft, 
+import {
+  BookOpen,
+  Lightbulb,
+  Image,
+  Play,
+  ChevronLeft,
   ChevronRight,
   Download,
   ChevronDown,
   ChevronUp,
   Info,
-  Calculator
+  Calculator,
+  Youtube
 } from "lucide-react"
 import { StudyNotes } from "@/lib/schemas/notes-schema"
 import { formatFormulaForPDF } from "@/lib/utils/formula-formatter"
@@ -29,7 +30,7 @@ interface StudyNotesViewerProps {
 }
 
 export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotesViewerProps) {
-  const [activeSection, setActiveSection] = useState<"outline" | "concepts" | "diagrams" | "formulas" | "quiz">("outline")
+  const [activeSection, setActiveSection] = useState<"outline" | "concepts" | "diagrams" | "formulas" | "videos" | "quiz">("outline")
   const [currentDiagram, setCurrentDiagram] = useState(0)
   const [expandedOutlineItems, setExpandedOutlineItems] = useState<Set<number>>(new Set())
   const [hoveredTerm, setHoveredTerm] = useState<string | null>(null)
@@ -76,24 +77,13 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
     { id: "outline", label: "Outline", icon: BookOpen },
     { id: "concepts", label: "Concepts", icon: Lightbulb },
     { id: "diagrams", label: "Diagrams", icon: Image },
+    { id: "videos", label: "Videos", icon: Youtube },
     { id: "formulas", label: "Formulas", icon: Calculator },
     { id: "quiz", label: "Quiz Prep", icon: Play }
   ] as const
 
-  const sections = allSections.filter(section => {
-    // Hide diagrams tab for free users
-    if (section.id === "diagrams" && !isPro) {
-      return false
-    }
-    return true
-  })
-
-  // If user is not pro and currently viewing diagrams, switch to outline
-  useEffect(() => {
-    if (!subscriptionLoading && activeSection === "diagrams" && !isPro) {
-      setActiveSection("outline")
-    }
-  }, [isPro, subscriptionLoading, activeSection])
+  // Show all sections - diagrams are now available for all users
+  const sections = allSections
 
   const toggleOutlineItem = (index: number) => {
     const newExpanded = new Set(expandedOutlineItems)
@@ -460,17 +450,19 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
                           </div>
                           
                           {/* Examples */}
-                          <div>
-                            <h4 className="text-sm font-black text-white mb-2">Examples</h4>
-                            <ul className="space-y-1">
-                              {details.examples.map((example, exampleIndex) => (
-                                <li key={exampleIndex} className="flex items-start gap-2 text-sm">
-                                  <div className="w-1.5 h-1.5 rounded-full bg-orange-400 mt-2 flex-shrink-0"></div>
-                                  <span className="text-blue-100/70 font-bold">{example}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
+                          {details.examples.length > 0 && (
+                            <div>
+                              <h4 className="text-sm font-black text-white mb-2">Examples</h4>
+                              <ul className="space-y-1">
+                                {details.examples.map((example, exampleIndex) => (
+                                  <li key={exampleIndex} className="flex items-start gap-2 text-sm">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-orange-400 mt-2 flex-shrink-0"></div>
+                                    <span className="text-blue-100/70 font-bold">{example}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
                           
                           {/* Related Concepts */}
                           {details.relatedConcepts.length > 0 && (
@@ -537,115 +529,166 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
               </h2>
               
               {diagrams.length > 0 ? (
-                <div className="space-y-6">
-                  {/* Diagram Navigation */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Button
-                        onClick={() => setCurrentDiagram(Math.max(0, currentDiagram - 1))}
-                        disabled={currentDiagram === 0}
-                        variant="outline"
-                        size="sm"
-                        className="cartoon-border"
-                      >
-                        <ChevronLeft className="h-4 w-4" strokeWidth={3} />
-                      </Button>
-                      <span className="font-black text-white">
-                        {currentDiagram + 1} of {diagrams.length}
-                      </span>
-                      <Button
-                        onClick={() => setCurrentDiagram(Math.min(diagrams.length - 1, currentDiagram + 1))}
-                        disabled={currentDiagram === diagrams.length - 1}
-                        variant="outline"
-                        size="sm"
-                        className="cartoon-border"
-                      >
-                        <ChevronRight className="h-4 w-4" strokeWidth={3} />
-                      </Button>
-                    </div>
-                    <Badge className={`cartoon-border font-black ${
-                      diagrams[currentDiagram]?.source === "file" 
-                        ? "bg-primary text-primary-foreground" 
-                        : "bg-secondary text-secondary-foreground"
-                    }`}>
-                      {diagrams[currentDiagram]?.source === "file" ? "From Document" : "Web Image"}
-                    </Badge>
-                  </div>
+                <div className="space-y-4">
+                  <p className="text-sm text-blue-100/70 font-bold mb-4">
+                    Diagram extraction from PDFs is still experimental. For now, use this list to
+                    quickly jump back into your original document and review each key figure. Open
+                    the pages listed below in your study file and use the descriptions to focus on
+                    what each diagram is trying to teach you.
+                  </p>
 
-                  {/* Current Diagram */}
-                  <div className="text-center">
-                    <h3 className="text-lg font-black text-white mb-2">
-                      {diagrams[currentDiagram]?.title}
-                    </h3>
-                    
-                    {/* Display image if available */}
-                    {diagrams[currentDiagram]?.image_url ? (
-                      <div className="mb-4">
-                        <img
-                          src={diagrams[currentDiagram].image_url}
-                          alt={diagrams[currentDiagram]?.title}
-                          className="max-w-full h-auto rounded-xl border-4 border-slate-600/50 shadow-lg mx-auto"
-                          onError={(e) => {
-                            console.error('Failed to load diagram image from URL:', diagrams[currentDiagram]?.image_url)
-                            e.currentTarget.style.display = 'none'
-                          }}
-                        />
-                      </div>
-                    ) : diagrams[currentDiagram]?.image_data_b64 ? (
-                      <div className="mb-4">
-                        <img
-                          src={`data:image/png;base64,${diagrams[currentDiagram].image_data_b64}`}
-                          alt={diagrams[currentDiagram]?.title}
-                          className="max-w-full h-auto rounded-xl border-4 border-slate-600/50 shadow-lg mx-auto"
-                          onError={(e) => {
-                            console.error('Failed to load diagram image from base64 data')
-                            e.currentTarget.style.display = 'none'
-                          }}
-                        />
-                      </div>
-                    ) : (
-                      /* Placeholder when image is missing */
-                      <div className="mb-4 p-12 rounded-xl bg-slate-700/50 border-4 border-slate-600/50 mx-auto max-w-2xl">
-                        <div className="flex flex-col items-center justify-center">
-                          <Image className="h-16 w-16 text-blue-300/50 mb-4" strokeWidth={2} />
-                          <p className="text-blue-100/70 font-bold mb-2">
-                            Diagram image not available
-                          </p>
-                          <p className="text-sm text-blue-100/60">
-                            {diagrams[currentDiagram]?.source === 'file' 
-                              ? 'The image extraction from the PDF may have failed. This could be due to compatibility issues or the PDF format.'
-                              : 'Image could not be loaded from the web source.'}
-                          </p>
-                          {diagrams[currentDiagram]?.page && (
-                            <p className="text-xs text-blue-100/60 mt-2">
-                              Referenced from page {diagrams[currentDiagram].page} of the document
-                            </p>
-                          )}
+                  {/* Diagram list as textual references */}
+                  <div className="space-y-4">
+                    {diagrams.map((diagram, index) => (
+                      <Card
+                        key={index}
+                        className="p-4 bg-slate-700/50 border-2 border-slate-600/60"
+                      >
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                          <div>
+                            <h3 className="text-lg font-black text-white">
+                              {diagram.title || `Figure ${index + 1}`}
+                            </h3>
+                            {diagram.page && (
+                              <p className="text-xs text-blue-100/70 font-bold mt-1">
+                                Where to find it:{" "}
+                                <span className="text-blue-200">
+                                  Page {diagram.page} of your uploaded document
+                                </span>
+                              </p>
+                            )}
+                          </div>
+                          <Badge
+                            className={`font-black ${
+                              diagram.source === "file"
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-secondary text-secondary-foreground"
+                            }`}
+                          >
+                            {diagram.source === "file" ? "From Document" : "Web Image"}
+                          </Badge>
                         </div>
-                      </div>
-                    )}
-                    
-                    <p className="text-blue-100/70 font-bold mb-2">
-                      {diagrams[currentDiagram]?.caption}
-                    </p>
-                    
-                    {diagrams[currentDiagram]?.credit && (
-                      <p className="text-xs text-blue-100/60">
-                        Credit: {diagrams[currentDiagram].credit}
-                      </p>
-                    )}
-                    
-                    {diagrams[currentDiagram]?.page && (
-                      <p className="text-xs text-blue-100/60">
-                        Page {diagrams[currentDiagram].page}
-                      </p>
-                    )}
+
+                        {diagram.caption && (
+                          <div className="mt-2">
+                            <h4 className="text-xs font-black text-white mb-1 uppercase tracking-wide">
+                              What this figure shows
+                            </h4>
+                            <p className="text-sm text-blue-100/80 font-bold leading-relaxed">
+                              {diagram.caption}
+                            </p>
+                          </div>
+                        )}
+
+                        {diagram.keywords && diagram.keywords.length > 0 && (
+                          <div className="mt-3">
+                            <h4 className="text-xs font-black text-white mb-1 uppercase tracking-wide">
+                              Useful search keywords (for finding similar diagrams online)
+                            </h4>
+                            <div className="flex flex-wrap gap-1">
+                              {diagram.keywords.map((kw, kwIndex) => (
+                                <Badge
+                                  key={kwIndex}
+                                  className="border-2 border-blue-400/40 bg-blue-500/15 text-blue-200 font-bold text-[11px] px-2 py-0.5"
+                                >
+                                  {kw}
+                                </Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </Card>
+                    ))}
                   </div>
                 </div>
               ) : (
                 <div className="text-center py-12">
                   <Image className="h-16 w-16 text-blue-300/50 mx-auto mb-4" strokeWidth={1} />
-                  <p className="text-blue-100/70 font-bold">No diagrams found in the document</p>
+                  <p className="text-blue-100/70 font-bold mb-2">
+                    No diagrams were extracted automatically from this document.
+                  </p>
+                  <p className="text-sm text-blue-100/60 font-bold max-w-xl mx-auto">
+                    This can happen with scanned PDFs or complex layouts. For now, use the figures
+                    directly in your original study files as visual support while reviewing the
+                    outline, concepts, and formula sections here.
+                  </p>
+                </div>
+              )}
+            </Card>
+          )}
+
+          {activeSection === "videos" && (
+            <Card className="p-6 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg">
+              <h2 className="text-2xl font-black text-white mb-6 flex items-center gap-2">
+                <Youtube className="h-6 w-6 text-red-500" strokeWidth={3} />
+                Video Lessons
+              </h2>
+              {notes.resources?.videos && Array.isArray(notes.resources.videos) && notes.resources.videos.length > 0 ? (
+                <div className="space-y-6">
+                  {notes.resources.videos.map((video: any, index: number) => {
+                    const url = typeof video.url === "string" ? video.url : ""
+                    let embedId: string | null = null
+                    if (url) {
+                      const watchMatch = url.match(/[?&]v=([\w-]+)/i)
+                      const shortMatch = url.match(/youtu\.be\/([\w-]+)/i)
+                      const embedMatch = url.match(/embed\/([\w-]+)/i)
+                      const vMatch = url.match(/\/v\/([\w-]+)/i)
+                      embedId =
+                        (watchMatch && watchMatch[1]) ||
+                        (shortMatch && shortMatch[1]) ||
+                        (embedMatch && embedMatch[1]) ||
+                        (vMatch && vMatch[1]) ||
+                        null
+                    }
+                    const embedUrl = embedId ? `https://www.youtube.com/embed/${embedId}` : null
+
+                    return (
+                      <Card key={index} className="p-4 bg-slate-800/70 border-2 border-slate-600/60">
+                        {embedUrl ? (
+                          <div className="w-full aspect-video rounded-xl overflow-hidden bg-black mb-3">
+                            <iframe
+                              src={embedUrl}
+                              title={video.title || `Video ${index + 1}`}
+                              className="w-full h-full"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                            />
+                          </div>
+                        ) : (
+                          <div className="w-full aspect-video rounded-xl overflow-hidden bg-slate-900 mb-3 flex items-center justify-center">
+                            <a
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm text-blue-300 font-bold underline"
+                            >
+                              Open video on YouTube
+                            </a>
+                          </div>
+                        )}
+                        <div>
+                          <h3 className="text-sm font-black text-white mb-1 line-clamp-2">
+                            {video.title || "YouTube video"}
+                          </h3>
+                          <div className="flex items-center justify-between text-[11px] text-blue-200/80 font-bold mt-1">
+                            <span>{video.platform || "YouTube"}</span>
+                            {video.duration && <span>{video.duration}</span>}
+                          </div>
+                        </div>
+                      </Card>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <Youtube className="h-16 w-16 text-red-500/60 mx-auto mb-4" strokeWidth={1} />
+                  <p className="text-blue-100/70 font-bold mb-2">
+                    No video lessons were found for this document yet.
+                  </p>
+                  <p className="text-sm text-blue-100/60 font-bold max-w-xl mx-auto">
+                    Try generating notes again for a more specific topic, or upload a document with
+                    a clearer subject so we can search for the best tutorials to match it.
+                  </p>
                 </div>
               )}
             </Card>
@@ -1003,7 +1046,7 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
           </Card>
 
           {/* Key Terms - More Visible */}
-          <Card className="p-6 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-orange-500/50 shadow-lg sticky top-[280px]">
+          <Card className="p-6 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-orange-500/50 shadow-lg sticky top-[260px]">
             <h3 className="text-lg font-black text-white mb-4 flex items-center gap-2">
               <BookOpen className="h-5 w-5 text-orange-400" strokeWidth={3} />
               Key Terms

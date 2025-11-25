@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Trophy, Clock, Users, Target, FileText, ExternalLink } from "lucide-react"
-import { getCurrentUserId } from "@/lib/auth/session"
 import Link from "next/link"
 
 export function RecentBattles() {
@@ -14,13 +13,7 @@ export function RecentBattles() {
   useEffect(() => {
     const fetchRecentBattles = async () => {
       try {
-        const userId = await getCurrentUserId()
-        if (!userId) {
-          setLoading(false)
-          return
-        }
-
-        const response = await fetch(`/api/user-stats?userId=${userId}`)
+        const response = await fetch("/api/user-stats")
         if (response.ok) {
           const data = await response.json()
           if (data.recentGames && Array.isArray(data.recentGames)) {
@@ -86,14 +79,18 @@ export function RecentBattles() {
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full flex items-center justify-center bg-slate-700/50 border-2 border-slate-600/50">
-                        {battle.result === "Won" ? (
+                        {battle.players === "1" || battle.players === "Practice" ? (
+                          <div className="w-5 h-5 rounded-full bg-blue-500" />
+                        ) : battle.result === "Won" ? (
                           <Trophy className="w-5 h-5 text-orange-400" strokeWidth={3} />
                         ) : (
                           <div className="w-5 h-5 rounded-full bg-red-500" />
                         )}
                       </div>
                       <div>
-                        <h3 className="font-black text-white text-lg group-hover:text-blue-300 transition-colors">{battle.name}</h3>
+                        <h3 className="font-black text-white text-lg group-hover:text-blue-300 transition-colors">
+                          {battle.name}
+                        </h3>
                         <p className="text-sm text-blue-100/70 font-bold">{battle.subject}</p>
                       </div>
                     </div>
@@ -101,7 +98,9 @@ export function RecentBattles() {
                       className={`cartoon-border font-black ${
                         battle.result === "Won"
                           ? "bg-gradient-to-br from-orange-500/20 to-orange-600/20 text-orange-300 border-orange-400/50"
-                          : "bg-gradient-to-br from-red-500/20 to-red-600/20 text-red-300 border-red-400/50"
+                          : battle.result === "Lost"
+                          ? "bg-gradient-to-br from-red-500/20 to-red-600/20 text-red-300 border-red-400/50"
+                          : "bg-gradient-to-br from-slate-700 to-slate-800 text-blue-200 border-slate-500/70"
                       }`}
                     >
                       {battle.result}

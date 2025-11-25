@@ -3,7 +3,8 @@
 import { useState } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { X, Check } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { X } from "lucide-react"
 
 interface QuizConfigModalProps {
   isOpen: boolean
@@ -20,6 +21,8 @@ export interface QuizConfig {
     open_ended: boolean
     true_false: boolean
   }
+  contentFocus: 'application' | 'concept' | 'both'
+  includeDiagrams: boolean
 }
 
 export function QuizConfigModal({ 
@@ -35,6 +38,8 @@ export function QuizConfigModal({
     open_ended: true,
     true_false: true
   })
+  const [contentFocus, setContentFocus] = useState<'application' | 'concept' | 'both'>('both')
+  const [includeDiagrams, setIncludeDiagrams] = useState(true)
 
   if (!isOpen) return null
 
@@ -54,18 +59,44 @@ export function QuizConfigModal({
 
     onStart({
       totalQuestions,
-      questionTypes
+      questionTypes,
+      contentFocus,
+      includeDiagrams
     })
   }
 
-  const isMix = questionTypes.multiple_choice && questionTypes.open_ended && questionTypes.true_false
-  const isAllMCQ = questionTypes.multiple_choice && !questionTypes.open_ended && !questionTypes.true_false
-  const isAllOpen = !questionTypes.multiple_choice && questionTypes.open_ended && !questionTypes.true_false
-  const isAllTrueFalse = !questionTypes.multiple_choice && !questionTypes.open_ended && questionTypes.true_false
+  // Get question type preset value
+  const getQuestionTypePreset = () => {
+    if (questionTypes.multiple_choice && questionTypes.open_ended && questionTypes.true_false) return 'mix'
+    if (questionTypes.multiple_choice && !questionTypes.open_ended && !questionTypes.true_false) return 'multiple_choice'
+    if (!questionTypes.multiple_choice && questionTypes.open_ended && !questionTypes.true_false) return 'open_ended'
+    if (!questionTypes.multiple_choice && !questionTypes.open_ended && questionTypes.true_false) return 'true_false'
+    return 'custom'
+  }
+
+  const handleQuestionTypeChange = (value: string) => {
+    switch (value) {
+      case 'multiple_choice':
+        setQuestionTypes({ multiple_choice: true, open_ended: false, true_false: false })
+        break
+      case 'open_ended':
+        setQuestionTypes({ multiple_choice: false, open_ended: true, true_false: false })
+        break
+      case 'true_false':
+        setQuestionTypes({ multiple_choice: false, open_ended: false, true_false: true })
+        break
+      case 'mix':
+        setQuestionTypes({ multiple_choice: true, open_ended: true, true_false: true })
+        break
+      default:
+        // Keep current for custom
+        break
+    }
+  }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-md bg-slate-700/50 border-4 border-slate-600/50 shadow-lg p-6">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <Card className="w-full max-w-md bg-slate-700 border-4 border-slate-600/50 shadow-lg p-6 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-black text-white">Quiz Configuration</h2>
           <Button 
@@ -102,105 +133,114 @@ export function QuizConfigModal({
 
           {/* Question Types */}
           <div>
-            <label className="text-base font-bold text-white mb-3 block">
+            <label className="text-base font-bold text-white mb-2 block">
               Question Types
             </label>
-            <div className="space-y-3">
-              {/* All Multiple Choice */}
-              <button
-                onClick={() => setQuestionTypes({ multiple_choice: true, open_ended: false, true_false: false })}
-                className={`w-full p-4 rounded-xl border-4 transition-all ${
-                  isAllMCQ
-                    ? "bg-blue-500/20 text-blue-300 border-blue-400/50"
-                    : "bg-slate-600/50 text-white/70 border-slate-500/50 hover:border-blue-400/30"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold">All Multiple Choice</span>
-                  {isAllMCQ && <Check className="h-5 w-5 text-blue-400" strokeWidth={3} />}
+            <Select value={getQuestionTypePreset()} onValueChange={handleQuestionTypeChange}>
+              <SelectTrigger className="w-full bg-slate-800 border-2 border-slate-600/50 text-white font-bold focus:border-blue-400">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-800 border-2 border-slate-600/50">
+                <SelectItem value="multiple_choice" className="text-white focus:bg-slate-700">
+                  All Multiple Choice
+                </SelectItem>
+                <SelectItem value="open_ended" className="text-white focus:bg-slate-700">
+                  All Open Answer
+                </SelectItem>
+                <SelectItem value="true_false" className="text-white focus:bg-slate-700">
+                  All True/False
+                </SelectItem>
+                <SelectItem value="mix" className="text-white focus:bg-slate-700">
+                  Mix of Everything
+                </SelectItem>
+                <SelectItem value="custom" className="text-white focus:bg-slate-700">
+                  Custom Selection
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            
+            {/* Custom Selection Checkboxes - Only show if custom is selected */}
+            {getQuestionTypePreset() === 'custom' && (
+              <div className="mt-3 p-3 rounded-lg bg-slate-600/30 border-2 border-slate-500/30">
+                <div className="space-y-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={questionTypes.multiple_choice}
+                      onChange={() => handleTypeToggle('multiple_choice')}
+                      className="w-4 h-4 accent-blue-500"
+                    />
+                    <span className="text-sm text-white font-bold">Multiple Choice</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={questionTypes.open_ended}
+                      onChange={() => handleTypeToggle('open_ended')}
+                      className="w-4 h-4 accent-blue-500"
+                    />
+                    <span className="text-sm text-white font-bold">Open Answer</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={questionTypes.true_false}
+                      onChange={() => handleTypeToggle('true_false')}
+                      className="w-4 h-4 accent-blue-500"
+                    />
+                    <span className="text-sm text-white font-bold">True/False</span>
+                  </label>
                 </div>
-              </button>
+              </div>
+            )}
+          </div>
 
-              {/* All Open Answer */}
-              <button
-                onClick={() => setQuestionTypes({ multiple_choice: false, open_ended: true, true_false: false })}
-                className={`w-full p-4 rounded-xl border-4 transition-all ${
-                  isAllOpen
-                    ? "bg-blue-500/20 text-blue-300 border-blue-400/50"
-                    : "bg-slate-600/50 text-white/70 border-slate-500/50 hover:border-blue-400/30"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold">All Open Answer</span>
-                  {isAllOpen && <Check className="h-5 w-5 text-blue-400" strokeWidth={3} />}
-                </div>
-              </button>
+          {/* Content Focus Selection */}
+          <div>
+            <label className="text-base font-bold text-white mb-2 block">
+              Content Focus
+            </label>
+            <Select value={contentFocus} onValueChange={(value: 'application' | 'concept' | 'both') => setContentFocus(value)}>
+              <SelectTrigger className="w-full bg-slate-800 border-2 border-slate-600/50 text-white font-bold focus:border-blue-400">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-slate-800 border-2 border-slate-600/50">
+                <SelectItem value="application" className="text-white focus:bg-slate-700">
+                  Application
+                </SelectItem>
+                <SelectItem value="concept" className="text-white focus:bg-slate-700">
+                  Concept
+                </SelectItem>
+                <SelectItem value="both" className="text-white focus:bg-slate-700">
+                  Both
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-white/60 font-bold mt-1">
+              {contentFocus === 'application' && 'Use cases, formulas, and problem-solving'}
+              {contentFocus === 'concept' && 'Definitions, explanations, and understanding'}
+              {contentFocus === 'both' && 'Mix of applications and concepts'}
+            </p>
+          </div>
 
-              {/* All True/False */}
-              <button
-                onClick={() => setQuestionTypes({ multiple_choice: false, open_ended: false, true_false: true })}
-                className={`w-full p-4 rounded-xl border-4 transition-all ${
-                  isAllTrueFalse
-                    ? "bg-blue-500/20 text-blue-300 border-blue-400/50"
-                    : "bg-slate-600/50 text-white/70 border-slate-500/50 hover:border-blue-400/30"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold">All True/False</span>
-                  {isAllTrueFalse && <Check className="h-5 w-5 text-blue-400" strokeWidth={3} />}
+          {/* Include Diagrams Toggle */}
+          <div>
+            <label className="text-base font-bold text-white mb-2 block">
+              Diagram Options
+            </label>
+            <div className="p-3 rounded-lg bg-slate-600/30 border-2 border-slate-500/30">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeDiagrams}
+                  onChange={(e) => setIncludeDiagrams(e.target.checked)}
+                  className="w-5 h-5 accent-blue-500 cursor-pointer"
+                />
+                <div>
+                  <span className="text-sm text-white font-bold block">Include Image-Generated Diagrams</span>
+                  <span className="text-xs text-white/60 font-bold">Generate diagrams for questions that need visual aids</span>
                 </div>
-              </button>
-
-              {/* Mix of Everything */}
-              <button
-                onClick={() => setQuestionTypes({ multiple_choice: true, open_ended: true, true_false: true })}
-                className={`w-full p-4 rounded-xl border-4 transition-all ${
-                  isMix
-                    ? "bg-blue-500/20 text-blue-300 border-blue-400/50"
-                    : "bg-slate-600/50 text-white/70 border-slate-500/50 hover:border-blue-400/30"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="font-bold">Mix of Everything</span>
-                  {isMix && <Check className="h-5 w-5 text-blue-400" strokeWidth={3} />}
-                </div>
-              </button>
-
-              {/* Custom Selection */}
-              {!isMix && !isAllMCQ && !isAllOpen && !isAllTrueFalse && (
-                <div className="p-4 rounded-xl bg-slate-600/30 border-2 border-slate-500/30">
-                  <p className="text-sm font-bold text-white/70 mb-2">Custom Selection:</p>
-                  <div className="space-y-2">
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={questionTypes.multiple_choice}
-                        onChange={() => handleTypeToggle('multiple_choice')}
-                        className="w-4 h-4 accent-blue-500"
-                      />
-                      <span className="text-sm text-white font-bold">Multiple Choice</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={questionTypes.open_ended}
-                        onChange={() => handleTypeToggle('open_ended')}
-                        className="w-4 h-4 accent-blue-500"
-                      />
-                      <span className="text-sm text-white font-bold">Open Answer</span>
-                    </label>
-                    <label className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={questionTypes.true_false}
-                        onChange={() => handleTypeToggle('true_false')}
-                        className="w-4 h-4 accent-blue-500"
-                      />
-                      <span className="text-sm text-white font-bold">True/False</span>
-                    </label>
-                  </div>
-                </div>
-              )}
+              </label>
             </div>
           </div>
 

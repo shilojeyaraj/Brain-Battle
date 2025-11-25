@@ -6,6 +6,7 @@ import { StudyNotes } from "@/lib/schemas/notes-schema"
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
+import { BrainBattleLoading } from "@/components/ui/brain-battle-loading"
 
 export default function StudyNotesPage() {
   const [notes, setNotes] = useState<StudyNotes | null>(null)
@@ -69,17 +70,7 @@ export default function StudyNotesPage() {
   }
 
   if (loading) {
-    return (
-      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 flex items-center justify-center">
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
-        </div>
-        <div className="relative z-10 text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-400 mx-auto mb-4"></div>
-          <p className="text-blue-100/70 font-bold">Loading study notes...</p>
-        </div>
-      </div>
-    )
+    return <BrainBattleLoading message="Loading your study notes..." />
   }
 
   if (!notes) {
@@ -90,10 +81,10 @@ export default function StudyNotesPage() {
         </div>
         <div className="relative z-10 max-w-2xl mx-auto text-center">
           <div className="mb-8">
-            <Link href="/singleplayer">
-              <Button variant="outline" className="border-2 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70 mb-4">
+            <Link href="/dashboard">
+              <Button className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black border-2 border-orange-400 shadow-lg mb-4">
                 <ArrowLeft className="h-4 w-4 mr-2" strokeWidth={3} />
-                Back to Setup
+                Back to Dashboard
               </Button>
             </Link>
           </div>
@@ -124,12 +115,12 @@ export default function StudyNotesPage() {
           style={{ animationDelay: "1s" }}
         />
       </div>
-      <div className="relative z-10 p-6">
+        <div className="relative z-10 p-6">
         <div className="mb-6">
-          <Link href="/singleplayer">
-            <Button variant="outline" className="border-2 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70">
+          <Link href="/dashboard">
+            <Button className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black border-2 border-orange-400 shadow-lg">
               <ArrowLeft className="h-4 w-4 mr-2" strokeWidth={3} />
-              Back to Setup
+              Back to Dashboard
             </Button>
           </Link>
         </div>

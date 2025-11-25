@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
-import { Sparkles, Mail, Lock, User, ArrowLeft, Loader2, AlertCircle, CheckCircle2, Brain } from "lucide-react"
+import { Sparkles, Mail, Lock, User, ArrowLeft, Loader2, AlertCircle, CheckCircle2, Brain, Eye, EyeOff } from "lucide-react"
 import Link from "next/link"
 import { signup } from "@/lib/actions/custom-auth"
 import { useEffect, useState, Suspense } from "react"
@@ -16,12 +16,22 @@ function SignupForm() {
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [showPassword, setShowPassword] = useState(false)
 
   useEffect(() => {
     const errorParam = searchParams.get('error')
     const messageParam = searchParams.get('message')
     if (errorParam) {
-      setError(decodeURIComponent(errorParam))
+      const decodedError = decodeURIComponent(errorParam)
+      // Filter out technical error messages
+      if (decodedError.includes('NEXT_REDIRECT') || 
+          decodedError.includes('digest') ||
+          decodedError.toLowerCase().includes('redirect')) {
+        // Don't show redirect-related errors to users
+        setError(null)
+      } else {
+        setError(decodedError)
+      }
       setSuccessMessage(null)
     } else if (messageParam) {
       setSuccessMessage(decodeURIComponent(messageParam))
@@ -33,67 +43,84 @@ function SignupForm() {
     e.preventDefault()
     setError(null)
     setSuccessMessage(null)
-    setIsPending(true)
+    
+    const formData = new FormData(e.currentTarget)
+    const username = formData.get("username") as string
+    const email = formData.get("email") as string
+    const password = formData.get("password") as string
+    const confirmPassword = formData.get("confirmPassword") as string
 
-    try {
-      const formData = new FormData(e.currentTarget)
-      const username = formData.get("username") as string
-      const email = formData.get("email") as string
-      const password = formData.get("password") as string
-      const confirmPassword = formData.get("confirmPassword") as string
-
-      // Basic validation
-      if (!username || !email || !password || !confirmPassword) {
-        setError("All fields are required")
-        setIsPending(false)
-        return
-      }
-
-      if (password !== confirmPassword) {
-        setError("Passwords do not match")
-        setIsPending(false)
-        return
-      }
-
-      if (password.length < 6) {
-        setError("Password must be at least 6 characters")
-        setIsPending(false)
-        return
-      }
-
-      if (username.length < 3) {
-        setError("Username must be at least 3 characters")
-        setIsPending(false)
-        return
-      }
-
-      // Basic email validation
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      if (!emailRegex.test(email)) {
-        setError("Please enter a valid email address")
-        setIsPending(false)
-        return
-      }
-
-      // Sign up using server action (handles session cookie and redirect)
-      const formDataObj = new FormData()
-      formDataObj.append('username', username)
-      formDataObj.append('email', email.trim().toLowerCase())
-      formDataObj.append('password', password)
-      formDataObj.append('confirmPassword', confirmPassword)
-
-      // Call server action - it will handle redirect to pricing page
-      await signup(formDataObj)
-      
-      // If we reach here, the redirect didn't happen (shouldn't normally occur)
-      setSuccessMessage("Account created successfully! Redirecting...")
-      setTimeout(() => {
-        router.push('/pricing?newUser=true')
-      }, 1500)
-    } catch (err: any) {
-      setError(err.message || 'Sign up failed')
-      setIsPending(false)
+    // Basic validation
+    if (!username || !email || !password || !confirmPassword) {
+      setError("All fields are required")
+      return
     }
+
+    if (password !== confirmPassword) {
+      setError("Passwords do not match")
+      return
+    }
+
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters")
+      return
+    }
+
+    if (username.length < 3) {
+      setError("Username must be at least 3 characters")
+      return
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      setError("Please enter a valid email address")
+      return
+    }
+
+    // Set loading state immediately
+    setIsPending(true)
+    
+    // Use setTimeout to ensure React renders the loading state before async operation
+    setTimeout(async () => {
+      try {
+        // Sign up using server action (handles session cookie and redirect)
+        const formDataObj = new FormData()
+        formDataObj.append('username', username)
+        formDataObj.append('email', email.trim().toLowerCase())
+        formDataObj.append('password', password)
+        formDataObj.append('confirmPassword', confirmPassword)
+
+        // Call server action - it will handle redirect to pricing page
+        await signup(formDataObj)
+        
+        // If we reach here, the redirect didn't happen (shouldn't normally occur)
+        setSuccessMessage("Account created successfully! Redirecting...")
+        setTimeout(() => {
+          router.push('/pricing?newUser=true')
+        }, 1500)
+      } catch (err: any) {
+        // Ignore Next.js redirect errors (they're expected behavior)
+        if (err?.digest?.startsWith('NEXT_REDIRECT')) {
+          // Redirect is happening, don't show error
+          return
+        }
+        
+        // Only show user-friendly error messages
+        const errorMessage = err?.message || 'Sign up failed'
+        
+        // Filter out technical error messages
+        if (errorMessage.includes('NEXT_REDIRECT') || 
+            errorMessage.includes('digest') ||
+            errorMessage.toLowerCase().includes('redirect')) {
+          // Don't show redirect-related errors to users
+          return
+        }
+        
+        setError(errorMessage)
+        setIsPending(false)
+      }
+    }, 0)
   }
 
   return (
@@ -158,11 +185,19 @@ function SignupForm() {
                 <Input
                   id="password"
                   name="password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   placeholder="Create a password"
-                  className="pl-10 h-12 text-lg font-bold border-2 border-slate-600/50 bg-slate-900/50 text-white placeholder:text-blue-100/50 focus:border-blue-400"
+                  className="pl-10 pr-12 h-12 text-lg font-bold border-2 border-slate-600/50 bg-slate-900/50 text-white placeholder:text-blue-100/50 focus:border-blue-400"
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-300/70 hover:text-blue-100 transition-colors"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
               </div>
             </div>
 
@@ -175,11 +210,19 @@ function SignupForm() {
                 <Input
                   id="confirmPassword"
                   name="confirmPassword"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   placeholder="Confirm your password"
-                  className="pl-10 h-12 text-lg font-bold border-2 border-slate-600/50 bg-slate-900/50 text-white placeholder:text-blue-100/50 focus:border-blue-400"
+                  className="pl-10 pr-12 h-12 text-lg font-bold border-2 border-slate-600/50 bg-slate-900/50 text-white placeholder:text-blue-100/50 focus:border-blue-400"
                   required
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-300/70 hover:text-blue-100 transition-colors"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
               </div>
             </div>
 

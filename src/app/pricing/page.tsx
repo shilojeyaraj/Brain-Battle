@@ -118,7 +118,7 @@ export default function PricingPage() {
           )}
 
         {/* Pricing Cards */}
-        <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto mb-12">
+        <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto mb-12" style={{ gridAutoRows: '1fr' }}>
           {/* Free Plan */}
           <PricingCard
             name="Free"
@@ -128,12 +128,13 @@ export default function PricingPage() {
             features={[
               '3 documents per month',
               'Basic AI study notes',
-              '8 quiz questions per session',
+              '10 quiz questions per session',
               'Basic multiplayer rooms (up to 4 players)',
               'Standard XP system',
               'Basic analytics',
             ]}
-            currentPlan={!isPro}
+            currentPlan={!isPro && !isNewUser}
+            isNewUser={isNewUser}
           />
 
           {/* Pro Plan - Monthly */}
@@ -178,19 +179,6 @@ export default function PricingPage() {
           </div>
         )}
 
-          {/* New User CTA - Continue with Free */}
-          {isNewUser && (
-            <div className="mt-12 text-center">
-              <p className="text-slate-400 mb-4">Not ready to upgrade yet?</p>
-              <Link
-                href="/dashboard"
-                className="inline-flex items-center gap-2 bg-slate-800/80 hover:bg-slate-700/80 text-slate-200 font-semibold px-6 py-3 rounded-lg transition-all border-2 border-slate-600/50 hover:border-slate-500/70"
-              >
-                Continue with Free Plan
-                <ArrowRight className="w-4 h-4" />
-              </Link>
-            </div>
-          )}
 
           {/* FAQ Section */}
           <div className="mt-16 max-w-3xl mx-auto">

@@ -1,0 +1,38 @@
+"use client"
+
+import Link from 'next/link'
+import { Button } from '@/components/ui/button'
+import { Home, ArrowLeft } from 'lucide-react'
+
+export default function NotFound() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 flex items-center justify-center p-6">
+      <div className="text-center max-w-md">
+        <h1 className="text-6xl font-black bg-gradient-to-r from-blue-300 to-orange-400 bg-clip-text text-transparent mb-4">
+          404
+        </h1>
+        <h2 className="text-2xl font-black text-white mb-4">Page Not Found</h2>
+        <p className="text-blue-100/70 font-bold mb-8">
+          The page you're looking for doesn't exist or has been moved.
+        </p>
+        <div className="flex gap-4 justify-center">
+          <Link href="/">
+            <Button className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-black border-2 border-blue-400">
+              <Home className="h-4 w-4 mr-2" strokeWidth={3} />
+              Go Home
+            </Button>
+          </Link>
+          <Button
+            onClick={() => window.history.back()}
+            variant="outline"
+            className="font-black border-2 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70"
+          >
+            <ArrowLeft className="h-4 w-4 mr-2" strokeWidth={3} />
+            Go Back
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+

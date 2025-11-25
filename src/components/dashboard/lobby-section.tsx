@@ -7,10 +7,9 @@ import { Badge } from "@/components/ui/badge"
 import { Plus, Search, Users, Lock, Globe, LogIn, Zap } from "lucide-react"
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter, usePathname } from "next/navigation"
 import { motion } from "framer-motion"
 import { useFeedback } from "@/hooks/useFeedback"
-import { QuizConfigModal, QuizConfig } from "@/components/quiz/quiz-config-modal"
 
 const activeLobbies: any[] = [
   // Empty array - no active lobbies yet
@@ -21,32 +20,22 @@ export function LobbySection() {
   const [searchQuery, setSearchQuery] = useState("")
   const [mounted, setMounted] = useState(false)
   const [loadingButton, setLoadingButton] = useState<string | null>(null)
-  const [showQuizConfig, setShowQuizConfig] = useState(false)
-  const [subscriptionLimits, setSubscriptionLimits] = useState<any>(null)
   const router = useRouter()
+  const pathname = usePathname()
   const { playClick, burstConfetti } = useFeedback()
+  
+  // Clear loading state when pathname changes (navigation completed)
+  useEffect(() => {
+    if (loadingButton) {
+      // Navigation has completed, clear loading state
+      setLoadingButton(null)
+    }
+  }, [pathname])
 
   useEffect(() => {
     setMounted(true)
   }, [])
 
-  // Fetch subscription limits for quiz config
-  useEffect(() => {
-    const fetchLimits = async () => {
-      try {
-        const response = await fetch('/api/subscription/limits')
-        if (response.ok) {
-          const data = await response.json()
-          if (data.success) {
-            setSubscriptionLimits(data)
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching subscription limits:', error)
-      }
-    }
-    fetchLimits()
-  }, [])
 
   // Fire a single confetti burst on lobby load (respects Reduced Motion)
   useEffect(() => {
@@ -65,48 +54,46 @@ export function LobbySection() {
     }
   }, [mounted, burstConfetti])
 
-  const handleCreateLobby = () => {
+  const handleCreateLobby = async () => {
     playClick()
     // Set loading immediately for visual feedback
     setLoadingButton('create')
     try {
-      router.push("/create-room")
-      // Keep loading state until navigation completes (Next.js handles this)
-      // Don't clear immediately - let the navigation happen
+      // router.push returns a promise in App Router
+      await router.push("/create-room")
+      // Loading state will persist until component unmounts (page navigation completes)
+      // Don't clear manually - let it persist during navigation
     } catch (error) {
       console.error("Navigation error:", error)
       setLoadingButton(null)
     }
   }
 
-  const handleJoinLobby = () => {
+  const handleJoinLobby = async () => {
     playClick()
     // Set loading immediately for visual feedback
     setLoadingButton('join')
     try {
-      router.push("/join-room")
-      // Keep loading state until navigation completes
+      // router.push returns a promise in App Router
+      await router.push("/join-room")
+      // Loading state will persist until component unmounts (page navigation completes)
+      // Don't clear manually - let it persist during navigation
     } catch (error) {
       console.error("Navigation error:", error)
       setLoadingButton(null)
     }
   }
 
-  const handleStartSingleplayer = () => {
+  const handleStartSingleplayer = async () => {
     playClick()
-    setShowQuizConfig(true)
-  }
-
-  const handleStartBattle = async (config: QuizConfig) => {
-    setShowQuizConfig(false)
     // Set loading immediately for visual feedback
     setLoadingButton('singleplayer')
     
     try {
-      // Store config in sessionStorage to pass to singleplayer page
-      sessionStorage.setItem('quizConfig', JSON.stringify(config))
-      router.push("/singleplayer")
-      // Keep loading state until navigation completes
+      // router.push returns a promise in App Router
+      await router.push("/singleplayer")
+      // Loading state will persist until component unmounts (page navigation completes)
+      // Don't clear manually - let it persist during navigation
     } catch (error) {
       console.error("Navigation error:", error)
       setLoadingButton(null)

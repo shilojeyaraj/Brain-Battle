@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Brain, Users, ArrowLeft, Crown } from 'lucide-react'
 import Link from 'next/link'
-import { getCurrentUserId } from '@/lib/auth/session'
 import { useSubscription } from '@/hooks/use-subscription'
 import { UpgradePrompt } from '@/components/subscription/upgrade-prompt'
 import { Button } from '@/components/ui/button'
@@ -24,12 +23,22 @@ export default function CreateRoomPage() {
 
   useEffect(() => {
     const fetchUserId = async () => {
-      const currentUserId = await getCurrentUserId()
-      if (!currentUserId) {
+      try {
+        // Fetch userId from API endpoint that uses secure session cookies
+        const response = await fetch('/api/user/current')
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success && data.userId) {
+            setUserId(data.userId)
+            return
+          }
+        }
+        // No valid session found
         router.push('/login')
-        return
+      } catch (error) {
+        console.error('Error checking user session:', error)
+        router.push('/login')
       }
-      setUserId(currentUserId)
     }
     fetchUserId()
   }, [router])

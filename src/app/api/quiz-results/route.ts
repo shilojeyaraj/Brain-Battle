@@ -460,18 +460,26 @@ export async function GET(request: NextRequest) {
     }
 
     // Transform the data to match the expected format
-    const recentBattles = gameResults.map((result: any) => ({
-      id: result.id,
-      name: result.quiz_sessions.session_name,
-      subject: result.quiz_sessions.session_name.replace('Singleplayer: ', ''),
-      result: result.correct_answers >= result.questions_answered * 0.6 ? "Won" : "Lost",
-      score: `${result.correct_answers}/${result.questions_answered}`,
-      duration: `${Math.round(result.total_time)}s`,
-      players: "1", // Singleplayer
-      date: new Date(result.completed_at).toLocaleDateString(),
-      xpEarned: result.xp_earned,
-      percentage: Math.round((result.correct_answers / result.questions_answered) * 100)
-    }))
+    const recentBattles = gameResults.map((result: any) => {
+      const baseName = result.quiz_sessions.session_name
+      const isSingleplayer = true // This endpoint is used for singleplayer summaries
+      return {
+        id: result.id,
+        name: baseName,
+        subject: baseName.replace('Singleplayer: ', ''),
+        result: isSingleplayer
+          ? "Practice"
+          : result.correct_answers >= result.questions_answered * 0.6
+          ? "Won"
+          : "Lost",
+        score: `${result.correct_answers}/${result.questions_answered}`,
+        duration: `${Math.round(result.total_time)}s`,
+        players: "1", // Singleplayer
+        date: new Date(result.completed_at).toLocaleDateString(),
+        xpEarned: result.xp_earned,
+        percentage: Math.round((result.correct_answers / result.questions_answered) * 100)
+      }
+    })
 
     console.log("✅ [QUIZ RESULTS] Fetched recent battles:", recentBattles.length)
 

@@ -50,6 +50,28 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
         KEEP_CONTENT: true, // Keep text content
       })
 
+      // Fix common subscript issues: protect variable names with underscores
+      // Pattern: variable name followed by underscore and a descriptive word (e.g., e_lateral, e_longitudinal)
+      // These should be treated as variable names, not subscripts
+      // Common patterns: e_lateral, e_longitudinal, stress_longitudinal, strain_lateral, etc.
+      const longWordPatterns = ['lateral', 'longitudinal', 'tensile', 'compressive', 'shear', 'normal', 'tangential', 'radial', 'axial', 'transverse']
+      
+      // Replace underscores in variable names with a space or use \text{} for proper rendering
+      // For words longer than 2 characters that are descriptive (not mathematical subscripts)
+      cleanFormula = cleanFormula.replace(/([a-zA-Z])_([a-z]{4,})/g, (match, letter, word) => {
+        // Check if it's a known descriptive word (like "lateral", "longitudinal")
+        if (longWordPatterns.some(pattern => word.toLowerCase().includes(pattern))) {
+          // Use \text{} to render as regular text, not subscript
+          return `${letter}_{\\text{${word}}}`
+        }
+        // For other long words, also treat as text in subscript
+        return `${letter}_{\\text{${word}}}`
+      })
+      
+      // Keep short subscripts as-is (e_0, x_1, D_i, etc.) - these are actual mathematical subscripts
+      // Pattern: letter_short (where short is 1-3 chars, numbers, or Greek letters)
+      // This is already handled correctly by KaTeX
+
       // Check if formula is empty after cleaning
       if (!cleanFormula || cleanFormula.length === 0) {
         if (process.env.NODE_ENV === 'development') {

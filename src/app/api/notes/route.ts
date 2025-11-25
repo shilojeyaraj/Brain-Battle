@@ -3,8 +3,10 @@ import OpenAI from "openai"
 import { notesSchema } from "@/lib/schemas/notes-schema"
 import { createClient } from "@/lib/supabase/server"
 import { extractImagesFromPDF as extractPDFImages } from "@/lib/pdf-image-extractor"
+import { smartExtractDiagrams } from "@/lib/pdf-smart-extractor"
 import { DiagramAnalyzerAgent } from "@/lib/agents/diagram-analyzer-agent"
 import { validateAndFilterVideos } from "@/lib/utils/youtube-validator"
+import { searchYouTubeVideosForTopic } from "@/lib/web/tavily-client"
 import { notesGenerationSchema, validateFile } from "@/lib/validation/schemas"
 import { sanitizeError, createSafeErrorResponse } from "@/lib/utils/error-sanitizer"
 
@@ -77,11 +79,11 @@ export async function POST(req: NextRequest) {
           )
         }
 
-        // Additional security: Check file size (10MB limit)
-        const maxSize = 10 * 1024 * 1024 // 10MB
+        // Additional security: Check file size (5MB limit - optimized for cost control)
+        const maxSize = 5 * 1024 * 1024 // 5MB
         if (file.size > maxSize) {
           return NextResponse.json(
-            { error: `File ${file.name} exceeds maximum size of 10MB` },
+            { error: `File ${file.name} exceeds maximum size of 5MB. For larger files, consider splitting them or upgrading to Pro.` },
             { status: 400 }
           )
         }
@@ -406,18 +408,69 @@ HARD REQUIREMENTS (NO EXCEPTIONS):
    - Infer difficulty from vocabulary and depth in the document (explain why, with page refs)
    - List prerequisite topics only if they are mentioned or clearly implied (with page refs)
    - Base complexity_analysis on actual document content, not assumptions
+   - Use the inferred education_level to adjust HOW you explain (language, depth, notation),
+     not WHAT facts you include. All facts must still come directly from the document.
 
 8. SCHEMA COMPLIANCE:
    - Output MUST be valid JSON that matches the provided notesSchema exactly (no extra keys, no missing required keys)
    - If information is not present in the document, omit it or mark as null—do not invent
    - All arrays must contain actual content from documents, not placeholder items
 
-9. QUESTION & QUIZ GENERATION:
+9. QUESTION & QUIZ GENERATION (ALL SUBJECTS):
    - Create varied items that reference exact examples/figures from the documents
    - Recall questions: terms/definitions exactly as written (with page refs)
    - Procedure/Trace questions: use the exact examples from slides/documents (with page refs)
    - Application questions: use the same algorithmic steps or examples as shown in documents
    - For each question: include answer, explanation, and page references used
+   
+   **Topic-local rules (any subject):**
+   - Each practice_question must primarily test ONE clearly identifiable concept or topic.
+   - Questions must be tightly tied to the specific slide/section where that concept appears.
+   - In a section about concept A, do NOT ask about concept B or C unless the original document
+     is explicitly comparing them in that section.
+   - Comparison sections (e.g., time/space complexity tables, summary/comparison slides) may
+     mention multiple concepts, but MUST NOT repeat full algorithm/definition blocks that already
+     appeared elsewhere. Focus on differences, trade-offs, and relationships instead.
+   - Do NOT create the same "global" question in every section (e.g., "What is the time complexity
+     of Bubble Sort?")—that question should appear only in the most relevant section.
+   
+   **De-duplication guidance (CRITICAL):**
+   - Within a section, questions must be semantically distinct (no trivial rephrasings).
+   - Across sections, avoid copying the same question text or idea; if a similar question is
+     needed, adapt it so it is clearly section-specific (e.g., reference that section's example
+     array, diagram, or formula).
+   - Before finalizing, scan all practice_questions and mentally normalize them; if several
+     questions are effectively the same (same answer/explanation), keep only the most precise
+     and section-appropriate version.
+   - REJECT and regenerate if you notice "the same three questions" being reused under multiple
+     different topics or sections.
+   
+   **Formulas and numeric examples:**
+   - When you list a formula (in the formulas array or in explanations), always tie it to how
+     the document actually uses it: if the document shows a worked example, reproduce the
+     calculation and show how the numbers plug into the formula.
+   - Do NOT invent new numeric examples that are not clearly implied by the document; prefer the
+     exact input sizes, values, or datasets shown in the slides/notes.
+   
+   **Diagrams and visuals:**
+   - When relevant diagrams exist for a concept (based on page numbers), questions and bullets
+     should explicitly refer to what those diagrams show (e.g., trace of an algorithm, graph
+     shape, physical setup), not just list the diagram title.
+
+   **Algorithm & pseudocode specific guidance (e.g., sorting algorithms):**
+   - When the document shows pseudocode or numbered algorithm steps, include that pseudocode in
+     the concepts and/or outline, and base at least some practice_questions on those exact steps.
+   - For trace/step-by-step slides, create questions that walk through the SAME example arrays or
+     inputs shown in the document (with page refs), not invented ones.
+   - If the document distinguishes between build-heap, heapify, or similar sub-steps, represent
+     those as separate bullets/concepts and, if appropriate, separate questions.
+
+   **Page reference discipline:**
+   - Page/slide references must match where the concept actually appears in the document text.
+   - Do NOT reuse the same page numbers for unrelated topics (e.g., do not say Heap Sort is on
+     the same page numbers as Bubble Sort if that is not true in the document).
+   - If you are not confident about the exact page number for a fact, omit the page number rather
+     than guessing.
 
 VALIDATION & SELF-CHECK (Before returning output - CRITICAL):
 Reject and regenerate if any of these fail:
@@ -814,6 +867,26 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
       console.log(`  - Formulas: ${notesData.formulas?.length || 0}`)
       console.log(`  - Quiz questions: ${notesData.practice_questions?.length || 0}`)
       
+      // Post-processing: de-duplicate practice questions by question text (case-insensitive)
+      if (Array.isArray(notesData.practice_questions)) {
+        const seenQuestions = new Map<string, any>()
+        for (const q of notesData.practice_questions as any[]) {
+          const key = (q?.question || "").toString().trim().toLowerCase()
+          if (!key) continue
+          if (!seenQuestions.has(key)) {
+            seenQuestions.set(key, q)
+          }
+        }
+        const originalCount = notesData.practice_questions.length
+        const deduped = Array.from(seenQuestions.values())
+        if (deduped.length !== originalCount) {
+          console.warn(
+            `  ⚠️ [NOTES API] De-duplicated practice_questions: ${originalCount} → ${deduped.length}`
+          )
+        }
+        notesData.practice_questions = deduped
+      }
+      
       // Post-processing validation: Check for missing content and generic content
       if (process.env.NODE_ENV === 'development') {
         const formulaCount = notesData.formulas?.length || 0
@@ -999,30 +1072,61 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
     console.log(`✅ [NOTES API] Diagram enrichment completed`)
     console.log(`  📊 [NOTES API] Final diagram count: ${enrichedNotes.diagrams.length}`)
 
-    // 6) Validate and filter YouTube videos
-    console.log(`\n🎥 [NOTES API] Validating YouTube video URLs...`)
-    if (enrichedNotes.resources?.videos && Array.isArray(enrichedNotes.resources.videos)) {
-      const originalVideoCount = enrichedNotes.resources.videos.length
-      console.log(`  📹 [NOTES API] Found ${originalVideoCount} video(s) to validate`)
+    // 6) Enrich with YouTube videos using Tavily, then validate URLs
+    console.log(`\n🎥 [NOTES API] Enriching and validating YouTube video resources...`)
+    try {
+      const topicForVideos = notesData.title || studyTopic || fileNames.join(", ")
+      const educationHint = (notesData.education_level || "") as string
       
-      const validatedVideos = await validateAndFilterVideos(enrichedNotes.resources.videos)
-      const removedCount = originalVideoCount - validatedVideos.length
-      
-      if (removedCount > 0) {
-        console.log(`  ⚠️ [NOTES API] Removed ${removedCount} invalid or inaccessible video(s)`)
+      // 6a) Use Tavily to fetch additional YouTube videos for this topic
+      const newVideos = await searchYouTubeVideosForTopic(topicForVideos, educationHint)
+      if (newVideos.length > 0) {
+        console.log(`  📹 [NOTES API] Tavily suggested ${newVideos.length} YouTube video(s) for topic: "${topicForVideos}"`)
       } else {
-        console.log(`  ✅ [NOTES API] All ${validatedVideos.length} video(s) are valid`)
+        console.log(`  ℹ️ [NOTES API] No additional YouTube videos returned from Tavily for topic: "${topicForVideos}"`)
       }
-      
-      enrichedNotes = {
-        ...enrichedNotes,
-        resources: {
-          ...enrichedNotes.resources,
-          videos: validatedVideos
+
+      const existingVideos = Array.isArray(enrichedNotes.resources?.videos)
+        ? enrichedNotes.resources.videos
+        : []
+
+      // Merge existing and new videos, preferring existing entries for duplicate URLs
+      const mergedByUrl = new Map<string, any>()
+      for (const v of existingVideos) {
+        if (v?.url) mergedByUrl.set(v.url, v)
+      }
+      for (const v of newVideos) {
+        if (v?.url && !mergedByUrl.has(v.url)) {
+          mergedByUrl.set(v.url, v)
         }
       }
-    } else {
-      console.log(`  ℹ️ [NOTES API] No videos to validate`)
+
+      const mergedVideos = Array.from(mergedByUrl.values())
+      console.log(`  📹 [NOTES API] Total videos before validation: ${mergedVideos.length}`)
+
+      // 6b) Validate and filter YouTube URLs
+      if (mergedVideos.length > 0) {
+        const validatedVideos = await validateAndFilterVideos(mergedVideos)
+        const removedCount = mergedVideos.length - validatedVideos.length
+
+        if (removedCount > 0) {
+          console.log(`  ⚠️ [NOTES API] Removed ${removedCount} invalid or inaccessible video(s) after validation`)
+        } else {
+          console.log(`  ✅ [NOTES API] All ${validatedVideos.length} video(s) are valid`)
+        }
+
+        enrichedNotes = {
+          ...enrichedNotes,
+          resources: {
+            ...enrichedNotes.resources,
+            videos: validatedVideos,
+          },
+        }
+      } else {
+        console.log(`  ℹ️ [NOTES API] No videos to validate after merging`)
+      }
+    } catch (videoError) {
+      console.error(`  ❌ [NOTES API] Error enriching or validating YouTube videos:`, videoError)
     }
 
     // 5) Generate and store embeddings for semantic search
@@ -1100,11 +1204,32 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
 
 // Helper function to extract images from PDF
 async function extractImagesFromPDF(buffer: Buffer, filename: string): Promise<{ image_data_b64: string; page: number; width?: number; height?: number }[]> {
-  // Skip diagram extraction for free version - too expensive and hard to perfect
-  if (process.env.NODE_ENV === 'development') {
-    console.log(`ℹ️ [NOTES API] Skipping PDF image extraction (disabled for free tier)`)
+  try {
+    // Use the smart extractor to get individual diagrams
+    const diagrams = await smartExtractDiagrams(buffer, filename, {
+      minDiagramSize: 10000, // 100x100 pixels minimum
+      maxDiagramsPerPage: 5, // Limit to prevent too many diagrams
+    })
+    
+    // Convert to expected format
+    return diagrams.map(diagram => ({
+      image_data_b64: diagram.image_data_b64,
+      page: diagram.page,
+      width: diagram.width,
+      height: diagram.height,
+      x: diagram.x,
+      y: diagram.y
+    }))
+  } catch (error) {
+    // Fallback to original extractor if smart extractor fails
+    if (process.env.NODE_ENV === 'development') {
+      console.warn(`⚠️ [NOTES API] Smart extraction failed, falling back to full page extraction:`, error)
+    }
+    
+    // Use the original extractor as fallback
+    const { extractImagesFromPDF: extractFullPages } = await import('@/lib/pdf-image-extractor')
+    return extractFullPages(buffer, filename)
   }
-  return []
 }
 
 // Helper function to enrich notes with web images

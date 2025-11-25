@@ -12,7 +12,6 @@ import { UserProfileModal } from "@/components/ui/user-profile-modal"
 import { getCurrentUserId, setUserSession } from "@/lib/auth/session"
 import Link from "next/link"
 import { SettingsModal } from "@/components/ui/settings-modal"
-import Image from "next/image"
 
 interface DashboardHeaderContentProps {
   onToggleStats?: () => void
@@ -117,13 +116,6 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
-              <Image 
-                src="/brain-battle-logo.png" 
-                alt="Brain Battle Logo" 
-                width={56} 
-                height={56} 
-                className="w-14 h-14 object-contain"
-              />
               <h1
                 className="text-4xl font-black tracking-tight bg-gradient-to-r from-blue-300 to-orange-400 bg-clip-text text-transparent"
                 style={{ fontFamily: "var(--font-display)" }}
@@ -159,18 +151,9 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
                 <Avatar className="h-12 w-12 cartoon-border cartoon-shadow cursor-pointer hover:shadow-lg transition-shadow">
                   <AvatarImage src={userProfile?.avatar_url || "/placeholder.svg?height=48&width=48"} />
                   <AvatarFallback className="bg-primary text-primary-foreground font-black text-lg">
-                    {userProfile?.username ? (
-                      userProfile.username.substring(0, 2).toUpperCase()
-                    ) : (
-                      <User className="h-6 w-6" strokeWidth={3} />
-                    )}
+                    <User className="h-6 w-6" strokeWidth={3} />
                   </AvatarFallback>
                 </Avatar>
-                {userProfile?.username && (
-                  <span className="hidden md:block text-sm font-black text-foreground">
-                    {userProfile.username}
-                  </span>
-                )}
                 {isLoading && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-full">
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -179,6 +162,11 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
               </button>
               {isMenuOpen && (
                 <div className="absolute right-0 mt-2 w-56 bg-card cartoon-border rounded-xl cartoon-shadow p-1 z-50">
+                  {userProfile?.username && (
+                    <div className="px-3 py-2 border-b border-border mb-1">
+                      <span className="font-black text-foreground text-sm">{userProfile.username}</span>
+                    </div>
+                  )}
                   <Link
                     href="/pro"
                     className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted rounded-lg text-left"
@@ -252,13 +240,6 @@ export function DashboardHeader({ onToggleStats, showStats }: DashboardHeaderPro
         <div className="container mx-auto px-4 py-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Image 
-                src="/brain-battle-logo.png" 
-                alt="Brain Battle Logo" 
-                width={48} 
-                height={48} 
-                className="w-12 h-12 object-contain"
-              />
               <div>
                 <h1 className="text-2xl font-black text-foreground">Brain Battle</h1>
                 <p className="text-sm text-muted-foreground font-bold">Loading...</p>

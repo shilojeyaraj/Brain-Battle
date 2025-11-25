@@ -26,6 +26,9 @@ export const metadata: Metadata = {
   description:
     "Upload your study materials, generate personalized questions with AI, and compete with friends in real-time battles.",
   generator: "v0.app",
+  other: {
+    "preload-image": "/brain-battle-logo.png",
+  },
 };
 
 export default function RootLayout({

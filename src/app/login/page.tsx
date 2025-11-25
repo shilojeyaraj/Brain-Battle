@@ -3,19 +3,19 @@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
-import { Sparkles, Mail, Lock, ArrowLeft, AlertCircle, Loader2, Brain } from "lucide-react"
+import { Sparkles, Mail, Lock, ArrowLeft, AlertCircle, Loader2, Brain, Eye, EyeOff } from "lucide-react"
 import Link from "next/link"
 import { useSearchParams, useRouter } from "next/navigation"
 import { useEffect, useState, Suspense } from "react"
 import { authenticateUser } from "@/lib/actions/custom-auth"
 import { motion } from "framer-motion"
-import Image from "next/image"
 
 function LoginForm() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [isPending, setIsPending] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
 
   useEffect(() => {
     const errorParam = searchParams.get('error')
@@ -90,13 +90,6 @@ function LoginForm() {
           </Link>
           
           <div className="flex items-center justify-center gap-3 mb-4">
-            <Image 
-              src="/brain-battle-logo.png" 
-              alt="Brain Battle Logo" 
-              width={48} 
-              height={48} 
-              className="w-12 h-12 object-contain"
-            />
             <span className="text-3xl font-black bg-gradient-to-r from-blue-300 to-orange-400 bg-clip-text text-transparent">
               BRAIN BATTLE
             </span>
@@ -152,12 +145,20 @@ function LoginForm() {
                   <Input
                     id="password"
                     name="password"
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     placeholder="Enter your password"
-                    className="pl-10 h-12 text-lg font-bold border-2 border-slate-600/50 bg-slate-900/50 text-white placeholder:text-blue-100/50 focus:border-blue-400"
+                    className="pl-10 pr-12 h-12 text-lg font-bold border-2 border-slate-600/50 bg-slate-900/50 text-white placeholder:text-blue-100/50 focus:border-blue-400"
                     required
                     onChange={clearError}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-blue-300/70 hover:text-blue-100 transition-colors"
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                  >
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                  </button>
                 </div>
               </div>
 

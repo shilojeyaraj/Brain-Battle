@@ -108,19 +108,29 @@ export async function GET(request: NextRequest) {
     console.log('✅ [USER STATS] Stats fetched successfully')
 
     // Transform recent games to match expected format
-    const formattedRecentGames = (recentGames || []).map((game: any) => ({
-      id: game.id,
-      session_id: game.session_id || game.quiz_sessions?.id,
-      name: game.quiz_sessions?.session_name || 'Unknown Battle',
-      subject: game.quiz_sessions?.session_name?.replace('Singleplayer: ', '') || 'Unknown',
-      result: game.correct_answers >= game.questions_answered * 0.6 ? "Won" : "Lost",
-      score: `${game.correct_answers}/${game.questions_answered}`,
-      duration: `${Math.round(game.total_time || 0)}s`,
-      players: game.quiz_sessions?.room_id ? "Multiplayer" : "1",
-      date: new Date(game.completed_at).toLocaleDateString(),
-      xpEarned: game.xp_earned || 0,
-      percentage: Math.round((game.correct_answers / game.questions_answered) * 100)
-    }))
+    const formattedRecentGames = (recentGames || []).map((game: any) => {
+      const isSingleplayer = !game.quiz_sessions?.room_id
+      const baseName = game.quiz_sessions?.session_name || 'Unknown Battle'
+      return {
+        id: game.id,
+        session_id: game.session_id || game.quiz_sessions?.id,
+        name: baseName,
+        subject: isSingleplayer
+          ? baseName.replace('Singleplayer: ', '')
+          : baseName,
+        result: isSingleplayer
+          ? "Practice"
+          : game.correct_answers >= game.questions_answered * 0.6
+          ? "Won"
+          : "Lost",
+        score: `${game.correct_answers}/${game.questions_answered}`,
+        duration: `${Math.round(game.total_time || 0)}s`,
+        players: isSingleplayer ? "1" : "Multiplayer",
+        date: new Date(game.completed_at).toLocaleDateString(),
+        xpEarned: game.xp_earned || 0,
+        percentage: Math.round((game.correct_answers / game.questions_answered) * 100)
+      }
+    })
 
     // 🚀 OPTIMIZATION: Return data directly (already filtered by select())
     return NextResponse.json({

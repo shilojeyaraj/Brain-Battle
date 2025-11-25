@@ -813,7 +813,28 @@
   resolved "https://registry.npmjs.org/@napi-rs/canvas-win32-x64-msvc/-/canvas-win32-x64-msvc-0.1.80.tgz"
   integrity sha512-Z8jPsM6df5V8B1HrCHB05+bDiCxjE9QA//3YrkKIdVDEwn5RKaqOxCJDRJkl48cJbylcrJbW4HxZbTte8juuPg==
 
-"@napi-rs/canvas@^0.1.65", "@napi-rs/canvas@0.1.80":
+"@napi-rs/canvas-win32-x64-msvc@0.1.82":
+  version "0.1.82"
+  resolved "https://registry.npmjs.org/@napi-rs/canvas-win32-x64-msvc/-/canvas-win32-x64-msvc-0.1.82.tgz"
+  integrity sha512-LN/i8VrvxTDmEEK1c10z2cdOTkWT76LlTGtyZe5Kr1sqoSomKeExAjbilnu1+oee5lZUgS5yfZ2LNlVhCeARuw==
+
+"@napi-rs/canvas@^0.1.65", "@napi-rs/canvas@^0.1.82":
+  version "0.1.82"
+  resolved "https://registry.npmjs.org/@napi-rs/canvas/-/canvas-0.1.82.tgz"
+  integrity sha512-FGjyUBoF0sl1EenSiE4UV2WYu76q6F9GSYedq5EiOCOyGYoQ/Owulcv6rd7v/tWOpljDDtefXXIaOCJrVKem4w==
+  optionalDependencies:
+    "@napi-rs/canvas-android-arm64" "0.1.82"
+    "@napi-rs/canvas-darwin-arm64" "0.1.82"
+    "@napi-rs/canvas-darwin-x64" "0.1.82"
+    "@napi-rs/canvas-linux-arm-gnueabihf" "0.1.82"
+    "@napi-rs/canvas-linux-arm64-gnu" "0.1.82"
+    "@napi-rs/canvas-linux-arm64-musl" "0.1.82"
+    "@napi-rs/canvas-linux-riscv64-gnu" "0.1.82"
+    "@napi-rs/canvas-linux-x64-gnu" "0.1.82"
+    "@napi-rs/canvas-linux-x64-musl" "0.1.82"
+    "@napi-rs/canvas-win32-x64-msvc" "0.1.82"
+
+"@napi-rs/canvas@0.1.80":
   version "0.1.80"
   resolved "https://registry.npmjs.org/@napi-rs/canvas/-/canvas-0.1.80.tgz"
   integrity sha512-DxuT1ClnIPts1kQx8FBmkk4BQDTfI5kIzywAaMjQSXfNnra5UFU9PwurXrl+Je3bJ6BGsp/zmshVVFbCmyI+ww==
@@ -5958,6 +5979,14 @@ path2d@^0.2.0:
   resolved "https://registry.npmjs.org/path2d/-/path2d-0.2.2.tgz"
   integrity sha512-+vnG6S4dYcYxZd+CZxzXCNKdELYZSKfohrk98yajCo1PtRoDgCTrrwOvK1GT0UoAdVszagDVllQc0U1vaX4NUQ==
 
+pdf-extract-image@^0.0.3:
+  version "0.0.3"
+  resolved "https://registry.npmjs.org/pdf-extract-image/-/pdf-extract-image-0.0.3.tgz"
+  integrity sha512-yXfzNMn5ls4mn/MDp4RMmF840ccWmLHtrDI0Pq0YuHKm3jJ89dk/wNopLow5/Yyj2YljlK7Zs/NuseBQ5vG2Cg==
+  dependencies:
+    pdfjs-dist "^4.3.136"
+    pngjs "^7.0.0"
+
 pdf-parse@^2.3.12:
   version "2.4.5"
   resolved "https://registry.npmjs.org/pdf-parse/-/pdf-parse-2.4.5.tgz"
@@ -5966,7 +5995,7 @@ pdf-parse@^2.3.12:
     "@napi-rs/canvas" "0.1.80"
     pdfjs-dist "5.4.296"
 
-pdfjs-dist@^4.4.168:
+pdfjs-dist@^4.3.136, pdfjs-dist@^4.4.168:
   version "4.10.38"
   resolved "https://registry.npmjs.org/pdfjs-dist/-/pdfjs-dist-4.10.38.tgz"
   integrity sha512-/Y3fcFrXEAsMjJXeL9J8+ZG9U01LbuWaYypvDW2ycW1jL269L3js3DVBjDJ0Up9Np1uqDXsDrRihHANhZOlwdQ==
@@ -6043,6 +6072,11 @@ pkg-dir@^4.2.0:
   integrity sha512-HRDzbaKjC+AOWVXxAU/x54COGeIv9eb+6CkDSQoNTt4XyWoIJvuPsXizxu/Fr23EiekbtZwmh1IcIG/l/a10GQ==
   dependencies:
     find-up "^4.0.0"
+
+pngjs@^7.0.0:
+  version "7.0.0"
+  resolved "https://registry.npmjs.org/pngjs/-/pngjs-7.0.0.tgz"
+  integrity sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow==
 
 possible-typed-array-names@^1.0.0:
   version "1.1.0"

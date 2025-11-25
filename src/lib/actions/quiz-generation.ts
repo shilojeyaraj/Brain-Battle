@@ -2,10 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 import OpenAI from "openai"
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+import crypto from "crypto"
 
 export async function generateQuizQuestions(
   topic: string,
@@ -110,10 +107,41 @@ export async function uploadFile(file: File, userId: string) {
       throw new Error(`Upload failed: ${error.message}`)
     }
 
+    // Compute a hash of the file contents to detect duplicates for this user
+    const buffer = Buffer.from(await file.arrayBuffer())
+    const contentHash = crypto.createHash("sha256").update(buffer).digest("hex")
+
+    // Upsert metadata into documents table
+    const { data: docs, error: docError } = await supabase
+      .from("documents")
+      .upsert(
+        {
+          user_id: userId,
+          storage_path: data.path,
+          original_name: file.name,
+          file_type: file.type,
+          file_size: file.size,
+          content_hash: contentHash,
+        },
+        {
+          onConflict: "user_id,content_hash",
+        }
+      )
+      .select()
+      .limit(1)
+
+    if (docError) {
+      console.error("Error upserting document metadata:", docError)
+    }
+
+    const documentId = docs && docs.length > 0 ? docs[0].id : undefined
+
     return {
       success: true,
       filePath: data.path,
-      fileName: file.name
+      fileName: file.name,
+      documentId,
+      contentHash,
     }
 
   } catch (error) {

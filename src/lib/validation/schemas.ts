@@ -235,7 +235,7 @@ export function validateFile(file: File): {
   valid: boolean
   error?: string
 } {
-  const maxSize = 10 * 1024 * 1024 // 10MB
+  const maxSize = 5 * 1024 * 1024 // 5MB - Optimized for cost control while allowing most study materials
   const allowedTypes = [
     'application/pdf',
     'text/plain',
@@ -249,7 +249,7 @@ export function validateFile(file: File): {
   if (file.size > maxSize) {
     return {
       valid: false,
-      error: 'File size must be less than 10MB',
+      error: 'File size must be less than 5MB. For larger files, consider splitting them or upgrading to Pro.',
     }
   }
 

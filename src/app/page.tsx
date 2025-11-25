@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button"
 import { motion } from "framer-motion"
 import { Brain, Users, Zap, Trophy, Star, Rocket, Target, Award, BookOpen, Gamepad2, TrendingUp, Crown, Loader2, Sparkles, GraduationCap, TrendingDown } from "lucide-react"
 import Link from "next/link"
-import Image from "next/image"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 
@@ -209,13 +208,6 @@ export default function HomePage() {
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.5 }}
           >
-            <Image 
-              src="/brain-battle-logo.png" 
-              alt="Brain Battle Logo" 
-              width={48} 
-              height={48} 
-              className="w-12 h-12 object-contain"
-            />
             <div>
               <div className="text-2xl font-black bg-gradient-to-r from-blue-300 to-orange-400 bg-clip-text text-transparent">
                 BRAIN BATTLE
@@ -233,10 +225,15 @@ export default function HomePage() {
               className="border-4 border-blue-400 text-blue-300 hover:bg-blue-500/20 bg-transparent font-bold text-sm h-10"
               loading={loadingButton === 'login'}
               loadingText="Loading..."
-              onClick={() => {
+              onClick={async () => {
                 setLoadingButton('login')
-                router.push('/login')
-                setTimeout(() => setLoadingButton(null), 1000)
+                try {
+                  await router.push('/login')
+                  // Loading state will persist until component unmounts (page navigation completes)
+                } catch (error) {
+                  console.error("Navigation error:", error)
+                  setLoadingButton(null)
+                }
               }}
             >
               Sign In
@@ -245,10 +242,15 @@ export default function HomePage() {
               className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold border-2 border-blue-400 h-10 text-sm"
               loading={loadingButton === 'signup'}
               loadingText="Loading..."
-              onClick={() => {
+              onClick={async () => {
                 setLoadingButton('signup')
-                router.push('/signup')
-                setTimeout(() => setLoadingButton(null), 1000)
+                try {
+                  await router.push('/signup')
+                  // Loading state will persist until component unmounts (page navigation completes)
+                } catch (error) {
+                  console.error("Navigation error:", error)
+                  setLoadingButton(null)
+                }
               }}
             >
               Join Now

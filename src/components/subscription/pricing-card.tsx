@@ -12,6 +12,8 @@ interface PricingCardProps {
   features: string[];
   popular?: boolean;
   currentPlan?: boolean;
+  isNewUser?: boolean;
+  onContinueFree?: () => void;
 }
 
 export function PricingCard({
@@ -22,8 +24,42 @@ export function PricingCard({
   features,
   popular = false,
   currentPlan = false,
+  isNewUser = false,
+  onContinueFree,
 }: PricingCardProps) {
   const [loading, setLoading] = useState(false);
+
+  const handleContinueFree = async () => {
+    if (onContinueFree) {
+      onContinueFree();
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await fetch('/api/subscription/set-free', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Redirect to dashboard with newUser flag to trigger tutorial
+        window.location.href = '/dashboard?newUser=true';
+      } else {
+        console.error('Failed to set free plan:', data.error);
+        alert('Failed to set free plan. Please try again.');
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Error setting free plan:', error);
+      alert('An error occurred. Please try again.');
+      setLoading(false);
+    }
+  };
 
   const handleSubscribe = async () => {
     setLoading(true);
@@ -84,13 +120,14 @@ export function PricingCard({
 
   return (
     <div
-      className={`relative rounded-2xl border-4 p-8 backdrop-blur-sm transition-all flex flex-col h-full ${
+      className={`relative rounded-2xl border-4 p-8 backdrop-blur-sm transition-all flex flex-col ${
         popular
-          ? 'border-orange-500/70 bg-gradient-to-br from-slate-800/90 to-slate-900/90 shadow-2xl shadow-orange-500/20 scale-105'
+          ? 'border-orange-500/70 bg-gradient-to-br from-slate-800/90 to-slate-900/90 shadow-2xl shadow-orange-500/20'
           : currentPlan
           ? 'border-slate-600/50 bg-gradient-to-br from-slate-800/80 to-slate-900/80'
           : 'border-slate-600/50 bg-gradient-to-br from-slate-800/80 to-slate-900/80 hover:border-slate-500/70'
       }`}
+      style={{ height: '100%' }}
     >
       {popular && (
         <div className="absolute -top-4 left-1/2 -translate-x-1/2 z-10">
@@ -113,9 +150,9 @@ export function PricingCard({
         </div>
       </div>
 
-      <ul className="space-y-4 mb-8 flex-grow">
+      <ul className="space-y-4 mb-8 flex-grow flex flex-col justify-start">
         {features.map((feature, index) => (
-          <li key={index} className="flex items-start gap-3">
+          <li key={index} className="flex items-start gap-3 flex-shrink-0">
             <Check className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
               popular ? 'text-orange-400' : 'text-blue-400'
             }`} />
@@ -125,19 +162,25 @@ export function PricingCard({
       </ul>
 
       <Button
-        onClick={handleSubscribe}
-        disabled={currentPlan}
+        onClick={isNewUser && name === 'Free' ? handleContinueFree : handleSubscribe}
+        disabled={currentPlan && !isNewUser}
         loading={loading}
-        loadingText="Loading..."
+        loadingText={isNewUser && name === 'Free' ? 'Setting up...' : 'Loading...'}
         className={`w-full py-3 px-6 rounded-lg font-semibold transition-all mt-auto ${
-          currentPlan
+          currentPlan && !isNewUser
             ? 'bg-slate-700/50 text-slate-500 cursor-not-allowed border-2 border-slate-600/50'
+            : isNewUser && name === 'Free'
+            ? 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg hover:shadow-xl border-2 border-blue-500/50'
             : popular
             ? 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white shadow-lg hover:shadow-xl hover:shadow-orange-500/50 transform hover:scale-105 border-2 border-orange-400/50'
             : 'bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white shadow-lg hover:shadow-xl border-2 border-blue-500/50'
         }`}
       >
-        {currentPlan ? 'Current Plan' : 'Subscribe Now'}
+        {isNewUser && name === 'Free' 
+          ? 'Continue with Free Plan' 
+          : currentPlan 
+          ? 'Current Plan' 
+          : 'Subscribe Now'}
       </Button>
     </div>
   );

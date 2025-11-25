@@ -64,8 +64,28 @@ export async function getUserStatsClient(userId: string): Promise<{ success: boo
     if (profileNotFound) {
       console.log('📝 [USER STATS] Profile not found, creating one for user:', userId)
       
-      // Generate a default username from userId (first 8 chars or "user" + timestamp)
-      const username = `user_${userId.slice(0, 8)}`
+      // First, try to get the username from the users table
+      let username: string | null = null
+      try {
+        const { data: userData } = await supabase
+          .from('users')
+          .select('username')
+          .eq('id', userId)
+          .single()
+        
+        if (userData?.username) {
+          username = userData.username
+          console.log('✅ [USER STATS] Found username from users table:', username)
+        }
+      } catch (error) {
+        console.warn('⚠️ [USER STATS] Could not fetch username from users table:', error)
+      }
+      
+      // Fallback to generated username if not found in users table
+      if (!username) {
+        username = `user_${userId.slice(0, 8)}`
+        console.log('⚠️ [USER STATS] Using generated username:', username)
+      }
       
       // Use API route to create profile (bypasses RLS)
       try {
@@ -95,12 +115,31 @@ export async function getUserStatsClient(userId: string): Promise<{ success: boo
           let errorData: any = {}
           try {
             errorText = await response.text()
-            errorData = JSON.parse(errorText)
+            if (errorText) {
+              try {
+                errorData = JSON.parse(errorText)
+              } catch (parseError) {
+                // Response is not JSON, use the text as error message
+                errorData = { error: errorText, rawResponse: errorText }
+              }
+            } else {
+              // Empty response body
+              errorData = { error: `HTTP ${response.status}: ${response.statusText || 'No error message'}` }
+            }
           } catch (e) {
-            errorData = { error: errorText || 'Unknown error' }
+            errorData = { 
+              error: errorText || `HTTP ${response.status}: ${response.statusText || 'Unknown error'}`,
+              parseError: e instanceof Error ? e.message : String(e)
+            }
           }
           console.error('❌ [USER STATS] Failed to create profile via API:', errorData)
           console.error('❌ [USER STATS] Response status:', response.status)
+          console.error('❌ [USER STATS] Response headers:', Object.fromEntries(response.headers.entries()))
+          
+          // Log the raw response for debugging
+          if (errorText) {
+            console.error('❌ [USER STATS] Raw response text:', errorText)
+          }
         }
       } catch (apiError) {
         console.error('❌ [USER STATS] Error calling profile API:', apiError)

@@ -33,6 +33,8 @@ interface QuizConfig {
   question_count: number
   time_per_question: number
   content_analysis: ContentAnalysis
+  contentFocus: 'application' | 'concept' | 'both'
+  includeDiagrams: boolean
 }
 
 interface ContentAnalysis {
@@ -56,6 +58,8 @@ export default function QuizConfiguration({
   const [timePerQuestion, setTimePerQuestion] = useState(60)
   const [contentAnalysis, setContentAnalysis] = useState<ContentAnalysis | null>(null)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [contentFocus, setContentFocus] = useState<'application' | 'concept' | 'both'>('both')
+  const [includeDiagrams, setIncludeDiagrams] = useState(true)
 
   // Analyze document content when topic or documents change
   useEffect(() => {
@@ -138,7 +142,9 @@ export default function QuizConfiguration({
         recommended_question_type: 'both',
         confidence: 0.5,
         reasoning: 'Default analysis'
-      }
+      },
+      contentFocus,
+      includeDiagrams
     }
 
     onGenerateQuiz(config)
@@ -252,7 +258,7 @@ export default function QuizConfiguration({
                 </SelectItem>
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground font-bold mt-1">
+            <p className="text-xs text-muted-foreground font-bold mt-0.5">
               {getQuestionTypeDescription(questionType)}
             </p>
           </div>
@@ -301,6 +307,86 @@ export default function QuizConfiguration({
                 <span>90s</span>
                 <span>120s</span>
               </div>
+            </div>
+          </div>
+
+          {/* Content Focus Selection */}
+          <div>
+            <Label className="text-sm font-black text-foreground mb-2 block">
+              Content Focus
+            </Label>
+            <div className="space-y-2">
+              <button
+                onClick={() => setContentFocus('application')}
+                className={`w-full p-3 rounded-xl border-2 transition-all text-left ${
+                  contentFocus === 'application'
+                    ? "bg-orange-500/20 text-orange-300 border-orange-400/50"
+                    : "bg-muted/50 text-muted-foreground border-muted hover:border-orange-400/30"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-bold block">Application</span>
+                    <span className="text-xs opacity-70 font-bold">Use cases, formulas, and problem-solving</span>
+                  </div>
+                  {contentFocus === 'application' && <CheckCircle className="h-4 w-4 text-orange-400" strokeWidth={3} />}
+                </div>
+              </button>
+
+              <button
+                onClick={() => setContentFocus('concept')}
+                className={`w-full p-3 rounded-xl border-2 transition-all text-left ${
+                  contentFocus === 'concept'
+                    ? "bg-purple-500/20 text-purple-300 border-purple-400/50"
+                    : "bg-muted/50 text-muted-foreground border-muted hover:border-purple-400/30"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-bold block">Concept</span>
+                    <span className="text-xs opacity-70 font-bold">Definitions, explanations, and understanding</span>
+                  </div>
+                  {contentFocus === 'concept' && <CheckCircle className="h-4 w-4 text-purple-400" strokeWidth={3} />}
+                </div>
+              </button>
+
+              <button
+                onClick={() => setContentFocus('both')}
+                className={`w-full p-3 rounded-xl border-2 transition-all text-left ${
+                  contentFocus === 'both'
+                    ? "bg-primary/20 text-primary border-primary/50"
+                    : "bg-muted/50 text-muted-foreground border-muted hover:border-primary/30"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-bold block">Both</span>
+                    <span className="text-xs opacity-70 font-bold">Mix of applications and concepts</span>
+                  </div>
+                  {contentFocus === 'both' && <CheckCircle className="h-4 w-4 text-primary" strokeWidth={3} />}
+                </div>
+              </button>
+            </div>
+          </div>
+
+          {/* Include Diagrams Toggle */}
+          <div>
+            <Label className="text-sm font-black text-foreground mb-2 block">
+              Diagram Options
+            </Label>
+            <div className="p-4 rounded-lg bg-muted/30 cartoon-border">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeDiagrams}
+                  onChange={(e) => setIncludeDiagrams(e.target.checked)}
+                  className="w-5 h-5 accent-primary cursor-pointer"
+                />
+                <div>
+                  <span className="text-sm text-foreground font-bold block">Include Image-Generated Diagrams</span>
+                  <span className="text-xs text-muted-foreground font-bold">Generate diagrams for questions that need visual aids (e.g., physics diagrams, charts, graphs)</span>
+                </div>
+              </label>
             </div>
           </div>
 

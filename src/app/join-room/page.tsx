@@ -4,7 +4,6 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Brain, ArrowLeft, Users, Key } from 'lucide-react'
 import Link from 'next/link'
-import { getCurrentUserId } from '@/lib/auth/session'
 import { Button } from '@/components/ui/button'
 
 // Force dynamic rendering to avoid SSR issues
@@ -15,18 +14,32 @@ export default function JoinRoomPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [userId, setUserId] = useState<string | null>(null)
+  const [checkingAuth, setCheckingAuth] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
     const checkUser = async () => {
-      const currentUserId = await getCurrentUserId()
-      if (!currentUserId) {
+      try {
+        // Fetch userId from API endpoint that uses secure session cookies
+        const response = await fetch('/api/user/current')
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success && data.userId) {
+            console.log('✅ [JOIN-ROOM] User session found:', data.userId)
+            setUserId(data.userId)
+            setCheckingAuth(false)
+            return
+          }
+        }
+        // No valid session found
         console.log('❌ [JOIN-ROOM] No user session found, redirecting to login')
         router.push('/login')
-        return
+      } catch (error) {
+        console.error('❌ [JOIN-ROOM] Error checking user session:', error)
+        router.push('/login')
+      } finally {
+        setCheckingAuth(false)
       }
-      console.log('✅ [JOIN-ROOM] User session found:', currentUserId)
-      setUserId(currentUserId)
     }
     checkUser()
   }, [router])
@@ -75,7 +88,7 @@ export default function JoinRoomPage() {
     }
   }
 
-  if (!userId) {
+  if (checkingAuth || !userId) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
         <div className="text-center">

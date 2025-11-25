@@ -27,6 +27,10 @@ export interface FeatureLimits {
   canJoinClans: boolean // Both Pro and Free users can JOIN clans
   maxClansPerUser: number // How many clans a user can join (Pro: 10, Free: 3)
   maxClanMembers: number // Max members per clan (same for all)
+  // DIAGRAM GENERATION LIMITS
+  maxQuizDiagramsPerMonth: number // Free: 2 per month (after trial), Pro: Infinity
+  trialQuizDiagrams: number // Free: 3 (one-time trial), Pro: N/A
+  canGenerateQuizDiagrams: boolean // Free: true (with limits), Pro: true (unlimited)
 }
 
 /**
@@ -78,14 +82,18 @@ export async function getUserLimits(userId: string): Promise<FeatureLimits> {
       canJoinClans: true, // Pro users can join clans
       maxClansPerUser: 10, // Pro users can join up to 10 clans
       maxClanMembers: 50, // Max members per clan (allows up to 500 participants per Pro account)
+      // DIAGRAM GENERATION (Pro)
+      maxQuizDiagramsPerMonth: Infinity, // Unlimited for Pro
+      trialQuizDiagrams: Infinity, // Not applicable for Pro
+      canGenerateQuizDiagrams: true, // Unlimited
     }
   }
   
   // Free tier limits - Designed to encourage upgrades
   // These limits are restrictive enough to show value but generous enough to try the product
   return {
-    maxDocumentsPerMonth: 3, // Reduced from 5 to encourage upgrades
-    maxQuestionsPerQuiz: 8,  // Reduced from 10 to encourage upgrades
+    maxDocumentsPerMonth: 10, // Increased to 10 to ensure users use the app consistently
+    maxQuestionsPerQuiz: 10,  // Increased to 10 questions for free users
     maxPlayersPerRoom: 4,
     canExport: false,
     hasPriorityProcessing: false,
@@ -98,6 +106,10 @@ export async function getUserLimits(userId: string): Promise<FeatureLimits> {
     canJoinClans: true, // Free users CAN join clans (students can participate)
     maxClansPerUser: 3, // Free users can join up to 3 clans (prevents abuse, allows multiple classes)
     maxClanMembers: 50, // Same max members (set by clan creator)
+    // DIAGRAM GENERATION (Free)
+    maxQuizDiagramsPerMonth: 2, // 2 per month after trial
+    trialQuizDiagrams: 3, // One-time trial of 3 diagrams
+    canGenerateQuizDiagrams: true, // Can use, but limited
   }
 }
 
@@ -192,7 +204,7 @@ export async function checkQuizQuestionLimit(
   return {
     allowed: requestedQuestions <= maxAllowed,
     limit: maxAllowed,
-    requiresPro: requestedQuestions > 8 && limits.maxQuestionsPerQuiz === 8
+    requiresPro: requestedQuestions > 10 && limits.maxQuestionsPerQuiz === 10
   }
 }
 

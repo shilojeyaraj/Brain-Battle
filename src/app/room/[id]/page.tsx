@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Brain, Users, Upload, Settings, ArrowLeft, Copy, Check, Crown, Lock, RefreshCw, FileText, X, AlertCircle, Loader2, Zap, BookOpen, Lightbulb, MessageSquare, Clock } from 'lucide-react'
 import Link from 'next/link'
 import { useAntiCheat, CheatEvent } from '@/hooks/use-anti-cheat'
 import { CheatAlertContainer, CheatAlertData } from '@/components/multiplayer/cheat-alert'
 import { QuizProgressBar } from '@/components/ui/quiz-progress-bar'
 import { Button } from '@/components/ui/button'
-import { getCurrentUserId } from '@/lib/auth/session'
+import { BrainBattleLoading } from '@/components/ui/brain-battle-loading'
 
 interface Room {
   id: string
@@ -49,6 +49,12 @@ interface QuizSession {
 }
 
 export default function RoomPage() {
+  const params = useParams()
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const roomId = params?.id as string
+  const isAdminMode = searchParams?.get('admin') === 'true'
+  
   const [room, setRoom] = useState<Room | null>(null)
   const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
@@ -69,7 +75,10 @@ export default function RoomPage() {
   const [quizSettings, setQuizSettings] = useState({
     difficulty: 'medium',
     totalQuestions: 10,
-    timeLimit: 30
+    timeLimit: 30,
+    contentFocus: 'both' as 'application' | 'concept' | 'both',
+    includeDiagrams: true,
+    educationLevel: 'university' as 'elementary' | 'high_school' | 'university' | 'graduate'
   })
   const [isStartingQuiz, setIsStartingQuiz] = useState(false)
   const [isStartingStudySession, setIsStartingStudySession] = useState(false)
@@ -109,12 +118,8 @@ export default function RoomPage() {
   const [generatedNotes, setGeneratedNotes] = useState<any>(null)
   const [isGeneratingNotes, setIsGeneratingNotes] = useState(false)
   const [activeTab, setActiveTab] = useState<'materials' | 'notes'>('materials')
-  const params = useParams()
-  const router = useRouter()
   const supabase = createClient()
   const channelRef = useRef<any>(null)
-
-  const roomId = params.id as string
 
   // Anti-cheat functionality
   const handleCheatDetected = async (event: CheatEvent) => {
@@ -175,14 +180,18 @@ export default function RoomPage() {
   // Get current user ID and check if they're the host
   useEffect(() => {
     const checkUser = async () => {
-      const userId = await getCurrentUserId()
-      setCurrentUserId(userId)
-      
-      if (!userId) {
-        console.log('❌ [ROOM] No user session found, redirecting to login')
-        router.push('/login')
-        return
+      // Fetch userId from API endpoint that uses secure session cookies
+      const response = await fetch('/api/user/current')
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.userId) {
+          setCurrentUserId(data.userId)
+          return
+        }
       }
+      // No valid session found
+      console.log('❌ [ROOM] No user session found, redirecting to login')
+      router.push('/login')
     }
     checkUser()
   }, [router])
@@ -272,6 +281,32 @@ export default function RoomPage() {
   }
 
   useEffect(() => {
+    // Admin mode: Create test room without database
+    if (isAdminMode && roomId.startsWith('test-room-')) {
+      const testRoom: Room = {
+        id: roomId,
+        name: "Admin Test Room",
+        room_code: "TEST123",
+        host_id: "test-host",
+        subject: "Test Subject",
+        difficulty: "medium",
+        max_players: 4,
+        current_players: 1,
+        status: "waiting",
+        is_private: false,
+        time_limit: 30,
+        total_questions: 5,
+        created_at: new Date().toISOString()
+      }
+      
+      setRoom(testRoom)
+      setIsHost(true) // Admin is always host in test mode
+      setCurrentUserId("test-user")
+      setLoading(false)
+      console.log('✅ [ROOM] Admin mode: Test room created')
+      return
+    }
+    
     if (!roomId || !currentUserId) return
 
     const loadRoomData = async () => {
@@ -286,7 +321,7 @@ export default function RoomPage() {
     }
 
     loadRoomData()
-  }, [roomId, currentUserId, supabase])
+  }, [roomId, currentUserId, supabase, isAdminMode])
 
   // Set up realtime subscription for room members
   useEffect(() => {
@@ -486,7 +521,7 @@ export default function RoomPage() {
   const validateFiles = (files: File[]): { validFiles: File[], errors: string[] } => {
     const validFiles: File[] = []
     const errors: string[] = []
-    const maxSize = 10 * 1024 * 1024 // 10MB
+    const maxSize = 5 * 1024 * 1024 // 5MB - Optimized for cost control
     const allowedTypes = [
       'application/pdf',
       'application/msword',
@@ -498,7 +533,7 @@ export default function RoomPage() {
 
     files.forEach(file => {
       if (file.size > maxSize) {
-        errors.push(`${file.name}: File too large (max 10MB)`)
+        errors.push(`${file.name}: File too large (max 5MB)`)
         return
       }
 
@@ -682,7 +717,10 @@ export default function RoomPage() {
             topic: room.subject || 'General Knowledge',
             difficulty: quizSettings.difficulty,
             totalQuestions: quizSettings.totalQuestions,
-            sessionId: sessionData.id
+            sessionId: sessionData.id,
+            contentFocus: quizSettings.contentFocus,
+            includeDiagrams: quizSettings.includeDiagrams,
+            educationLevel: quizSettings.educationLevel
           })
         })
 
@@ -864,6 +902,15 @@ export default function RoomPage() {
         </div>
       </div>
     )
+  }
+
+  // Show loading screen when generating notes or starting quiz
+  if (isGeneratingNotes) {
+    return <BrainBattleLoading message="Generating your study notes..." />
+  }
+  
+  if (isStartingQuiz) {
+    return <BrainBattleLoading message="Generating your quiz battle..." />
   }
 
   return (
@@ -1319,7 +1366,7 @@ export default function RoomPage() {
                     >
                       Choose Files
                     </button>
-                    <p className="text-xs text-gray-500 mt-2">Max 10MB per file • PDF, DOC, TXT, PPT supported</p>
+                    <p className="text-xs text-gray-500 mt-2">Max 5MB per file • PDF, DOC, TXT, PPT supported</p>
                   </div>
 
                   {/* Uploaded files */}
@@ -1833,6 +1880,59 @@ export default function RoomPage() {
                       className="w-full px-4 py-3 border-2 border-border rounded-xl cartoon-border bg-background text-foreground font-bold focus:border-primary focus:outline-none"
                     />
                   </div>
+                  
+                  {/* Content Focus */}
+                  <div>
+                    <label className="block text-sm font-bold text-foreground mb-2">
+                      Content Focus
+                    </label>
+                    <select 
+                      className="w-full px-4 py-3 border-2 border-border rounded-xl cartoon-border bg-background text-foreground font-bold focus:border-primary focus:outline-none"
+                      value={quizSettings.contentFocus}
+                      onChange={(e) => updateQuizSettings('contentFocus', e.target.value as 'application' | 'concept' | 'both')}
+                    >
+                      <option value="application">Application (Use cases, formulas, problem-solving)</option>
+                      <option value="concept">Concept (Definitions, explanations, understanding)</option>
+                      <option value="both">Both (Mix of applications and concepts)</option>
+                    </select>
+                  </div>
+
+                  {/* Education Level */}
+                  <div>
+                    <label className="block text-sm font-bold text-foreground mb-2">
+                      Education Level
+                    </label>
+                    <select 
+                      className="w-full px-4 py-3 border-2 border-border rounded-xl cartoon-border bg-background text-foreground font-bold focus:border-primary focus:outline-none"
+                      value={quizSettings.educationLevel}
+                      onChange={(e) => updateQuizSettings('educationLevel', e.target.value as 'elementary' | 'high_school' | 'university' | 'graduate')}
+                    >
+                      <option value="elementary">Elementary School</option>
+                      <option value="high_school">High School</option>
+                      <option value="university">University</option>
+                      <option value="graduate">Graduate School</option>
+                    </select>
+                    <p className="text-xs text-muted-foreground font-bold mt-1">
+                      Adjusts question difficulty to match your level
+                    </p>
+                  </div>
+
+                  {/* Include Diagrams */}
+                  <div className="p-4 rounded-lg bg-muted/30 cartoon-border">
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={quizSettings.includeDiagrams}
+                        onChange={(e) => updateQuizSettings('includeDiagrams', e.target.checked)}
+                        className="w-5 h-5 accent-primary cursor-pointer"
+                      />
+                      <div>
+                        <span className="text-sm text-foreground font-bold block">Include Image-Generated Diagrams</span>
+                        <span className="text-xs text-muted-foreground font-bold">Generate diagrams for questions that need visual aids</span>
+                      </div>
+                    </label>
+                  </div>
+
                   <div className="space-y-4">
                     {/* Study Session Time Configuration */}
                     {isHost && (
@@ -1980,10 +2080,15 @@ export default function RoomPage() {
                         className="w-full bg-chart-3 hover:bg-chart-3/90 text-foreground font-black cartoon-border cartoon-shadow cartoon-hover"
                         loading={loadingButton === 'battle'}
                         loadingText="Joining Battle..."
-                        onClick={() => {
+                        onClick={async () => {
                           setLoadingButton('battle')
-                          router.push(`/room/${roomId}/battle`)
-                          setTimeout(() => setLoadingButton(null), 1000)
+                          try {
+                            await router.push(`/room/${roomId}/battle`)
+                            // Loading state will persist until component unmounts (page navigation completes)
+                          } catch (error) {
+                            console.error("Navigation error:", error)
+                            setLoadingButton(null)
+                          }
                         }}
                       >
                         <Zap className="h-5 w-5 mr-2" strokeWidth={3} />

@@ -4,6 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import { checkQuizQuestionLimit } from '@/lib/subscription/limits'
 import { generateQuizSchema } from '@/lib/validation/schemas'
 import { sanitizeError, createSafeErrorResponse } from '@/lib/utils/error-sanitizer'
+import { checkQuizDiagramLimit, decrementQuizDiagramQuota } from '@/lib/subscription/diagram-limits'
+import { generateQuizQuestionDiagram } from '@/lib/nanobanana/client'
 import { z } from 'zod'
 
 const openai = new OpenAI({
@@ -23,11 +25,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Check for admin mode
+    const isAdminMode = request.headers.get('x-admin-mode') === 'true' || 
+                       request.nextUrl.searchParams.get('admin') === 'true'
+    
     // Check if this is a JSON request (multiplayer) or form data (singleplayer)
     const contentType = request.headers.get('content-type')
     let topic, difficulty, totalQuestions, sessionId, instructions, notes, studyContextStr
     let files: File[] = []
     let studyContext = null
+    let contentFocus = 'both' // Default to both
+    let includeDiagrams = true // Default to true
+    let educationLevel = 'university' // Default to university
 
     if (contentType?.includes('application/json')) {
       // Could be multiplayer OR singleplayer with notes
@@ -36,6 +45,9 @@ export async function POST(request: NextRequest) {
       difficulty = body.difficulty
       totalQuestions = body.totalQuestions
       sessionId = body.sessionId
+      contentFocus = body.contentFocus || 'both'
+      includeDiagrams = body.includeDiagrams !== false // Default to true if not specified
+      educationLevel = body.educationLevel || 'university'
       // userId is now from session, not body
       notes = body.studyNotes ? JSON.stringify(body.studyNotes) : body.notes
       studyContextStr = body.studyContext ? JSON.stringify(body.studyContext) : null
@@ -55,6 +67,7 @@ export async function POST(request: NextRequest) {
       files = form.getAll("files") as File[]
       topic = form.get("topic") as string
       difficulty = form.get("difficulty") as string
+      educationLevel = (form.get("educationLevel") as string) || 'university'
       const totalQuestionsStr = form.get("totalQuestions") as string
       totalQuestions = totalQuestionsStr ? parseInt(totalQuestionsStr) : undefined
       // userId is now from session, not form data
@@ -70,6 +83,9 @@ export async function POST(request: NextRequest) {
           console.log("⚠️ [QUIZ API] Failed to parse question types:", e)
         }
       }
+      const contentFocus = form.get("contentFocus") as string || 'both'
+      const includeDiagramsStr = form.get("includeDiagrams") as string
+      const includeDiagrams = includeDiagramsStr !== 'false' // Default to true if not specified
       
       if (studyContextStr) {
         try {
@@ -128,7 +144,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get user's subscription limits to determine default question count
-    let userQuestionLimit = 8 // Default to free tier limit (safer default)
+    let userQuestionLimit = 10 // Default to free tier limit (safer default)
     if (userId) {
       try {
         const { getUserLimits } = await import('@/lib/subscription/limits')
@@ -140,7 +156,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // If totalQuestions not provided, use user's limit (or 8 as safe fallback)
+        // If totalQuestions not provided, use user's limit (or 10 as safe fallback)
     if (!totalQuestions) {
       totalQuestions = userQuestionLimit
       console.log(`📊 [QUIZ API] No totalQuestions specified, using user limit: ${totalQuestions}`)
@@ -332,10 +348,29 @@ export async function POST(request: NextRequest) {
 
     // Create a comprehensive prompt for quiz generation
     const numQuestions = totalQuestions || 5
+    
+    // Adjust difficulty based on education level
+    const getEducationLevelDescription = (level: string) => {
+      switch (level) {
+        case 'elementary':
+          return 'ELEMENTARY SCHOOL level (ages 6-12). Use simple vocabulary, basic concepts, and straightforward questions. Focus on fundamental understanding and recall.'
+        case 'high_school':
+          return 'HIGH SCHOOL level (ages 13-18). Use appropriate vocabulary for teenagers, intermediate concepts, and questions that test both understanding and application.'
+        case 'university':
+          return 'UNIVERSITY/UNDERGRADUATE level (ages 18-22). Use advanced vocabulary, complex concepts, and questions that require critical thinking, analysis, and synthesis.'
+        case 'graduate':
+          return 'GRADUATE SCHOOL level (advanced). Use sophisticated vocabulary, highly complex concepts, and questions that require deep analysis, evaluation, and original thinking.'
+        default:
+          return 'UNIVERSITY level'
+      }
+    }
+    
+    const educationLevelDescription = getEducationLevelDescription(educationLevel)
+    
     const prompt = `
 ${topic && topic.trim() 
-  ? `Generate ${numQuestions} quiz questions about "${topic}" with ${difficulty} difficulty level.${contextInstructions}`
-  : `Generate ${numQuestions} quiz questions based on the content from the uploaded documents. Analyze the document content to determine the subject matter and create questions accordingly. Use ${difficulty} difficulty level.${contextInstructions}`
+  ? `Generate ${numQuestions} quiz questions about "${topic}" with ${difficulty} difficulty level, appropriate for ${educationLevelDescription}.${contextInstructions}`
+  : `Generate ${numQuestions} quiz questions based on the content from the uploaded documents. Analyze the document content to determine the subject matter and create questions accordingly. Use ${difficulty} difficulty level, appropriate for ${educationLevelDescription}.${contextInstructions}`
 }
 
 ${complexityAnalysis ? `
@@ -347,7 +382,13 @@ COMPLEXITY ANALYSIS (use this to match question difficulty to content level):
 - Prerequisite Knowledge: ${complexityAnalysis.prerequisite_knowledge?.join(', ') || 'None specified'}
 
 IMPORTANT: Match your question complexity to the detected education level and reasoning requirements. Use vocabulary and concepts appropriate for the target audience.
-` : ''}
+` : `
+EDUCATION LEVEL REQUIREMENT:
+- Target Level: ${educationLevelDescription}
+- CRITICAL: All questions MUST be appropriate for this education level
+- Adjust vocabulary, concept complexity, and reasoning requirements accordingly
+- For ${educationLevel === 'elementary' ? 'elementary' : educationLevel === 'high_school' ? 'high school' : educationLevel === 'university' ? 'university' : 'graduate'} level, questions should ${educationLevel === 'elementary' ? 'be simple and straightforward' : educationLevel === 'high_school' ? 'test intermediate understanding' : educationLevel === 'university' ? 'require critical thinking and analysis' : 'require advanced analysis and evaluation'}
+`}
 
 ${fileContent ? `
 === UPLOADED DOCUMENT CONTENT ===
@@ -428,6 +469,29 @@ Question type guidelines:
 - Multiple choice: Test specific facts, definitions, or concepts from the documents
 - Open-ended: Perfect for calculations, word problems, or explanations based on document examples
 
+Content Focus Guidelines (CRITICAL - follow this exactly):
+${contentFocus === 'application' ? `
+- FOCUS ON APPLICATION: Create questions that test USE CASES, FORMULAS, and PROBLEM-SOLVING
+- Emphasize practical application of concepts (e.g., "Calculate...", "Solve...", "Apply the formula...", "Use the method to...")
+- Include questions that require using formulas, solving problems, or applying concepts to real scenarios
+- Test ability to USE knowledge, not just recall definitions
+- Examples: "Calculate the stress using the formula...", "Apply Hooke's law to determine...", "Solve for the unknown variable..."
+- AVOID pure definition or explanation questions - focus on application and problem-solving
+` : contentFocus === 'concept' ? `
+- FOCUS ON CONCEPTS: Create questions that test DEFINITIONS, EXPLANATIONS, and UNDERSTANDING
+- Emphasize conceptual understanding (e.g., "What is...", "Explain...", "Define...", "Describe...")
+- Include questions that require explaining concepts, defining terms, or understanding relationships
+- Test ability to UNDERSTAND and EXPLAIN knowledge, not just apply formulas
+- Examples: "What is the definition of stress?", "Explain the difference between...", "Describe how... works"
+- AVOID calculation or problem-solving questions - focus on definitions and conceptual understanding
+` : `
+- FOCUS ON BOTH: Create a balanced mix of APPLICATION and CONCEPT questions
+- Include both problem-solving/application questions (formulas, calculations, use cases) AND conceptual questions (definitions, explanations, understanding)
+- Mix questions that test practical application with questions that test conceptual understanding
+- Balance between "Calculate..." and "Explain..." type questions
+- Ensure variety: some questions require formulas/calculations, others require explanations/definitions
+`}
+
 Examples of document-specific questions:
 - If document mentions "The experiment showed a 15% increase in efficiency" → Ask about the specific percentage
 - If document contains a formula → Ask to calculate using that specific formula
@@ -439,11 +503,30 @@ For each question, also include:
 - An "image_reference" field (optional) if the question relates to a diagram, figure, or image from the document
 - An "requires_image" boolean field (true/false) indicating if the question needs an image to be answered properly
 
-IMAGES AND VISUAL CONTENT:
-- If documents contain diagrams, figures, charts, or images, create questions that reference them
-- Questions about visual content should clearly indicate they require viewing an image
-- Set "requires_image" to true for questions that need visual context
+${includeDiagrams ? `
+IMAGES AND VISUAL CONTENT - CRITICAL REQUIREMENTS:
+- If documents contain diagrams, figures, charts, or images, create questions that DIRECTLY relate to and test understanding of those visuals
+- Questions with "requires_image: true" MUST be about the diagram/chart/figure itself - the question should be impossible or very difficult to answer without seeing the visual
+- The question text MUST reference specific elements from the diagram (e.g., "Based on the diagram showing...", "Looking at the chart, what is...", "In the figure above, identify...")
+- DO NOT set "requires_image: true" for questions that can be answered from text alone
+- DO NOT create generic questions and then add "requires_image: true" - the question MUST be specifically about the visual content
+- Examples of GOOD diagram questions:
+  * "Based on the force diagram shown, what is the net force acting on the object?"
+  * "Looking at the circuit diagram, which component has the highest voltage?"
+  * "In the graph showing velocity over time, what is the acceleration at t=5s?"
+- Examples of BAD diagram questions (DO NOT DO THIS):
+  * "What is Newton's first law?" (can be answered without diagram)
+  * "Calculate the area of a circle" (not about a diagram)
+  * Generic question with "requires_image: true" added randomly
+- Set "requires_image" to true ONLY for questions that test visual interpretation, diagram analysis, or require seeing a specific chart/graph/figure
 - Use "image_reference" to indicate which image the question relates to (e.g., "Figure 1", "Diagram on page 5", "Chart showing X")
+` : `
+IMAGES AND VISUAL CONTENT - DISABLED:
+- DO NOT create questions with "requires_image: true"
+- DO NOT reference diagrams, figures, charts, or images in questions
+- All questions must be answerable from text content only
+- Set "requires_image" to false for ALL questions
+`}
 
 Generate exactly ${numQuestions} questions that test knowledge of the specific document content provided.
 `
@@ -521,6 +604,119 @@ STRICT RULES:
       requires_image: q.requires_image || false,
       image_data_b64: q.image_data_b64 || null // Base64 image data if available
     }))
+
+    // Generate diagrams for questions that require them (only if includeDiagrams is true)
+    const questionsNeedingDiagrams = includeDiagrams 
+      ? validatedQuestions.filter((q: any) => q.requires_image && !q.image_data_b64)
+      : []
+    
+    if (questionsNeedingDiagrams.length > 0 && userId) {
+      console.log(`🖼️ [QUIZ API] ${questionsNeedingDiagrams.length} questions need diagrams, checking quota...`)
+      
+      try {
+        // Admin mode: Bypass quota limits
+        let diagramLimit
+        if (isAdminMode) {
+          console.log(`🔧 [QUIZ API] Admin mode: Bypassing diagram quota limits`)
+          diagramLimit = {
+            allowed: true,
+            remaining: Infinity,
+            limit: Infinity,
+            isTrial: false,
+            requiresPro: false,
+            cost: 0.003 * questionsNeedingDiagrams.length
+          }
+        } else {
+          diagramLimit = await checkQuizDiagramLimit(userId, questionsNeedingDiagrams.length)
+        }
+        
+        if (diagramLimit.allowed && (diagramLimit.remaining > 0 || isAdminMode)) {
+          const diagramsToGenerate = Math.min(
+            questionsNeedingDiagrams.length,
+            diagramLimit.remaining
+          )
+          
+          console.log(`✅ [QUIZ API] Generating ${diagramsToGenerate} diagrams (quota: ${diagramLimit.remaining} remaining)`)
+          
+          // Extract subject from topic or document context
+          const subject = topic?.toLowerCase().includes('physics') ? 'physics' :
+                         topic?.toLowerCase().includes('chemistry') ? 'chemistry' :
+                         topic?.toLowerCase().includes('biology') ? 'biology' :
+                         topic?.toLowerCase().includes('math') ? 'mathematics' : undefined
+          
+          // Generate diagrams for first N questions
+          const diagramPromises = questionsNeedingDiagrams.slice(0, diagramsToGenerate).map(async (question: any, idx: number) => {
+            try {
+              console.log(`  🎨 [QUIZ API] Generating diagram ${idx + 1}/${diagramsToGenerate} for question: "${question.question.substring(0, 50)}..."`)
+              
+              const documentContext = relevantChunks.length > 0
+                ? relevantChunks.map((chunk: any) => chunk.chunk_text).join('\n').substring(0, 2000)
+                : (notes ? notes.substring(0, 2000) : '')
+              
+              const diagram = await generateQuizQuestionDiagram(
+                question,
+                documentContext,
+                subject
+              )
+              
+              // Find and update the question in validatedQuestions
+              const questionIndex = validatedQuestions.findIndex((q: any) => q.id === question.id)
+              if (questionIndex !== -1) {
+                validatedQuestions[questionIndex].image_data_b64 = diagram.image_data_b64
+                console.log(`  ✅ [QUIZ API] Diagram generated for question ${question.id}`)
+              }
+              
+              return { success: true, questionId: question.id }
+            } catch (error) {
+              console.error(`  ❌ [QUIZ API] Failed to generate diagram for question ${question.id}:`, error)
+              return { success: false, questionId: question.id, error }
+            }
+          })
+          
+          const results = await Promise.allSettled(diagramPromises)
+          const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length
+          
+          console.log(`✅ [QUIZ API] Successfully generated ${successful}/${diagramsToGenerate} diagrams`)
+          
+          // Decrement quota (only if not admin mode)
+          if (!isAdminMode) {
+            await decrementQuizDiagramQuota(userId, successful, diagramLimit.isTrial)
+          } else {
+            console.log(`🔧 [QUIZ API] Admin mode: Skipping quota decrement`)
+          }
+          
+          // Add quota info to response
+          validatedQuestions.forEach((q: any) => {
+            if (q.requires_image && q.image_data_b64) {
+              q.diagramQuota = {
+                remaining: diagramLimit.remaining - successful,
+                limit: diagramLimit.limit,
+                isTrial: diagramLimit.isTrial,
+                message: diagramLimit.message
+              }
+            }
+          })
+        } else {
+          console.log(`⚠️ [QUIZ API] Diagram quota limit reached: ${diagramLimit.message}`)
+          
+          // Add quota info to questions that need diagrams but couldn't get them
+          questionsNeedingDiagrams.forEach((q: any) => {
+            const questionIndex = validatedQuestions.findIndex((validated: any) => validated.id === q.id)
+            if (questionIndex !== -1) {
+              validatedQuestions[questionIndex].diagramQuota = {
+                remaining: 0,
+                limit: diagramLimit.limit,
+                requiresPro: true,
+                message: diagramLimit.message
+              }
+            }
+          })
+        }
+      } catch (error) {
+        console.error('❌ [QUIZ API] Error checking/generating diagrams:', error)
+        // Continue without diagrams - don't fail the entire quiz generation
+      }
+    }
 
     // If this is a multiplayer session, store questions in database
     if (sessionId) {

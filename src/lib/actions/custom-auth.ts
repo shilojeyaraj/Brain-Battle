@@ -32,6 +32,23 @@ const isNextRedirectError = (err: unknown): boolean => {
   )
 }
 
+// Get user-friendly error message, filtering out technical errors
+const getUserFriendlyError = (error: unknown): string => {
+  if (!error) return 'An unexpected error occurred'
+  
+  const errorMessage = error instanceof Error ? error.message : String(error)
+  
+  // Filter out technical error messages
+  if (errorMessage.includes('NEXT_REDIRECT') || 
+      errorMessage.includes('digest') ||
+      errorMessage.toLowerCase().includes('redirect')) {
+    return 'An error occurred. Please try again.'
+  }
+  
+  // Return user-friendly message
+  return errorMessage
+}
+
 // Register a new user
 export async function registerUser(
   email: string | undefined, 
@@ -283,6 +300,53 @@ export async function registerUser(
     } catch (statsException) {
       console.error('❌ [AUTH] Exception creating player stats:', statsException)
       // Don't fail the registration for this - stats can be created later via API
+    }
+    
+    // Create profile with the correct username during signup
+    try {
+      const { data: existingProfile } = await adminClient
+        .from('profiles')
+        .select('user_id')
+        .eq('user_id', userData.id)
+        .single()
+      
+      if (!existingProfile) {
+        // Profile doesn't exist, create it with the username from signup
+        const { error: profileError } = await adminClient
+          .from('profiles')
+          .insert({
+            user_id: userData.id,
+            username: userData.username, // Use the username from signup
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+        
+        if (profileError) {
+          console.error('❌ [AUTH] Profile creation failed:', profileError)
+          // Don't fail registration - profile can be created later via API
+          console.log('⚠️ [AUTH] Registration will continue - profile can be created later via API')
+        } else {
+          console.log('✅ [AUTH] Profile created successfully with username:', userData.username)
+        }
+      } else {
+        // Profile exists, update username if it's different
+        const { error: updateError } = await adminClient
+          .from('profiles')
+          .update({
+            username: userData.username,
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', userData.id)
+        
+        if (updateError) {
+          console.error('❌ [AUTH] Profile update failed:', updateError)
+        } else {
+          console.log('✅ [AUTH] Profile updated with username:', userData.username)
+        }
+      }
+    } catch (profileException) {
+      console.error('❌ [AUTH] Exception creating/updating profile:', profileException)
+      // Don't fail registration - profile can be created later via API
     }
     
     const user: User = {

@@ -1,11 +1,11 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useSearchParams } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Clock, Target, Trophy, Zap, AlertTriangle, EyeOff, X, Star, TrendingUp, FileText, Image, CheckCircle, Copy } from "lucide-react"
+import { ArrowLeft, Clock, Target, Trophy, Zap, AlertTriangle, EyeOff, X, Star, TrendingUp, FileText, Image, CheckCircle } from "lucide-react"
 import Link from "next/link"
 import { useAntiCheat, CheatEvent } from "@/hooks/use-anti-cheat"
 import { calculateXP, getXPExplanation, checkLevelUp } from "@/lib/xp-calculator"
@@ -13,17 +13,19 @@ import { getRankFromXP, getRankIcon, formatXP } from "@/lib/rank-system"
 import { XPProgressBar } from "@/components/ui/xp-progress-bar"
 import { LevelUpModal } from "@/components/ui/level-up-modal"
 import { QuizProgressBar } from "@/components/ui/quiz-progress-bar"
-import { getCurrentUserId } from "@/lib/auth/session"
 import { useFeedback } from "@/hooks/useFeedback"
 import { RewardToast } from "@/components/feedback/GameFeedback"
 import { isAnswerCorrect } from "@/lib/quiz-evaluator"
+import { BrainBattleLoading } from "@/components/ui/brain-battle-loading"
 
 // Default empty questions - will be loaded from sessionStorage
 const defaultQuestions: any[] = []
 
 export default function BattlePage() {
   const params = useParams()
+  const searchParams = useSearchParams()
   const sessionId = params?.sessionId as string
+  const isAdminMode = searchParams?.get('admin') === 'true'
   
   const [currentQuestion, setCurrentQuestion] = useState(0)
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
@@ -85,7 +87,65 @@ export default function BattlePage() {
     // Check if we're on the client side
     if (typeof window === 'undefined') return
     
-    // Verify sessionId matches stored one
+    // Admin mode: Load test questions or create default test questions
+    if (isAdminMode && sessionId.startsWith('test-')) {
+      // Create default test questions for admin mode
+      // Include questions with requires_image: true to test diagram generation
+      const testQuestions = [
+        {
+          id: "test-1",
+          question: "What is 2 + 2?",
+          type: "multiple_choice",
+          options: ["3", "4", "5", "6"],
+          correct_answer: 1,
+          explanation: "2 + 2 equals 4."
+        },
+        {
+          id: "test-2",
+          question: "What is the capital of France?",
+          type: "open_ended",
+          correct_answer: "Paris",
+          explanation: "Paris is the capital and largest city of France."
+        },
+        {
+          id: "test-3",
+          question: "The Earth is round.",
+          type: "true_false",
+          options: ["True", "False"],
+          correct_answer: 0,
+          explanation: "Yes, the Earth is approximately spherical (an oblate spheroid)."
+        },
+        {
+          id: "test-4",
+          question: "Based on the force diagram shown, what is the net force acting on the object?",
+          type: "multiple_choice",
+          options: ["0 N", "5 N", "10 N", "15 N"],
+          correct_answer: 1,
+          explanation: "The net force is calculated by summing all forces. Based on the diagram, the net force is 5 N.",
+          requires_image: true,
+          image_data_b64: null // Will be generated if diagram generation works
+        },
+        {
+          id: "test-5",
+          question: "Looking at the circuit diagram, which component has the highest voltage?",
+          type: "multiple_choice",
+          options: ["Resistor R1", "Resistor R2", "Battery", "Cannot determine"],
+          correct_answer: 2,
+          explanation: "The battery provides the source voltage, which is the highest in the circuit.",
+          requires_image: true,
+          image_data_b64: null // Will be generated if diagram generation works
+        }
+      ]
+      
+      setQuestions(testQuestions)
+      setTimeLeft(testQuestions[0]?.type === "open_ended" ? 60 : 30)
+      setTopic("Admin Test Quiz")
+      setDifficulty("medium")
+      setIsLoading(false)
+      return
+    }
+    
+    // Normal mode: Verify sessionId matches stored one
     const storedSessionId = sessionStorage.getItem('quizSessionId')
     if (storedSessionId && storedSessionId !== sessionId) {
       console.warn('Session ID mismatch. Redirecting...')
@@ -126,7 +186,7 @@ export default function BattlePage() {
     if (storedDifficulty) {
       setDifficulty(storedDifficulty as "easy" | "medium" | "hard")
     }
-  }, [sessionId])
+  }, [sessionId, isAdminMode])
 
   const question = useMemo(() => questions[currentQuestion] || null, [questions, currentQuestion])
 
@@ -234,64 +294,60 @@ export default function BattlePage() {
         isMultiplayer: false
       })
 
-      // Submit results to API with sessionId
-      const userId = await getCurrentUserId()
-      if (userId) {
-        const response = await fetch('/api/quiz-results', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            userId,
-            sessionId, // Pass the sessionId
-            questions: questions,
-            answers: userAnswers,
-            score: score,
-            totalQuestions: totalQuestions,
-            correctAnswers: correctAnswers,
-            duration: totalTime,
-            topic: topic
-          })
+      // Submit results to API with sessionId (user is taken from secure session cookie on the server)
+      const response = await fetch('/api/quiz-results', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sessionId, // Pass the sessionId
+          questions: questions,
+          answers: userAnswers,
+          score: score,
+          totalQuestions: totalQuestions,
+          correctAnswers: correctAnswers,
+          duration: totalTime,
+          topic: topic
         })
+      })
 
-        if (response.ok) {
-          const result = await response.json()
-          console.log('✅ Battle results submitted:', result)
-          
-          // Check if user leveled up
-          const leveledUp = checkLevelUp(result.oldXP || 0, result.newXP || 0)
-          
-          // Set results state
-          const results = {
-            xpEarned: result.xpEarned || xpResult.totalXP,
-            oldXP: result.oldXP || 0,
-            newXP: result.newXP || 0,
-            xpBreakdown: getXPExplanation(xpResult, {
-              correctAnswers,
-              totalQuestions,
-              averageTimePerQuestion,
-              difficulty: difficulty,
-              winStreak: 0,
-              isPerfectScore: correctAnswers === totalQuestions,
-              isMultiplayer: false
-            }),
-            leveledUp,
-            sessionId: result.sessionId || sessionId
-          }
-          
-          setBattleResults(results)
-          
-          // Store results in sessionStorage for the results screen
-          sessionStorage.setItem('battleResults', JSON.stringify(results))
-
-          // Show level up modal if applicable
-          if (leveledUp) {
-            setShowLevelUpModal(true)
-          }
-        } else {
-          console.error('❌ Failed to submit battle results')
+      if (response.ok) {
+        const result = await response.json()
+        console.log('✅ Battle results submitted:', result)
+        
+        // Check if user leveled up
+        const leveledUp = checkLevelUp(result.oldXP || 0, result.newXP || 0)
+        
+        // Set results state
+        const results = {
+          xpEarned: result.xpEarned || xpResult.totalXP,
+          oldXP: result.oldXP || 0,
+          newXP: result.newXP || 0,
+          xpBreakdown: getXPExplanation(xpResult, {
+            correctAnswers,
+            totalQuestions,
+            averageTimePerQuestion,
+            difficulty: difficulty,
+            winStreak: 0,
+            isPerfectScore: correctAnswers === totalQuestions,
+            isMultiplayer: false
+          }),
+          leveledUp,
+          sessionId: result.sessionId || sessionId
         }
+        
+        setBattleResults(results)
+        
+        // Store results in sessionStorage for the results screen
+        sessionStorage.setItem('battleResults', JSON.stringify(results))
+
+        // Show level up modal if applicable
+        if (leveledUp) {
+          setShowLevelUpModal(true)
+        }
+      } else {
+        console.error('❌ Failed to submit battle results')
       }
     } catch (error) {
       console.error('❌ Error submitting battle results:', error)
@@ -324,24 +380,7 @@ export default function BattlePage() {
 
   // Loading state
   if (isLoading) {
-    return (
-      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6">
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
-        </div>
-        <div className="relative z-10 max-w-2xl mx-auto">
-          <Card className="p-8 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg text-center">
-            <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center mx-auto mb-6 border-2 border-blue-400">
-              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-white"></div>
-            </div>
-            <h1 className="text-3xl font-black bg-gradient-to-r from-blue-300 to-orange-400 bg-clip-text text-transparent mb-4">
-              Loading Quiz...
-            </h1>
-            <p className="text-blue-100/70 font-bold">Preparing your questions</p>
-          </Card>
-        </div>
-      </div>
-    )
+    return <BrainBattleLoading message="Loading your quiz battle..." />
   }
 
   // Error state
@@ -461,10 +500,10 @@ export default function BattlePage() {
 
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
-          <Link href="/singleplayer">
-            <Button variant="outline" className="cartoon-border cartoon-shadow">
+          <Link href="/dashboard">
+            <Button className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black border-2 border-orange-400 shadow-lg cartoon-border cartoon-shadow">
               <ArrowLeft className="h-4 w-4 mr-2" strokeWidth={3} />
-              Back to Setup
+              Back to Dashboard
             </Button>
           </Link>
           
@@ -680,14 +719,26 @@ export default function BattlePage() {
                 ? "bg-gradient-to-br from-red-500/20 to-red-600/20 border-red-400/50"
                 : "bg-gradient-to-br from-green-500/20 to-green-600/20 border-green-400/50"
             }`}>
-              <h3 className="font-black text-white mb-2">
-                {currentAnswerIsCorrect === false ? "❌ Incorrect" : currentAnswerIsCorrect === true ? "✅ Correct" : ""} Explanation:
-              </h3>
+              <div className="mb-3">
+                {currentAnswerIsCorrect === false ? (
+                  <div>
+                    <h3 className="font-black text-white mb-1">❌ Your Answer Was Incorrect</h3>
+                    <p className="text-white/70 font-bold text-sm mb-2">Explanation:</p>
+                  </div>
+                ) : currentAnswerIsCorrect === true ? (
+                  <div>
+                    <h3 className="font-black text-white mb-1">✅ Your Answer Was Correct</h3>
+                    <p className="text-white/70 font-bold text-sm mb-2">Explanation:</p>
+                  </div>
+                ) : (
+                  <h3 className="font-black text-white mb-2">Explanation:</h3>
+                )}
+              </div>
               <p className="text-white font-bold mb-3 leading-relaxed">{question.explanation || question.a}</p>
               
               {/* Always show correct answers for open-ended questions */}
               {question.type === "open_ended" && (
-                <div className="mt-3 p-3 rounded-lg bg-chart-3/10 cartoon-border">
+                <div className="mt-3 p-3 rounded-lg bg-chart-3/10 border-2 border-chart-3/30">
                   <h4 className="font-black text-chart-3 mb-2 flex items-center gap-2">
                     <CheckCircle className="h-5 w-5 text-chart-3" strokeWidth={3} />
                     Correct Answer(s):
@@ -695,7 +746,7 @@ export default function BattlePage() {
                   {question.expected_answers && question.expected_answers.length > 0 ? (
                     <div className="flex flex-wrap gap-2">
                       {question.expected_answers.map((answer: string, index: number) => (
-                        <Badge key={index} className="cartoon-border bg-chart-3 text-foreground font-black text-base px-3 py-1.5">
+                        <Badge key={index} className="border-2 border-chart-3/40 bg-chart-3 text-foreground font-black text-base px-3 py-1.5">
                           {answer}
                         </Badge>
                       ))}
@@ -750,7 +801,6 @@ function BattleResultsScreen({
   onBackToDashboard
 }: BattleResultsScreenProps) {
   const [userProfile, setUserProfile] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
   const [showLevelUpModal, setShowLevelUpModal] = useState(false)
   const [battleResults, setBattleResults] = useState<{
     xpEarned: number
@@ -759,25 +809,22 @@ function BattleResultsScreen({
     xpBreakdown: string[]
     leveledUp: boolean
   } | null>(null)
-  const [copied, setCopied] = useState(false)
   const { playWin, playLose, playDraw } = useFeedback()
   const didPlayRef = useRef(false)
 
   useEffect(() => {
     const fetchUserProfile = async () => {
       try {
-        const userId = await getCurrentUserId()
-        if (userId) {
-          const response = await fetch(`/api/user-stats?userId=${userId}`)
-          if (response.ok) {
-            const data = await response.json()
-            setUserProfile(data)
-          }
+        const response = await fetch("/api/user-stats")
+        if (response.ok) {
+          const data = await response.json()
+          setUserProfile({
+            profile: data.profile,
+            stats: data.stats,
+          })
         }
       } catch (error) {
         console.error('Error fetching user profile:', error)
-      } finally {
-        setLoading(false)
       }
     }
 
@@ -798,11 +845,6 @@ function BattleResultsScreen({
     }
   }, [])
 
-  const handleCopySessionId = () => {
-    navigator.clipboard.writeText(sessionId)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
 
   const accuracy = totalQuestions > 0 ? (score / totalQuestions) * 100 : 0
   const rank = userProfile ? getRankFromXP(userProfile.stats?.xp || 0) : null
@@ -856,28 +898,6 @@ function BattleResultsScreen({
             Back to Dashboard
           </Button>
         </div>
-
-        {/* Session ID Display */}
-        <Card className="p-4 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 cartoon-border cartoon-shadow mb-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <FileText className="h-5 w-5 text-blue-400" strokeWidth={3} />
-              <div>
-                <p className="text-sm text-blue-100/70 font-bold">Session ID:</p>
-                <p className="text-base font-black text-white font-mono">{sessionId}</p>
-              </div>
-            </div>
-            <Button
-              onClick={handleCopySessionId}
-              variant="outline"
-              size="sm"
-              className="font-black border-2 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70"
-            >
-              <Copy className="h-4 w-4 mr-2" strokeWidth={3} />
-              {copied ? 'Copied!' : 'Copy'}
-            </Button>
-          </div>
-        </Card>
 
         {/* Results Header */}
         <div className="text-center mb-8">

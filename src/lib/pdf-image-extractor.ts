@@ -1,10 +1,12 @@
 /**
  * PDF Image Extractor
  * 
- * Extracts images, diagrams, and figures from PDF documents using canvas rendering
- * This approach renders each page and extracts it as an image, which captures
- * all visual content including diagrams, charts, and figures.
+ * Extracts embedded images, diagrams, and figures from PDF documents
+ * Uses pdf-extract-image library which extracts actual image objects from PDFs
+ * (doesn't render pages - only extracts embedded images)
  */
+
+import { extractImagesFromPdf } from 'pdf-extract-image'
 
 interface ExtractedImage {
   image_data_b64: string
@@ -25,37 +27,139 @@ export async function extractImagesFromPDF(
   }
   
   try {
-    // Use canvas rendering approach - most reliable for capturing all visual content
-    // Use require for server-side Node.js compatibility
-    let pdfjsLib: any
-    let createCanvas: any
+    // Try pdf-extract-image library first - extracts embedded images directly
+    // This doesn't require canvas rendering, just extracts actual image objects from PDF
+    let images: Buffer[] = []
     
     try {
-      // Use dynamic import for ESM module (pdfjs-dist/legacy/build/pdf.mjs)
-      // This is the correct path for pdfjs-dist v4.x
-      const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
-      pdfjsLib = pdfjsModule.default || pdfjsModule
+      // Convert Buffer to Uint8Array as required by the library
+      // Create a copy to avoid detached ArrayBuffer issues when buffer is used in parallel
+      const uint8Array = new Uint8Array(buffer)
+      images = await extractImagesFromPdf(uint8Array)
       
-      // Check version and warn if v5+ (compatibility issues)
-      const version = pdfjsLib.version || 'unknown'
-      if (version.startsWith('5.')) {
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`  ⚠️ [PDF EXTRACTOR] Detected pdfjs-dist v5 (${version}). Using compatibility mode for node-canvas.`)
-        }
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`  📄 [PDF EXTRACTOR] Found ${images.length} embedded images using pdf-extract-image`)
+      }
+    } catch (extractError: any) {
+      // pdf-extract-image may fail with "object not resolved" errors for complex PDFs
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(`  ⚠️ [PDF EXTRACTOR] pdf-extract-image failed: ${extractError.message}`)
+        console.log(`  🔄 [PDF EXTRACTOR] Falling back to pdfjs-dist direct extraction...`)
       }
       
-      const canvasModule = require('canvas')
-      createCanvas = canvasModule.createCanvas
-      
-      // For server-side Node.js, we don't need to configure workerSrc
-      // pdfjs-dist will handle server-side execution automatically
-      // DO NOT set workerSrc to false - it must be a string or undefined
-    } catch (importError) {
-      console.error(`  ❌ [PDF EXTRACTOR] Error importing pdfjs or canvas:`, importError)
-      // Return empty array if imports fail - don't throw, just skip image extraction
-      console.log(`  ⚠️ [PDF EXTRACTOR] Skipping image extraction due to import errors`)
+      // Fallback: Use pdfjs-dist to extract images directly
+      images = await extractImagesWithPdfjs(buffer, filename)
+    }
+    
+    if (images.length === 0) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`  ⚠️ [PDF EXTRACTOR] No embedded images found in PDF. PDF may contain only text/drawings.`)
+        console.log(`  ℹ️ [PDF EXTRACTOR] Note: This only extracts embedded image objects, not rendered pages or vector graphics.`)
+      }
       return []
     }
+    
+    // Convert PNG buffers to base64 and assign page numbers
+    // Note: pdf-extract-image doesn't provide page numbers, so we'll need to infer them
+    // For now, we'll assign them sequentially or try to extract from pdfjs-dist
+    const extractedImages: ExtractedImage[] = []
+    
+    // Try to get page information from pdfjs-dist
+    let pageInfo: { [key: number]: number } = {}
+    try {
+      const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
+      const pdfjsLib = pdfjsModule.default || pdfjsModule
+      
+      const loadingTask = pdfjsLib.getDocument({
+        data: new Uint8Array(buffer),
+        useSystemFonts: true,
+        verbosity: 0,
+      })
+      
+      const pdfDocument = await loadingTask.promise
+      
+      // Try to match images to pages by checking which page they appear on
+      // This is approximate - we'll assign images sequentially for now
+      const imagesPerPage = Math.ceil(images.length / pdfDocument.numPages)
+      
+      for (let i = 0; i < images.length; i++) {
+        const pageNum = Math.min(Math.floor(i / imagesPerPage) + 1, pdfDocument.numPages)
+        pageInfo[i] = pageNum
+      }
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`  📄 [PDF EXTRACTOR] PDF has ${pdfDocument.numPages} pages`)
+      }
+    } catch (pdfjsError) {
+      // If we can't get page info, assign sequentially
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(`  ⚠️ [PDF EXTRACTOR] Could not determine page numbers, assigning sequentially`)
+      }
+    }
+    
+    // Helper function to parse PNG dimensions from buffer
+    const getPNGDimensions = (buffer: Buffer): { width: number; height: number } => {
+      try {
+        // PNG header: 8 bytes signature, then IHDR chunk
+        // Width is bytes 16-19, height is bytes 20-23 (0-indexed)
+        if (buffer.length > 24 && buffer[0] === 0x89 && buffer[1] === 0x50) {
+          const width = buffer.readUInt32BE(16)
+          const height = buffer.readUInt32BE(20)
+          return { width, height }
+        }
+      } catch (e) {
+        // If parsing fails, return defaults
+      }
+      return { width: 800, height: 600 } // Default dimensions
+    }
+    
+    // Convert each image buffer to base64
+    for (let i = 0; i < images.length; i++) {
+      const imageBuffer = images[i]
+      const base64 = imageBuffer.toString('base64')
+      
+      // Parse actual dimensions from PNG header
+      const { width, height } = getPNGDimensions(imageBuffer)
+      
+      extractedImages.push({
+        image_data_b64: base64,
+        page: pageInfo[i] || Math.floor(i / 2) + 1, // Approximate page assignment
+        width,
+        height,
+        type: 'png',
+      })
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`  ✅ [PDF EXTRACTOR] Extracted image ${i + 1}/${images.length} (${width}x${height}px, ${imageBuffer.length} bytes, page ~${pageInfo[i] || 'unknown'})`)
+      }
+    }
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`  ✅ [PDF EXTRACTOR] Successfully extracted ${extractedImages.length} images from PDF`)
+    }
+    
+    return extractedImages
+    
+  } catch (error: any) {
+    console.error(`  ❌ [PDF EXTRACTOR] Error extracting images from ${filename}:`, error.message || error)
+    console.error(`  ⚠️ [PDF EXTRACTOR] This may be due to PDF format issues or missing dependencies`)
+    return []
+  }
+}
+
+/**
+ * Fallback: Extract images directly using pdfjs-dist
+ * This is more reliable for complex PDFs that pdf-extract-image can't handle
+ */
+async function extractImagesWithPdfjs(
+  buffer: Buffer,
+  filename: string
+): Promise<Buffer[]> {
+  const images: Buffer[] = []
+  
+  try {
+    const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
+    const pdfjsLib = pdfjsModule.default || pdfjsModule
     
     const loadingTask = pdfjsLib.getDocument({
       data: new Uint8Array(buffer),
@@ -64,196 +168,53 @@ export async function extractImagesFromPDF(
     })
     
     const pdfDocument = await loadingTask.promise
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`  📄 [PDF EXTRACTOR] PDF loaded: ${pdfDocument.numPages} pages`)
-    }
     
-    const extractedImages: ExtractedImage[] = []
-    
-    // Render each page and extract as image
-    // This captures all visual content including diagrams, charts, and figures
+    // Process each page to find embedded images
     for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
       try {
         const page = await pdfDocument.getPage(pageNum)
-        const viewport = page.getViewport({ scale: 2.0 }) // Higher scale for better quality
         
-        // Create canvas using node-canvas
-        const width = Math.floor(viewport.width)
-        const height = Math.floor(viewport.height)
-        const canvas = createCanvas(width, height)
-        const context = canvas.getContext('2d')
+        // Get operator list to find image operations
+        const operatorList = await page.getOperatorList()
         
-        // Fill white background
-        context.fillStyle = 'white'
-        context.fillRect(0, 0, width, height)
+        // Access common objects where images might be stored
+        const commonObjs = pdfDocument.commonObjs
         
-        // Fix for pdfjs-dist compatibility with node-canvas
-        // Apply compatibility layer regardless of version to ensure it works
-        // This handles both v4.x edge cases and v5+ strict type checking
-        
-        const canvasElement = canvas as any
-        const canvasContext = context as any
-        
-        // Always add DOM-like properties to ensure compatibility
-        // This is safe even for v4.x and ensures v5+ compatibility
-        const canvasProps = {
-          nodeName: 'CANVAS',
-          tagName: 'CANVAS',
-          nodeType: 1, // ELEMENT_NODE
-          localName: 'canvas',
-          namespaceURI: 'http://www.w3.org/1999/xhtml',
-        }
-        
-        for (const [key, value] of Object.entries(canvasProps)) {
-          if (!(key in canvasElement)) {
-            Object.defineProperty(canvasElement, key, {
-              value: value,
-              writable: false,
-              enumerable: true,
-              configurable: true
-            })
-          }
-        }
-        
-        // Ensure context has canvas reference (required by pdfjs-dist)
-        if (!canvasContext.canvas) {
-          Object.defineProperty(canvasContext, 'canvas', {
-            value: canvasElement,
-            writable: false,
-            enumerable: true,
-            configurable: true
-          })
-        }
-        
-        // Additional compatibility: ensure canvas has proper prototype chain
-        // This helps with instanceof checks in pdfjs-dist
-        if (!canvasElement.constructor || canvasElement.constructor.name !== 'Canvas') {
-          Object.defineProperty(canvasElement, 'constructor', {
-            value: { name: 'Canvas' },
-            writable: false,
-            enumerable: false,
-            configurable: true
-          })
-        }
-        
-        // Create render context
-        // For pdfjs-dist v4.x, use standard format
-        // For v5+, the canvas should now pass validation
-        const renderContext = {
-          canvasContext: canvasContext,
-          viewport: viewport,
-        }
-        
-        // Try to render the page
-        try {
-          const renderTask = page.render(renderContext as any)
-          await renderTask.promise
-          
-          // Convert canvas to base64 PNG
-          const base64 = canvas.toDataURL('image/png').split(',')[1]
-          
-          extractedImages.push({
-            image_data_b64: base64,
-            page: pageNum,
-            width: viewport.width,
-            height: viewport.height,
-            type: 'png',
-          })
-          
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`  ✅ [PDF EXTRACTOR] Extracted page ${pageNum} as image (${viewport.width}x${viewport.height}px)`)
-          }
-        } catch (renderError: any) {
-          // If canvas rendering fails, try alternative method
-          if (renderError.message && renderError.message.includes('Image or Canvas expected')) {
-            // Fallback: Try rendering with a simpler approach (no compatibility layer)
-            console.warn(`  ⚠️ [PDF EXTRACTOR] Page ${pageNum}: Canvas rendering failed, trying simplified approach...`)
-            
+        // Try to extract images from common objects
+        // This is a simplified approach - we look for image objects in the PDF structure
+        if (commonObjs && commonObjs._objs) {
+          for (const [key, obj] of Object.entries(commonObjs._objs)) {
             try {
-              // Create a fresh canvas without compatibility layer
-              const simpleCanvas = createCanvas(width, height)
-              const simpleContext = simpleCanvas.getContext('2d')
-              
-              // Fill white background
-              simpleContext.fillStyle = 'white'
-              simpleContext.fillRect(0, 0, width, height)
-              
-              // Try rendering with minimal context - sometimes this works when the full compatibility layer doesn't
-              const simpleRenderContext: any = {
-                canvasContext: simpleContext,
-                viewport: viewport,
+              const imageObj = obj as any
+              if (imageObj && imageObj.data) {
+                // This might be an image - try to extract it
+                const imageData = imageObj.data
+                if (imageData && imageData.length > 1000) { // Skip very small images
+                  images.push(Buffer.from(imageData))
+                }
               }
-              
-              // Try to render
-              const simpleRenderTask = page.render(simpleRenderContext)
-              await simpleRenderTask.promise
-              
-              // Convert to base64
-              const base64 = simpleCanvas.toDataURL('image/png').split(',')[1]
-              
-              extractedImages.push({
-                image_data_b64: base64,
-                page: pageNum,
-                width: viewport.width,
-                height: viewport.height,
-                type: 'png',
-              })
-              
-              if (process.env.NODE_ENV === 'development') {
-                console.log(`  ✅ [PDF EXTRACTOR] Extracted page ${pageNum} using simplified method`)
-              }
-            } catch (altError: any) {
-              // If simplified approach also fails, log detailed diagnostics
-              console.error(`  ❌ [PDF EXTRACTOR] Page ${pageNum}: All extraction methods failed`)
-              console.error(`     Original error: ${renderError.message}`)
-              console.error(`     Alternative error: ${altError?.message || altError}`)
-              console.error(`     pdfjs-dist version: ${pdfjsLib.version || 'unknown'}`)
-              console.error(`     Canvas library: ${createCanvas ? 'available' : 'missing'}`)
-              
-              // Still create a placeholder entry so the page isn't completely skipped
-              // This allows diagram analysis to proceed even without the image
-              if (process.env.NODE_ENV === 'development') {
-                console.warn(`  ⚠️ [PDF EXTRACTOR] Page ${pageNum}: Creating placeholder entry (no image data)`)
-              }
-              
-              // Don't add placeholder - let the diagram analyzer work with text-only
-              // extractedImages.push({
-              //   image_data_b64: '', // Empty - will be handled by diagram analyzer
-              //   page: pageNum,
-              //   width: viewport.width,
-              //   height: viewport.height,
-              //   type: 'placeholder',
-              // })
-            }
-          } else {
-            // Log other errors
-            console.error(`  ❌ [PDF EXTRACTOR] Error processing page ${pageNum}:`, renderError.message)
-            if (renderError.stack) {
-              console.error(`     Stack: ${renderError.stack}`)
+            } catch (e) {
+              // Skip objects that aren't images
             }
           }
         }
-      } catch (pageError: any) {
-        // Catch any other errors
-        console.error(`  ❌ [PDF EXTRACTOR] Unexpected error processing page ${pageNum}:`, pageError.message)
-        if (pageError.stack) {
-          console.error(`     Stack: ${pageError.stack}`)
+      } catch (pageError) {
+        // Continue to next page
+        if (process.env.NODE_ENV === 'development') {
+          console.warn(`  ⚠️ [PDF EXTRACTOR] Error processing page ${pageNum} for image extraction:`, pageError)
         }
-        continue
       }
     }
     
     if (process.env.NODE_ENV === 'development') {
-      console.log(`  ✅ [PDF EXTRACTOR] Extracted ${extractedImages.length} page images from ${pdfDocument.numPages} pages`)
-      console.log(`  ℹ️ [PDF EXTRACTOR] Note: Each page is captured as a full image, including all diagrams and figures`)
+      console.log(`  📄 [PDF EXTRACTOR] Extracted ${images.length} images using pdfjs-dist fallback`)
     }
-    
-    return extractedImages
-    
-  } catch (error: any) {
-    console.error(`  ❌ [PDF EXTRACTOR] Error extracting images from ${filename}:`, error.message || error)
-    console.error(`  ⚠️ [PDF EXTRACTOR] This may be due to missing canvas dependencies or PDF format issues`)
-    return []
+  } catch (error) {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn(`  ⚠️ [PDF EXTRACTOR] pdfjs-dist fallback also failed:`, error)
+    }
   }
+  
+  return images
 }
 

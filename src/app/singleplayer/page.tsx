@@ -13,13 +13,23 @@ import { StudyContextChatbot } from "@/components/study-assistant/study-context-
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { motion } from "framer-motion"
 import { UpgradePrompt } from "@/components/subscription/upgrade-prompt"
-import { getCurrentUserId } from "@/lib/auth/session"
 import { QuizConfigModal, QuizConfig } from "@/components/quiz/quiz-config-modal"
+import { BrainBattleLoading } from "@/components/ui/brain-battle-loading"
 
 export default function SingleplayerPage() {
   const [step, setStep] = useState(1)
+  const [isAdminMode, setIsAdminMode] = useState(false)
+  
+  // Check for admin mode from URL (client-side only)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      setIsAdminMode(params.get('admin') === 'true')
+    }
+  }, [])
   const [topic, setTopic] = useState("")
   const [difficulty, setDifficulty] = useState<"easy" | "medium" | "hard">("medium")
+  const [educationLevel, setEducationLevel] = useState<'elementary' | 'high_school' | 'university' | 'graduate'>('university')
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
   const [studyNotes, setStudyNotes] = useState<any>(null)
@@ -71,7 +81,7 @@ export default function SingleplayerPage() {
   const validateFiles = useCallback((files: File[]): { validFiles: File[], errors: string[] } => {
     const validFiles: File[] = []
     const errors: string[] = []
-    const maxSize = 10 * 1024 * 1024 // 10MB
+    const maxSize = 5 * 1024 * 1024 // 5MB - Optimized for cost control
     const allowedTypes = [
       'application/pdf',
       'application/msword',
@@ -84,7 +94,7 @@ export default function SingleplayerPage() {
     files.forEach(file => {
       // Check file size
       if (file.size > maxSize) {
-        errors.push(`${file.name}: File too large (max 10MB)`)
+        errors.push(`${file.name}: File too large (max 5MB)`)
         return
       }
 
@@ -220,7 +230,8 @@ export default function SingleplayerPage() {
           formData.append('files', file)
         })
       }
-      formData.append('topic', topic)
+      const battleTopic = studyNotes?.title || topic || 'General Knowledge'
+      formData.append('topic', battleTopic)
       formData.append('difficulty', difficulty)
       if (studyContext) {
         formData.append('studyContext', JSON.stringify(studyContext))
@@ -263,15 +274,30 @@ export default function SingleplayerPage() {
         multiple_choice: true,
         open_ended: true,
         true_false: true
-      }
+      },
+      contentFocus: 'both' as const,
+      includeDiagrams: true
     }
     setShowQuizConfig(false)
     setQuizConfig(config)
     setIsGenerating(true)
     
     try {
-      // Get current user ID
-      const userId = await getCurrentUserId()
+      // Get current user ID from API endpoint
+      const userResponse = await fetch('/api/user/current')
+      let userId: string | null = null
+      if (userResponse.ok) {
+        const userData = await userResponse.json()
+        if (userData.success && userData.userId) {
+          userId = userData.userId
+        }
+      }
+      
+      if (!userId) {
+        setError('You must be logged in to generate a quiz')
+        setIsGenerating(false)
+        return
+      }
       
       const formData = new FormData()
       if (uploadedFiles.length > 0) {
@@ -281,8 +307,11 @@ export default function SingleplayerPage() {
       }
       formData.append('topic', topic)
       formData.append('difficulty', difficulty)
+      formData.append('educationLevel', educationLevel)
       formData.append('totalQuestions', activeConfig.totalQuestions.toString())
       formData.append('questionTypes', JSON.stringify(activeConfig.questionTypes))
+      formData.append('contentFocus', activeConfig.contentFocus)
+      formData.append('includeDiagrams', activeConfig.includeDiagrams.toString())
       if (userId) {
         formData.append('userId', userId)
       }
@@ -293,20 +322,27 @@ export default function SingleplayerPage() {
         formData.append('notes', JSON.stringify(studyNotes))
       }
       
+      // Add admin mode header if in admin mode
+      const headers: HeadersInit = {}
+      if (isAdminMode) {
+        headers['x-admin-mode'] = 'true'
+      }
+      
       const response = await fetch('/api/generate-quiz', {
         method: 'POST',
+        headers,
         body: formData
       })
       
-      const result = await response.json()
+        const result = await response.json()
       
-      if (result.success) {
+        if (result.success) {
         // Generate unique session ID
         const sessionId = crypto.randomUUID()
         
         // Store questions and session ID in sessionStorage for the battle page
         sessionStorage.setItem('quizQuestions', JSON.stringify(result.questions))
-        sessionStorage.setItem('quizTopic', topic)
+        sessionStorage.setItem('quizTopic', battleTopic)
         sessionStorage.setItem('quizDifficulty', difficulty)
         sessionStorage.setItem('quizSessionId', sessionId)
         
@@ -332,8 +368,13 @@ export default function SingleplayerPage() {
     }
   }
 
-  const maxQuestions = subscriptionLimits?.limits?.maxQuestionsPerQuiz || 8
+  const maxQuestions = subscriptionLimits?.limits?.maxQuestionsPerQuiz || 10
   const defaultQuestions = Math.min(maxQuestions, 5)
+
+  // Show loading screen when generating notes or quiz
+  if (isGenerating) {
+    return <BrainBattleLoading message="Generating your Brain Battle experience..." />
+  }
 
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6">
@@ -510,7 +551,7 @@ export default function SingleplayerPage() {
                     <Badge className="border-2 border-blue-400/50 bg-blue-500/20 text-blue-300 font-bold">PPTX</Badge>
                   </div>
                   <p className="text-sm text-blue-100/60 font-bold mt-4">
-                    Multiple files supported • Max 10MB per file
+                    Multiple files supported • Max 5MB per file
                   </p>
                   {/* Document Limit Indicator */}
                   {subscriptionLimits && !subscriptionLimits.usage.documents.isUnlimited && (
@@ -538,6 +579,26 @@ export default function SingleplayerPage() {
 
               {uploadedFiles.length > 0 && (
                 <div className="space-y-4">
+                  {/* Education Level Selection */}
+                  <div className="p-4 rounded-xl bg-slate-700/50 border-2 border-slate-600/50">
+                    <label className="block text-base font-bold text-white mb-3">
+                      Education Level
+                    </label>
+                    <select 
+                      value={educationLevel}
+                      onChange={(e) => setEducationLevel(e.target.value as 'elementary' | 'high_school' | 'university' | 'graduate')}
+                      className="w-full px-4 py-3 rounded-xl bg-slate-800 border-2 border-slate-600/50 text-white font-bold focus:border-blue-400 focus:outline-none"
+                    >
+                      <option value="elementary">Elementary School</option>
+                      <option value="high_school">High School</option>
+                      <option value="university">University</option>
+                      <option value="graduate">Graduate School</option>
+                    </select>
+                    <p className="text-xs text-white/60 font-bold mt-2">
+                      This helps us adjust question difficulty to match your level
+                    </p>
+                  </div>
+
                   <div className="flex items-center justify-between">
                     <h3 className="font-black text-white text-xl">Uploaded Documents ({uploadedFiles.length})</h3>
                     <Button
@@ -719,21 +780,6 @@ export default function SingleplayerPage() {
                       }
                     </span>
                   </div>
-                  {/* Quiz Question Limit Indicator */}
-                  {subscriptionLimits && subscriptionLimits.limits.maxQuestionsPerQuiz !== Infinity && (
-                    <div className="flex justify-between items-center pt-2 border-t border-slate-600/50">
-                      <span className="text-blue-100/70 font-bold flex items-center gap-2">
-                        <Brain className="w-4 h-4" />
-                        Quiz Questions:
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <span className="font-black text-white">
-                          {subscriptionLimits.limits.maxQuestionsPerQuiz} per quiz
-                        </span>
-                        <Crown className="w-4 h-4 text-orange-400" />
-                      </div>
-                    </div>
-                  )}
                 </div>
               </div>
 
