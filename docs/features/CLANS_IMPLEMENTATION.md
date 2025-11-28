@@ -71,6 +71,57 @@ CREATE TABLE public.clan_sessions (
 - Only owners/admins can create sessions
 - All members can participate in sessions
 
+## UI Components
+
+### Component Structure
+
+```
+src/components/clans/
+├── clans-section.tsx          # Main dashboard section
+├── create-clan-modal.tsx      # Modal for creating clans
+└── join-clan-modal.tsx        # Modal for joining clans
+
+src/app/clans/
+└── [id]/
+    └── page.tsx               # Clan detail page
+```
+
+### Key Components
+
+1. **ClansSection** (`src/components/clans/clans-section.tsx`)
+   - Displays all user's clans in dashboard
+   - Shows member count, join codes, roles
+   - Create and Join action buttons
+   - Copy-to-clipboard functionality
+
+2. **CreateClanModal** (`src/components/clans/create-clan-modal.tsx`)
+   - Pro-only creation form
+   - Validates input (name, description, max members)
+   - Error handling with upgrade prompts
+   - Auto-generates unique join code
+
+3. **JoinClanModal** (`src/components/clans/join-clan-modal.tsx`)
+   - Join by 8-character code
+   - Auto-uppercase and validation
+   - Handles clan limits (Free: 3, Pro: 10)
+   - Error messages for common issues
+
+4. **ClanDetailPage** (`src/app/clans/[id]/page.tsx`)
+   - Full clan view with header
+   - Members tab (with roles and stats)
+   - Leaderboard tab (ranked by XP)
+   - Leave clan functionality
+   - Copy join code
+
+### Integration
+
+The clans section is integrated into the dashboard:
+- Location: `src/app/dashboard/page.tsx`
+- Positioned between Lobby and Recent Battles sections
+- Uses same styling as other dashboard components
+
+For detailed UI component documentation, see [CLANS_UI_COMPONENTS.md](./CLANS_UI_COMPONENTS.md).
+
 ## API Routes
 
 ### 1. Create Clan (Pro Only)

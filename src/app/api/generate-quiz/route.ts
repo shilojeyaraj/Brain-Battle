@@ -7,6 +7,13 @@ import { sanitizeError, createSafeErrorResponse } from '@/lib/utils/error-saniti
 import { checkQuizDiagramLimit, decrementQuizDiagramQuota } from '@/lib/subscription/diagram-limits'
 import { generateQuizQuestionDiagram } from '@/lib/nanobanana/client'
 import { z } from 'zod'
+import {
+  getPreviousQuestions,
+  getWrongAnswers,
+  isQuestionDuplicate,
+  storeQuestionHistory,
+  generateTopicHash
+} from '@/lib/quiz/question-deduplication'
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -37,6 +44,8 @@ export async function POST(request: NextRequest) {
     let contentFocus = 'both' // Default to both
     let includeDiagrams = true // Default to true
     let educationLevel = 'university' // Default to university
+    let documentId: string | null = null // For tracking questions per document
+    let isRedo = false // Flag for redo quiz (focus on wrong answers)
 
     if (contentType?.includes('application/json')) {
       // Could be multiplayer OR singleplayer with notes
@@ -48,6 +57,8 @@ export async function POST(request: NextRequest) {
       contentFocus = body.contentFocus || 'both'
       includeDiagrams = body.includeDiagrams !== false // Default to true if not specified
       educationLevel = body.educationLevel || 'university'
+      documentId = body.documentId || null
+      isRedo = body.isRedo === true
       // userId is now from session, not body
       notes = body.studyNotes ? JSON.stringify(body.studyNotes) : body.notes
       studyContextStr = body.studyContext ? JSON.stringify(body.studyContext) : null
@@ -70,6 +81,10 @@ export async function POST(request: NextRequest) {
       educationLevel = (form.get("educationLevel") as string) || 'university'
       const totalQuestionsStr = form.get("totalQuestions") as string
       totalQuestions = totalQuestionsStr ? parseInt(totalQuestionsStr) : undefined
+      const documentIdStr = form.get("documentId") as string
+      documentId = documentIdStr || null
+      const isRedoStr = form.get("isRedo") as string
+      isRedo = isRedoStr === 'true'
       // userId is now from session, not form data
       instructions = form.get("instructions") as string
       notes = form.get("notes") as string
@@ -349,6 +364,33 @@ export async function POST(request: NextRequest) {
     // Create a comprehensive prompt for quiz generation
     const numQuestions = totalQuestions || 5
     
+    // Get previous questions and wrong answers for deduplication and redo focus
+    let previousQuestions: any[] = []
+    let wrongAnswers: any[] = []
+    let topicHash: string | null = null
+    
+    if (userId && !isAdminMode) {
+      try {
+        // Generate topic hash if no document_id
+        if (!documentId && topic) {
+          topicHash = generateTopicHash(topic, difficulty, educationLevel, contentFocus)
+        }
+        
+        // Get previous questions to exclude
+        previousQuestions = await getPreviousQuestions(userId, documentId, topicHash)
+        console.log(`📋 [QUIZ API] Found ${previousQuestions.length} previous questions to exclude`)
+        
+        // If redo, get wrong answers to focus on
+        if (isRedo) {
+          wrongAnswers = await getWrongAnswers(userId, documentId, topicHash)
+          console.log(`🔄 [QUIZ API] Redo mode: Found ${wrongAnswers.length} wrong answers to focus on`)
+        }
+      } catch (error) {
+        console.error('❌ [QUIZ API] Error fetching previous questions:', error)
+        // Continue without deduplication if there's an error
+      }
+    }
+    
     // Adjust difficulty based on education level
     const getEducationLevelDescription = (level: string) => {
       switch (level) {
@@ -367,11 +409,41 @@ export async function POST(request: NextRequest) {
     
     const educationLevelDescription = getEducationLevelDescription(educationLevel)
     
+    // Build exclusion and focus instructions
+    let exclusionInstructions = ''
+    if (previousQuestions.length > 0) {
+      exclusionInstructions = `
+
+⚠️ CRITICAL: DO NOT CREATE QUESTIONS THAT ARE SIMILAR TO THESE PREVIOUS QUESTIONS:
+${previousQuestions.slice(0, 20).map((q, i) => `${i + 1}. ${q.question_text}`).join('\n')}
+
+You MUST create completely NEW and DIFFERENT questions. Do not rephrase or slightly modify these questions - create entirely new questions about different aspects of the content.
+`
+    }
+    
+    let redoFocusInstructions = ''
+    if (isRedo && wrongAnswers.length > 0) {
+      const topWrongTopics = wrongAnswers.slice(0, 5).map(wa => wa.source_document || 'content').filter(Boolean)
+      redoFocusInstructions = `
+
+🔄 REDO QUIZ MODE - FOCUS ON AREAS WHERE USER STRUGGLED:
+The user previously got these questions wrong (indicating they need more practice on these topics):
+${wrongAnswers.slice(0, 5).map((wa, i) => `${i + 1}. ${wa.question_text.substring(0, 100)}...`).join('\n')}
+
+PRIORITY: Create questions that test understanding of the SAME CONCEPTS/TOPICS that the user struggled with, but with DIFFERENT questions. Focus on:
+${topWrongTopics.length > 0 ? `- Topics: ${[...new Set(topWrongTopics)].join(', ')}` : '- The same concepts from the document'}
+- Similar difficulty level but different question formulation
+- Testing the same knowledge areas where the user needs improvement
+`
+    }
+    
     const prompt = `
-${topic && topic.trim() 
+${isRedo ? '🔄 REDO QUIZ: ' : ''}${topic && topic.trim() 
   ? `Generate ${numQuestions} quiz questions about "${topic}" with ${difficulty} difficulty level, appropriate for ${educationLevelDescription}.${contextInstructions}`
   : `Generate ${numQuestions} quiz questions based on the content from the uploaded documents. Analyze the document content to determine the subject matter and create questions accordingly. Use ${difficulty} difficulty level, appropriate for ${educationLevelDescription}.${contextInstructions}`
 }
+${exclusionInstructions}
+${redoFocusInstructions}
 
 ${complexityAnalysis ? `
 COMPLEXITY ANALYSIS (use this to match question difficulty to content level):
@@ -589,7 +661,7 @@ STRICT RULES:
     }
 
     // Ensure each question has the required fields
-    const validatedQuestions = quizData.questions.map((q: any, index: number) => ({
+    let validatedQuestions = quizData.questions.map((q: any, index: number) => ({
       id: index + 1,
       type: q.type || "multiple_choice",
       question: q.question || q.q || "Question not available",
@@ -604,6 +676,23 @@ STRICT RULES:
       requires_image: q.requires_image || false,
       image_data_b64: q.image_data_b64 || null // Base64 image data if available
     }))
+    
+    // Filter out duplicates if we have previous questions
+    if (previousQuestions.length > 0 && userId && !isAdminMode) {
+      const originalCount = validatedQuestions.length
+      validatedQuestions = validatedQuestions.filter(q => {
+        const isDuplicate = isQuestionDuplicate(q.question, previousQuestions)
+        if (isDuplicate) {
+          console.log(`⚠️ [QUIZ API] Filtered out duplicate question: "${q.question.substring(0, 50)}..."`)
+        }
+        return !isDuplicate
+      })
+      
+      if (validatedQuestions.length < originalCount) {
+        console.log(`📋 [QUIZ API] Filtered ${originalCount - validatedQuestions.length} duplicate questions`)
+        // If we filtered too many, we might need to generate more, but for now just proceed
+      }
+    }
 
     // Generate diagrams for questions that require them (only if includeDiagrams is true)
     const questionsNeedingDiagrams = includeDiagrams 
@@ -755,9 +844,36 @@ STRICT RULES:
       }
     }
 
+    // Store questions in history for deduplication (for both singleplayer and multiplayer)
+    if (userId && !isAdminMode && validatedQuestions.length > 0) {
+      try {
+        await storeQuestionHistory(
+          userId,
+          documentId,
+          topicHash,
+          validatedQuestions.map(q => ({
+            question: q.question,
+            type: q.type,
+            options: q.options,
+            correct_answer: q.type === "multiple_choice" 
+              ? (q.options?.[q.correct] || q.correct)
+              : (q.expected_answers?.[0] || ""),
+            explanation: q.explanation,
+            source_document: q.source_document
+          })),
+          sessionId || undefined
+        )
+      } catch (error) {
+        console.error('❌ [QUIZ API] Error storing question history:', error)
+        // Don't fail the request if history storage fails
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      questions: validatedQuestions
+      questions: validatedQuestions,
+      isRedo: isRedo,
+      documentId: documentId
     })
 
   } catch (error) {

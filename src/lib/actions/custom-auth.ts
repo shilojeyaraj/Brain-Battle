@@ -526,10 +526,15 @@ export async function login(formData: FormData) {
       const { setSessionCookie } = await import('@/lib/auth/session-cookies')
       await setSessionCookie(result.user.id)
       
-      console.log("✅ [LOGIN] Authentication successful, session cookie set, redirecting to dashboard")
+      console.log("✅ [LOGIN] Authentication successful, session cookie set")
       revalidatePath("/")
-      // Redirect without userId query parameter - session is in cookie
-      redirect("/dashboard")
+      
+      // Check for redirect parameter in formData (passed from client)
+      const redirectParam = formData.get("redirect") as string | null
+      const redirectUrl = redirectParam ? decodeURIComponent(redirectParam) : "/dashboard"
+      
+      // Redirect to original destination or dashboard
+      redirect(redirectUrl)
     } else {
       revalidatePath("/")
       redirect("/dashboard")

@@ -1,47 +1,52 @@
+/**
+ * Create Room Page
+ * 
+ * SEO-friendly public page for creating multiplayer rooms.
+ * Uses useRequireAuth hook for authentication.
+ * 
+ * SEO Benefits:
+ * - Indexable URL: /create-room
+ * - Better discoverability for "create study room" searches
+ */
+
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter } from 'next/navigation'
-import { Brain, Users, ArrowLeft, Crown } from 'lucide-react'
+import { Brain, Users, ArrowLeft, Crown, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { useSubscription } from '@/hooks/use-subscription'
 import { UpgradePrompt } from '@/components/subscription/upgrade-prompt'
 import { Button } from '@/components/ui/button'
+import { useRequireAuth } from '@/hooks/use-require-auth'
 
 // Force dynamic rendering to avoid SSR issues
 export const dynamic = 'force-dynamic'
 
-export default function CreateRoomPage() {
+function CreateRoomContent() {
   const [roomName, setRoomName] = useState('')
   const [maxPlayers, setMaxPlayers] = useState(4)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showUpgradePrompt, setShowUpgradePrompt] = useState(false)
-  const [userId, setUserId] = useState<string | null>(null)
   const router = useRouter()
+  const { userId, loading: authLoading } = useRequireAuth()
   const { isPro, limits, loading: subscriptionLoading } = useSubscription(userId)
 
-  useEffect(() => {
-    const fetchUserId = async () => {
-      try {
-        // Fetch userId from API endpoint that uses secure session cookies
-        const response = await fetch('/api/user/current')
-        if (response.ok) {
-          const data = await response.json()
-          if (data.success && data.userId) {
-            setUserId(data.userId)
-            return
-          }
-        }
-        // No valid session found
-        router.push('/login')
-      } catch (error) {
-        console.error('Error checking user session:', error)
-        router.push('/login')
-      }
-    }
-    fetchUserId()
-  }, [router])
+  if (authLoading) {
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 text-blue-400 animate-spin mx-auto mb-4" />
+          <p className="text-blue-200 font-bold">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!userId) {
+    return null // Redirecting to login
+  }
 
   // Set max players based on subscription when limits load
   useEffect(() => {
@@ -110,16 +115,6 @@ export default function CreateRoomPage() {
     }
   }
 
-  if (!userId) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p className="text-muted-foreground font-bold">Loading...</p>
-        </div>
-      </div>
-    )
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">

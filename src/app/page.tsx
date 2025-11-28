@@ -1,11 +1,13 @@
 "use client"
 
 import { Button } from "@/components/ui/button"
-import { motion } from "framer-motion"
-import { Brain, Users, Zap, Trophy, Star, Rocket, Target, Award, BookOpen, Gamepad2, TrendingUp, Crown, Loader2, Sparkles, GraduationCap, TrendingDown } from "lucide-react"
+import { motion } from "@/components/ui/motion"
+import { Brain, Users, Zap, Trophy, Crown, Loader2, TrendingUp, Upload, Clock, Award, BookOpen, Gamepad2 } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
+import { HomePageSchema, FAQSchema, OrganizationSchema } from "@/components/seo/schema-markup"
+import { Accordion } from "@/components/ui/accordion"
 
 const container = {
   hidden: { opacity: 0 },
@@ -186,8 +188,38 @@ export default function HomePage() {
   // Limit to top 3 players only
   const displayPlayers = (leaderboardPlayers.length > 0 ? leaderboardPlayers : placeholderPlayers).slice(0, 3)
   
+  // FAQ data for schema markup
+  const homepageFAQs = [
+    {
+      question: "How does Brain Battle generate quizzes from PDFs?",
+      answer: "Brain Battle uses AI to analyze your PDF documents, extract key concepts, and automatically generate personalized quiz questions based on the actual content. Simply upload your PDF, and the AI creates multiple-choice and open-ended questions in seconds."
+    },
+    {
+      question: "Can I study with friends on Brain Battle?",
+      answer: "Yes! Brain Battle offers multiplayer study battles where you can create private rooms, invite friends with a room code, and compete in real-time quizzes. You can also join study groups (clans) for classroom-style sessions."
+    },
+    {
+      question: "Is Brain Battle free to use?",
+      answer: "Brain Battle offers a free tier with 10 documents per month and 10 questions per quiz. Pro plans unlock unlimited documents, unlimited questions, and classroom/clan creation features."
+    },
+    {
+      question: "Is Brain Battle good for teachers?",
+      answer: "Yes! Brain Battle is perfect for teachers and educators. Create classroom clans (study groups) where students can join for free. Host Kahoot-style quiz sessions for your entire class, track student progress, and make learning engaging through gamification. One Pro account can manage up to 10 clans with 50 members each."
+    },
+    {
+      question: "How accurate are the AI-generated questions?",
+      answer: "Brain Battle generates questions directly from your document content. Questions are based on actual text, examples, and concepts from your uploaded PDFs, ensuring high accuracy and relevance to your study materials."
+    }
+  ]
+
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
+    <>
+      {/* Schema Markup for SEO */}
+      <HomePageSchema />
+      <OrganizationSchema />
+      <FAQSchema faqs={homepageFAQs} />
+      
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
       {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl animate-float" />
@@ -314,7 +346,7 @@ export default function HomePage() {
 
           {/* Horizontal Carousel of Feature Cards - Right side under leaderboard */}
           <motion.div
-            className="absolute top-[calc(10%+360px)] right-4 md:right-10 opacity-90 md:opacity-100 hidden lg:block"
+            className="absolute top-[calc(10%+380px)] right-4 md:right-10 opacity-90 md:opacity-100 hidden lg:block"
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 1.1 }}
@@ -506,8 +538,98 @@ export default function HomePage() {
           </motion.div>
         </main>
 
-        {/* Features Section */}
+        {/* How It Works Section */}
         <section id="how-it-works" className="px-6 py-20 md:px-8 lg:px-12 max-w-7xl mx-auto scroll-mt-20">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-4xl md:text-6xl font-black mb-4">
+              <span className="bg-gradient-to-r from-blue-300 to-orange-300 bg-clip-text text-transparent">
+                How It Works
+              </span>
+            </h2>
+            <p className="text-lg text-blue-100/70">Get started in 4 simple steps</p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
+            {[
+              {
+                step: "1",
+                title: "Upload Your PDF",
+                description: "Add your study materials, textbooks, or lecture notes. Our AI supports PDFs up to 5MB.",
+                icon: Upload,
+                color: "from-blue-500 to-blue-600",
+              },
+              {
+                step: "2",
+                title: "AI Generates Questions",
+                description: "Our AI analyzes your document and creates personalized quiz questions in seconds.",
+                icon: Sparkles,
+                color: "from-orange-500 to-orange-600",
+              },
+              {
+                step: "3",
+                title: "Compete with Friends",
+                description: "Create a room, invite friends, and battle in real-time quizzes. See who knows more!",
+                icon: Users,
+                color: "from-green-500 to-green-600",
+              },
+              {
+                step: "4",
+                title: "Level Up & Win",
+                description: "Earn XP, unlock achievements, climb leaderboards, and build your study streak!",
+                icon: TrendingUp,
+                color: "from-purple-500 to-purple-600",
+              },
+            ].map((step, idx) => {
+              const Icon = step.icon
+              return (
+                <motion.div
+                  key={idx}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.5, delay: idx * 0.1 }}
+                  whileHover={{
+                    y: -8,
+                    transition: {
+                      type: "spring",
+                      stiffness: 100,
+                      damping: 10,
+                    },
+                  }}
+                  className="relative bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-6 border-4 border-slate-600/50 hover:border-blue-400/50 transition-colors"
+                >
+                  {/* Step Number Badge */}
+                  <div className="absolute -top-4 -left-4 w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-orange-500 border-4 border-slate-900 flex items-center justify-center font-black text-white text-lg">
+                    {step.step}
+                  </div>
+                  
+                  <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${step.color} flex items-center justify-center mb-4 border-2 border-white/20 mt-2`}>
+                    <Icon className="w-7 h-7 text-white" />
+                  </div>
+                  <h3 className="text-xl font-black text-white mb-2">{step.title}</h3>
+                  <p className="text-sm text-blue-100/70 leading-relaxed">{step.description}</p>
+                  
+                  {/* Arrow connector (hidden on last item) */}
+                  {idx < 3 && (
+                    <div className="hidden lg:block absolute top-1/2 -right-3 -translate-y-1/2 translate-x-full z-10">
+                      <div className="w-6 h-0.5 bg-gradient-to-r from-blue-400 to-orange-400"></div>
+                      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-0 h-0 border-l-8 border-l-orange-400 border-t-4 border-t-transparent border-b-4 border-b-transparent"></div>
+                    </div>
+                  )}
+                </motion.div>
+              )
+            })}
+          </div>
+        </section>
+
+        {/* Features Section - Combined */}
+        <section id="features" className="px-6 py-20 md:px-8 lg:px-12 max-w-7xl mx-auto">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
@@ -556,6 +678,26 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* FAQ Section */}
+        <section className="px-6 py-20 md:px-8 lg:px-12 max-w-4xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5 }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-4xl md:text-6xl font-black mb-4">
+              <span className="bg-gradient-to-r from-blue-300 to-orange-300 bg-clip-text text-transparent">
+                Frequently Asked Questions
+              </span>
+            </h2>
+            <p className="text-lg text-blue-100/70">Everything you need to know about Brain Battle</p>
+          </motion.div>
+
+          <Accordion items={homepageFAQs} />
+        </section>
+
         {/* CTA Section */}
         <section className="px-6 py-16 md:px-8 lg:px-12 max-w-4xl mx-auto text-center mb-20">
           <motion.div
@@ -566,7 +708,7 @@ export default function HomePage() {
             className="bg-gradient-to-r from-blue-600 to-orange-500 rounded-3xl p-8 md:p-12 border-4 border-orange-300"
           >
             <h2 className="text-3xl md:text-5xl font-black text-white mb-4">Ready to Battle?</h2>
-            <p className="text-lg text-blue-100 mb-8">Join thousands of students transforming their study experience</p>
+            <p className="text-lg text-blue-100 mb-8">Transform your study experience with AI-powered quizzes and multiplayer battles</p>
             <Link href="/signup">
               <Button className="bg-white text-blue-600 hover:bg-blue-50 text-lg h-14 px-8 font-black border-2 border-white animate-pulse-ring">
                 Get Started Free
@@ -576,5 +718,6 @@ export default function HomePage() {
         </section>
       </div>
     </div>
+    </>
   )
 }

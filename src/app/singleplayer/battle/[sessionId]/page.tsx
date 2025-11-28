@@ -295,6 +295,9 @@ export default function BattlePage() {
       })
 
       // Submit results to API with sessionId (user is taken from secure session cookie on the server)
+      // Get documentId from sessionStorage if available
+      const documentId = typeof window !== 'undefined' ? sessionStorage.getItem('documentId') : null
+      
       const response = await fetch('/api/quiz-results', {
         method: 'POST',
         headers: {
@@ -308,7 +311,8 @@ export default function BattlePage() {
           totalQuestions: totalQuestions,
           correctAnswers: correctAnswers,
           duration: totalTime,
-          topic: topic
+          topic: topic,
+          documentId: documentId // Pass documentId for answer history tracking
         })
       })
 
@@ -432,6 +436,11 @@ export default function BattlePage() {
         sessionId={sessionId}
         onRetakeBattle={() => window.location.href = '/singleplayer'}
         onBackToDashboard={() => window.location.href = '/dashboard'}
+        documentId={typeof window !== 'undefined' ? sessionStorage.getItem('documentId') : null}
+        difficulty={difficulty}
+        educationLevel={typeof window !== 'undefined' ? sessionStorage.getItem('educationLevel') || 'university' : 'university'}
+        contentFocus={typeof window !== 'undefined' ? sessionStorage.getItem('contentFocus') || 'both' : 'both'}
+        includeDiagrams={typeof window !== 'undefined' ? sessionStorage.getItem('includeDiagrams') !== 'false' : true}
       />
     )
   }
@@ -788,6 +797,11 @@ interface BattleResultsScreenProps {
   sessionId: string
   onRetakeBattle: () => void
   onBackToDashboard: () => void
+  documentId: string | null
+  difficulty: string
+  educationLevel: string
+  contentFocus: string
+  includeDiagrams: boolean
 }
 
 function BattleResultsScreen({ 
@@ -798,7 +812,12 @@ function BattleResultsScreen({
   questions, 
   sessionId,
   onRetakeBattle,
-  onBackToDashboard
+  onBackToDashboard,
+  documentId,
+  difficulty,
+  educationLevel,
+  contentFocus,
+  includeDiagrams
 }: BattleResultsScreenProps) {
   const [userProfile, setUserProfile] = useState<any>(null)
   const [showLevelUpModal, setShowLevelUpModal] = useState(false)
@@ -1105,12 +1124,66 @@ function BattleResultsScreen({
 
         {/* Action Buttons */}
         <div className="space-y-4">
+          {documentId && (
+            <Button 
+              onClick={async () => {
+                // Redo quiz with same document, focusing on wrong answers
+                try {
+                  const formData = new FormData()
+                  formData.append('topic', topic)
+                  formData.append('difficulty', difficulty)
+                  formData.append('educationLevel', educationLevel)
+                  formData.append('totalQuestions', totalQuestions.toString())
+                  formData.append('contentFocus', contentFocus)
+                  formData.append('includeDiagrams', includeDiagrams.toString())
+                  formData.append('documentId', documentId)
+                  formData.append('isRedo', 'true')
+                  
+                  // Get notes from sessionStorage if available
+                  const storedNotes = sessionStorage.getItem('studyNotes')
+                  if (storedNotes) {
+                    formData.append('notes', storedNotes)
+                  }
+                  
+                  const response = await fetch('/api/generate-quiz', {
+                    method: 'POST',
+                    body: formData
+                  })
+                  
+                  const result = await response.json()
+                  
+                  if (result.success) {
+                    const newSessionId = crypto.randomUUID()
+                    sessionStorage.setItem('quizQuestions', JSON.stringify(result.questions))
+                    sessionStorage.setItem('quizTopic', topic)
+                    sessionStorage.setItem('quizDifficulty', difficulty)
+                    sessionStorage.setItem('quizSessionId', newSessionId)
+                    sessionStorage.setItem('documentId', documentId)
+                    sessionStorage.setItem('educationLevel', educationLevel)
+                    sessionStorage.setItem('contentFocus', contentFocus)
+                    sessionStorage.setItem('includeDiagrams', includeDiagrams.toString())
+                    
+                    window.location.href = `/singleplayer/battle/${newSessionId}`
+                  } else {
+                    alert(`Error generating quiz: ${result.error || 'Unknown error'}`)
+                  }
+                } catch (error) {
+                  console.error('Error redoing quiz:', error)
+                  alert('Failed to generate quiz. Please try again.')
+                }
+              }}
+              className="w-full h-12 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-black text-lg border-4 border-blue-400/50 cartoon-border cartoon-shadow cartoon-hover"
+            >
+              <Zap className="h-5 w-5 mr-2" strokeWidth={3} />
+              Redo Quiz (Focus on Wrong Answers)
+            </Button>
+          )}
           <Button 
             onClick={onRetakeBattle}
             className="w-full h-12 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black text-lg border-4 border-orange-400/50 cartoon-border cartoon-shadow cartoon-hover"
           >
             <Zap className="h-5 w-5 mr-2" strokeWidth={3} />
-            Take Another Quiz
+            {documentId ? 'Take New Quiz' : 'Take Another Quiz'}
           </Button>
         </div>
       </div>

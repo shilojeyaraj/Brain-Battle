@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Brain, Trophy, Star, Settings, LogOut, User, RotateCw, Crown, Sparkles } from "lucide-react"
+import { Brain, Trophy, Star, Settings, LogOut, User, RotateCw, Crown, Sparkles, Flame } from "lucide-react"
 import { logout } from "@/lib/actions/custom-auth"
 import { getUserStatsClient, UserProfile } from "@/lib/actions/user-stats-client"
 import { UserProfileModal } from "@/components/ui/user-profile-modal"
@@ -26,6 +26,7 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [streak, setStreak] = useState<number>(0) // Initialize to 0 so it shows immediately
   const searchParams = useSearchParams()
 
   useEffect(() => {
@@ -96,6 +97,28 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
     }
   }, [currentUserId, fetchUserProfile])
 
+  // Fetch streak data
+  useEffect(() => {
+    const fetchStreak = async () => {
+      try {
+        const response = await fetch('/api/user/streak')
+        if (response.ok) {
+          const data = await response.json()
+          setStreak(data.currentStreak || 0)
+        }
+      } catch (error) {
+        console.error('Error fetching streak:', error)
+      }
+    }
+
+    if (currentUserId) {
+      fetchStreak()
+      // Refresh every 5 minutes
+      const interval = setInterval(fetchStreak, 5 * 60 * 1000)
+      return () => clearInterval(interval)
+    }
+  }, [currentUserId])
+
   const handleAvatarClick = useCallback(() => {
     setIsMenuOpen(prev => !prev)
   }, [])
@@ -130,15 +153,20 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
 
           <div className="flex items-center gap-4">
             <div className="hidden md:flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-card cartoon-border cartoon-shadow">
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/60 border border-slate-700/50 backdrop-blur-sm">
                 <Trophy className="h-5 w-5 text-primary" strokeWidth={3} />
-                <span className="text-muted-foreground font-bold">Rank:</span>
+                <span className="text-slate-400 font-bold">Rank:</span>
                 <span className="font-black text-primary">#New</span>
               </div>
-              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-card cartoon-border cartoon-shadow">
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/60 border border-slate-700/50 backdrop-blur-sm">
                 <Star className="h-5 w-5 text-secondary" strokeWidth={3} />
-                <span className="text-muted-foreground font-bold">XP:</span>
+                <span className="text-slate-400 font-bold">XP:</span>
                 <span className="font-black text-secondary">0</span>
+              </div>
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/60 border border-slate-700/50 backdrop-blur-sm">
+                <Flame className="h-5 w-5 text-orange-500" strokeWidth={3} />
+                <span className="text-slate-400 font-bold">Streak:</span>
+                <span className="font-black text-orange-500">{streak}</span>
               </div>
             </div>
 

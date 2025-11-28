@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import { EmptyState } from "@/components/ui/empty-state"
 import { Trophy, Clock, Users, Target, FileText, ExternalLink } from "lucide-react"
 import Link from "next/link"
 
@@ -59,13 +60,16 @@ export function RecentBattles() {
 
       <div className="space-y-6">
         {recentBattles.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="w-20 h-20 rounded-xl bg-slate-700/50 border-4 border-slate-600/50 flex items-center justify-center mx-auto mb-6">
-              <Trophy className="w-10 h-10 text-blue-300/50" strokeWidth={3} />
-            </div>
-            <h3 className="text-2xl font-black text-white mb-3">No battles yet!</h3>
-            <p className="text-lg text-blue-100/70 font-bold">Start a singleplayer battle or join a lobby to see your results here.</p>
-          </div>
+          <EmptyState
+            icon={Trophy}
+            title="No battles yet!"
+            description="Start a singleplayer battle or join a lobby to see your results here."
+            action={{
+              label: "Start Singleplayer Battle",
+              href: "/singleplayer"
+            }}
+            size="md"
+          />
         ) : (
           recentBattles.map((battle) => {
             const sessionId = battle.session_id || battle.quiz_sessions?.id

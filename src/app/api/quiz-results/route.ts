@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/server-admin"
 import { sanitizeError, sanitizeDatabaseError, createSafeErrorResponse } from "@/lib/utils/error-sanitizer"
+import { storeAnswerHistory } from "@/lib/quiz/question-deduplication"
 
 export async function POST(request: NextRequest) {
   try {
@@ -243,6 +244,48 @@ export async function POST(request: NextRequest) {
     }
 
     console.log("✅ [QUIZ RESULTS] Inserted player answers")
+    
+    // Store answer history for redo functionality (link to question_history)
+    if (userId && questions.length > 0) {
+      try {
+        // Get documentId from request body if available
+        const documentId = body.documentId || null
+        
+        // Find question history IDs for each question
+        for (let i = 0; i < questions.length; i++) {
+          const question = questions[i]
+          const answer = answers[i]
+          const isCorrect = answer.selectedIndex === (question.correct !== undefined ? question.correct : 0)
+          const userAnswer = question.options 
+            ? (question.options[answer.selectedIndex] || String(answer.selectedIndex))
+            : (answer.selectedAnswer || '')
+          
+          // Find the question in history by matching question text
+          const { data: questionHistory } = await adminClient
+            .from('quiz_question_history')
+            .select('id')
+            .eq('user_id', userId)
+            .eq('question_text', question.question || question.q)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single()
+          
+          if (questionHistory?.id) {
+            await storeAnswerHistory(
+              userId,
+              questionHistory.id,
+              userAnswer,
+              isCorrect,
+              sessionData.id
+            )
+          }
+        }
+        console.log("✅ [QUIZ RESULTS] Stored answer history for redo functionality")
+      } catch (error) {
+        console.error("❌ [QUIZ RESULTS] Error storing answer history:", error)
+        // Don't fail the request if answer history storage fails
+      }
+    }
 
     // 5. Create game result record
     // Calculate XP: base XP per question (10) + bonus for accuracy
@@ -402,13 +445,56 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // Update daily streak after quiz completion
+    try {
+      const { calculateUserStreak } = await import('@/lib/streak/streak-calculator')
+      await calculateUserStreak(userId)
+      console.log("✅ [QUIZ RESULTS] Updated daily streak")
+    } catch (error) {
+      console.error('❌ [QUIZ RESULTS] Error updating streak:', error)
+      // Don't fail the request if streak update fails
+    }
+
+    // Check and unlock achievements
+    let unlockedAchievements: any[] = []
+    try {
+      const { checkAndUnlockAchievements, checkCustomAchievements } = await import('@/lib/achievements/achievement-checker')
+      
+      // Check for perfect score
+      const isPerfectScore = correctAnswers === totalQuestions && totalQuestions > 0
+      
+      // Determine if this is a multiplayer session
+      const isMultiplayer = sessionData.room_id !== null
+      const isWin = isMultiplayer && (score >= 0.6) // 60% threshold for win
+      
+      // Check standard achievements (based on updated stats)
+      const unlockedStandard = await checkAndUnlockAchievements(userId)
+      
+      // Check custom achievements (perfect score, speed, multiplayer)
+      const unlockedCustom = await checkCustomAchievements(userId, {
+        isPerfectScore,
+        isMultiplayer,
+        isWin,
+      })
+      
+      unlockedAchievements = [...unlockedStandard, ...unlockedCustom]
+      
+      if (unlockedAchievements.length > 0) {
+        console.log(`✅ [QUIZ RESULTS] Unlocked ${unlockedAchievements.length} achievement(s)`)
+      }
+    } catch (error) {
+      console.error('❌ [QUIZ RESULTS] Error checking achievements:', error)
+      // Don't fail the request if achievement check fails
+    }
+
     return NextResponse.json({ 
       success: true, 
       sessionId: sessionData.id,
       gameResultId: gameResult.id,
       xpEarned,
       oldXP: currentStats.xp || 0,
-      newXP: newXP
+      newXP: newXP,
+      unlockedAchievements: unlockedAchievements.length > 0 ? unlockedAchievements : undefined
     })
 
   } catch (error) {

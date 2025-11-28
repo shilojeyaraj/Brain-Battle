@@ -5,14 +5,25 @@ const nextConfig: NextConfig = {
   // Force Next.js to ONLY use this specific directory
   // Disable problematic features that cause -4058 errors
   experimental: {
-    // Disable problematic optimizations
-    optimizeCss: false,
-    // Disable webpack cache that might cause issues
-    webpackBuildWorker: false,
+    // Disabled optimizeCss - requires 'critters' package which causes build errors
+    // optimizeCss: true, // TODO: Re-enable after installing critters: npm install critters
+    // Enable webpack build worker for parallel compilation (faster builds)
+    webpackBuildWorker: true,
+    // Optimize package imports for commonly used libraries
+    optimizePackageImports: ['lucide-react', 'framer-motion', '@radix-ui/react-dialog', '@radix-ui/react-select'],
   },
   // Externalize PDF parsing libraries to avoid bundling issues
   // Moved from experimental.serverComponentsExternalPackages (deprecated in Next.js 15)
-  serverExternalPackages: ['pdf-parse', 'pdfjs-dist'],
+  serverExternalPackages: [
+    'pdf-parse',
+    'pdfjs-dist',
+    'canvas',
+    '@napi-rs/canvas',
+    'pdf-extract-image',
+    'openai', // Large SDK, server-only
+    'bcryptjs', // Server-only
+    'postgres', // Server-only database client
+  ],
   // Ensure Next.js builds only in this directory
   distDir: '.next',
   // Disable automatic workspace detection

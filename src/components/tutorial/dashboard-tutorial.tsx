@@ -56,15 +56,22 @@ const DASHBOARD_TUTORIAL_STEPS: TutorialStep[] = [
     position: 'left',
   },
   {
+    id: 'streak',
+    title: 'Daily Streak 🔥',
+    description: 'Complete quizzes daily to build your streak! You have a 48-hour grace period, so if you miss a day, you can still keep your streak going. The longer your streak, the more impressive it becomes!',
+    targetSelector: '[data-tutorial="streak-display"]',
+    position: 'bottom',
+  },
+  {
     id: 'complete',
     title: 'You\'re All Set! 🚀',
-    description: 'You now know the basics! Start by creating a room or trying singleplayer mode. Have fun and study smart!',
+    description: 'You now know the basics! Start by creating a room or trying singleplayer mode. Remember to complete quizzes daily to build your streak! Have fun and study smart!',
     targetSelector: '[data-tutorial="dashboard-header"]',
     position: 'center',
   },
 ]
 
-export function DashboardTutorial() {
+export function DashboardTutorial({ onStepChange }: { onStepChange?: (step: number) => void }) {
   const [showTutorial, setShowTutorial] = useState(false)
   const searchParams = useSearchParams()
 
@@ -124,6 +131,7 @@ export function DashboardTutorial() {
       onComplete={handleComplete}
       onSkip={handleSkip}
       storageKey="dashboard_tutorial_completed"
+      onStepChange={onStepChange}
     />
   )
 }

@@ -6,8 +6,10 @@ import { StatsGrid } from "@/components/dashboard/stats-grid"
 import { LobbySection } from "@/components/dashboard/lobby-section"
 import { RecentBattles } from "@/components/dashboard/recent-battles"
 import { Leaderboard } from "@/components/dashboard/leaderboard"
+import { ClansSection } from "@/components/clans/clans-section"
 import { DashboardTutorial } from "@/components/tutorial/dashboard-tutorial"
 import { SubscriptionBanner } from "@/components/dashboard/subscription-banner"
+import { StreakDisplay } from "@/components/dashboard/streak-display"
 import { Button } from "@/components/ui/button"
 import { ChevronDown, ChevronUp, BarChart3 } from "lucide-react"
 import dynamicImport from "next/dynamic"
@@ -42,6 +44,18 @@ const LazyRecentBattles = dynamicImport(() => import("@/components/dashboard/rec
 export default function DashboardPage() {
   const [showStats, setShowStats] = useState(true)
   const [isTutorialActive, setIsTutorialActive] = useState(false)
+  const [tutorialStep, setTutorialStep] = useState<number | undefined>(undefined)
+
+  // Dispatch login event on mount to trigger streak check
+  useEffect(() => {
+    // Check if user just logged in (dashboard loaded after login)
+    if (typeof window !== 'undefined') {
+      // Small delay to ensure components are mounted
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('userLoggedIn'))
+      }, 100)
+    }
+  }, [])
 
   // Check if tutorial is active
   useEffect(() => {
@@ -95,7 +109,7 @@ export default function DashboardPage() {
 
       <div className="relative z-10">
         <Suspense fallback={null}>
-          <DashboardTutorial />
+          <DashboardTutorial onStepChange={setTutorialStep} />
         </Suspense>
         <DashboardHeader onToggleStats={toggleStats} showStats={showStats} />
 
@@ -129,9 +143,19 @@ export default function DashboardPage() {
         {/* Subscription Banner - Shows for free users */}
         <SubscriptionBanner />
 
+        {/* Daily Streak Display */}
+        <div className="mb-6">
+          <StreakDisplay 
+            tutorialStep={tutorialStep} 
+            totalTutorialSteps={9} // Total number of tutorial steps (0-8)
+          />
+        </div>
+
         <div className="grid gap-12 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-12">
             <LobbySection />
+            
+            <ClansSection />
             <Suspense fallback={
               <div className="animate-pulse">
                 <div className="h-8 bg-muted rounded mb-4"></div>

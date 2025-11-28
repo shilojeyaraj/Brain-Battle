@@ -53,8 +53,20 @@ function LoginForm() {
       if (result.success && result.user?.id) {
         // Store user ID in localStorage for session management
         localStorage.setItem('userId', result.user.id)
-        // Successfully signed in, redirect to dashboard
-        router.push('/dashboard')
+        
+        // Dispatch event to notify streak component of login
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('userLoggedIn'))
+        }
+        
+        // Check for redirect parameter
+        const redirectParam = searchParams.get('redirect')
+        const redirectUrl = redirectParam 
+          ? decodeURIComponent(redirectParam)
+          : '/dashboard'
+        
+        // Successfully signed in, redirect to original destination or dashboard
+        router.push(redirectUrl)
       } else {
         setError('Login failed')
         setIsPending(false)

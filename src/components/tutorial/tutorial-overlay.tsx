@@ -19,13 +19,15 @@ interface TutorialOverlayProps {
   onComplete: () => void
   onSkip: () => void
   storageKey?: string
+  onStepChange?: (step: number) => void // Callback when step changes
 }
 
 export function TutorialOverlay({ 
   steps, 
   onComplete, 
   onSkip,
-  storageKey = 'tutorial_completed'
+  storageKey = 'tutorial_completed',
+  onStepChange
 }: TutorialOverlayProps) {
   const [currentStep, setCurrentStep] = useState(0)
   const [targetElement, setTargetElement] = useState<HTMLElement | null>(null)
@@ -122,7 +124,9 @@ export function TutorialOverlay({
 
   const handleNext = () => {
     if (currentStep < steps.length - 1) {
-      setCurrentStep(currentStep + 1)
+      const nextStep = currentStep + 1
+      setCurrentStep(nextStep)
+      onStepChange?.(nextStep)
     } else {
       handleComplete()
     }
@@ -130,9 +134,16 @@ export function TutorialOverlay({
 
   const handlePrevious = () => {
     if (currentStep > 0) {
-      setCurrentStep(currentStep - 1)
+      const prevStep = currentStep - 1
+      setCurrentStep(prevStep)
+      onStepChange?.(prevStep)
     }
   }
+
+  // Notify parent of initial step
+  useEffect(() => {
+    onStepChange?.(currentStep)
+  }, []) // Only on mount
 
   const handleComplete = () => {
     if (storageKey) {

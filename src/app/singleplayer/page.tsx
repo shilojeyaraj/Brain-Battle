@@ -15,8 +15,10 @@ import { motion } from "framer-motion"
 import { UpgradePrompt } from "@/components/subscription/upgrade-prompt"
 import { QuizConfigModal, QuizConfig } from "@/components/quiz/quiz-config-modal"
 import { BrainBattleLoading } from "@/components/ui/brain-battle-loading"
+import { useToast } from "@/components/ui/toast"
 
 export default function SingleplayerPage() {
+  const { success: toastSuccess, error: toastError, info: toastInfo } = useToast()
   const [step, setStep] = useState(1)
   const [isAdminMode, setIsAdminMode] = useState(false)
   
@@ -35,9 +37,7 @@ export default function SingleplayerPage() {
   const [studyNotes, setStudyNotes] = useState<any>(null)
   const [processedFileNames, setProcessedFileNames] = useState<string[]>([])
   const [isDragOver, setIsDragOver] = useState(false)
-  const [showUploadSuccess, setShowUploadSuccess] = useState(false)
   const [dragCounter, setDragCounter] = useState(0)
-  const [uploadErrors, setUploadErrors] = useState<string[]>([])
   const [isUploading, setIsUploading] = useState(false)
   const [studyContext, setStudyContext] = useState<any>(null)
   const [subscriptionLimits, setSubscriptionLimits] = useState<any>(null)
@@ -139,7 +139,6 @@ export default function SingleplayerPage() {
 
   const processFiles = useCallback((files: File[]) => {
     setIsUploading(true)
-    setUploadErrors([])
 
     // Simulate upload delay for better UX
     setTimeout(() => {
@@ -147,18 +146,18 @@ export default function SingleplayerPage() {
       
       if (validFiles.length > 0) {
         setUploadedFiles(prev => [...prev, ...validFiles])
-        setShowUploadSuccess(true)
-        setTimeout(() => setShowUploadSuccess(false), 3000)
+        toastSuccess(`${validFiles.length} file${validFiles.length > 1 ? 's' : ''} uploaded successfully!`)
       }
       
       if (errors.length > 0) {
-        setUploadErrors(errors)
-        setTimeout(() => setUploadErrors([]), 5000)
+        errors.forEach(error => {
+          toastError(error, "Upload Error")
+        })
       }
       
       setIsUploading(false)
     }, 500)
-  }, [validateFiles])
+  }, [validateFiles, toastSuccess, toastError])
 
   const handleDragOver = (event: React.DragEvent) => {
     event.preventDefault()
@@ -249,13 +248,14 @@ export default function SingleplayerPage() {
         setProcessedFileNames(result.fileNames || [])
         sessionStorage.setItem('studyNotes', JSON.stringify(result.notes))
         sessionStorage.setItem('processedFileNames', JSON.stringify(result.fileNames || []))
+        toastSuccess("Study notes generated successfully!")
         setStep(4) // Go to study notes step
       } else {
-        alert(`Error generating study notes: ${result.error}`)
+        toastError(result.error || "Failed to generate study notes", "Generation Error")
       }
     } catch (error) {
       console.error("Error generating study notes:", error)
-      alert("Failed to generate study notes. Please try again.")
+      toastError("Failed to generate study notes. Please try again.", "Error")
     } finally {
       setIsGenerating(false)
     }
@@ -346,6 +346,14 @@ export default function SingleplayerPage() {
         sessionStorage.setItem('quizDifficulty', difficulty)
         sessionStorage.setItem('quizSessionId', sessionId)
         
+        // Store documentId and quiz settings if available
+        if (result.documentId) {
+          sessionStorage.setItem('documentId', result.documentId)
+        }
+        sessionStorage.setItem('educationLevel', educationLevel)
+        sessionStorage.setItem('contentFocus', activeConfig.contentFocus)
+        sessionStorage.setItem('includeDiagrams', activeConfig.includeDiagrams.toString())
+        
         // Redirect to battle page with session ID in URL
         window.location.href = `/singleplayer/battle/${sessionId}`
       } else {
@@ -357,12 +365,12 @@ export default function SingleplayerPage() {
             window.location.href = '/pricing'
           }
         } else {
-          alert(`Error generating questions: ${result.error || 'Unknown error occurred'}`)
+          toastError(result.error || 'Unknown error occurred', "Quiz Generation Error")
         }
       }
     } catch (error) {
       console.error("Error starting battle:", error)
-      alert("Failed to generate battle questions. Please try again.")
+      toastError("Failed to generate battle questions. Please try again.", "Error")
     } finally {
       setIsGenerating(false)
     }
@@ -484,29 +492,7 @@ export default function SingleplayerPage() {
             </div>
 
             <div className="max-w-2xl mx-auto space-y-6">
-              {/* Success message */}
-              {showUploadSuccess && (
-                <div className="p-4 rounded-xl bg-green-500/10 border-2 border-green-500/50 text-center">
-                  <p className="text-green-400 font-black">✅ Files uploaded successfully!</p>
-                </div>
-              )}
-
-              {/* Error messages */}
-              {uploadErrors.length > 0 && (
-                <div className="p-4 rounded-xl bg-red-500/10 border-2 border-red-500/50">
-                  <div className="flex items-center gap-2 mb-2">
-                    <AlertCircle className="h-5 w-5 text-red-400" />
-                    <p className="text-red-400 font-black">Upload Errors:</p>
-                  </div>
-                  <ul className="space-y-1">
-                    {uploadErrors.map((error, index) => (
-                      <li key={index} className="text-red-400 text-sm font-bold">• {error}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Upload progress */}
+              {/* Upload progress - keep this visible */}
               {isUploading && (
                 <div className="p-4 rounded-xl bg-blue-500/10 border-2 border-blue-500/50 text-center">
                   <div className="flex items-center justify-center gap-2">

@@ -18,6 +18,14 @@ function SignupForm() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [showPassword, setShowPassword] = useState(false)
 
+  // Store redirect parameter for use after signup
+  useEffect(() => {
+    const redirectParam = searchParams.get('redirect')
+    if (redirectParam) {
+      localStorage.setItem('signup_redirect', redirectParam)
+    }
+  }, [searchParams])
+
   useEffect(() => {
     const errorParam = searchParams.get('error')
     const messageParam = searchParams.get('message')

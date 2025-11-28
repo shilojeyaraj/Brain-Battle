@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
         .single(),
       supabase
         .from('player_stats')
-        .select('level, xp, total_games, total_wins, win_streak, best_streak, total_questions_answered, correct_answers, accuracy, updated_at')
+        .select('level, xp, total_games, total_wins, win_streak, best_streak, total_questions_answered, correct_answers, accuracy, daily_streak, longest_streak, last_activity_date, updated_at')
         .eq('user_id', userIdString)
         .single(),
       supabase
@@ -74,7 +74,16 @@ export async function GET(request: NextRequest) {
         .limit(10),
       supabase
         .from('achievements')
-        .select('*')
+        .select(`
+          *,
+          achievement_definitions (
+            name,
+            description,
+            icon,
+            category,
+            rarity
+          )
+        `)
         .eq('user_id', userIdString)
         .order('earned_at', { ascending: false })
     ])
@@ -107,6 +116,20 @@ export async function GET(request: NextRequest) {
 
     console.log('✅ [USER STATS] Stats fetched successfully')
 
+    // Transform achievements to include definition data
+    const formattedAchievements = (achievements || []).map((achievement: any) => ({
+      id: achievement.id,
+      code: achievement.achievement_code,
+      name: achievement.achievement_definitions?.name || achievement.achievement_code,
+      description: achievement.achievement_definitions?.description || '',
+      icon: achievement.achievement_definitions?.icon || 'trophy',
+      category: achievement.achievement_definitions?.category || 'special',
+      rarity: achievement.achievement_definitions?.rarity || 'common',
+      earned_at: achievement.earned_at,
+      xp_earned: achievement.xp_earned,
+      progress: achievement.progress || {},
+    }))
+
     // Transform recent games to match expected format
     const formattedRecentGames = (recentGames || []).map((game: any) => {
       const isSingleplayer = !game.quiz_sessions?.room_id
@@ -138,7 +161,7 @@ export async function GET(request: NextRequest) {
       profile,
       stats,
       recentGames: formattedRecentGames,
-      achievements: achievements || []
+      achievements: formattedAchievements
     })
 
   } catch (error) {
