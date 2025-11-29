@@ -17,6 +17,9 @@ import { useFeedback } from "@/hooks/useFeedback"
 import { RewardToast } from "@/components/feedback/GameFeedback"
 import { isAnswerCorrect } from "@/lib/quiz-evaluator"
 import { BrainBattleLoading } from "@/components/ui/brain-battle-loading"
+import { AchievementNotification } from "@/components/achievements/achievement-notification"
+import { useAchievements } from "@/hooks/use-achievements"
+import { Lightbulb, BookOpen, ExternalLink } from "lucide-react"
 
 // Default empty questions - will be loaded from sessionStorage
 const defaultQuestions: any[] = []
@@ -55,6 +58,7 @@ export default function BattlePage() {
   } | null>(null)
   const [showLevelUpModal, setShowLevelUpModal] = useState(false)
   const [isSubmittingResults, setIsSubmittingResults] = useState(false)
+  const { unlockedAchievements, dismissAchievement, addAchievements } = useAchievements()
 
   // Track if battle is actively running (not in loading, error, or complete state)
   const isBattleActive = !isLoading && !hasError && !battleComplete && questions.length > 0
@@ -350,6 +354,11 @@ export default function BattlePage() {
         if (leveledUp) {
           setShowLevelUpModal(true)
         }
+
+        // Handle unlocked achievements
+        if (result.unlockedAchievements && result.unlockedAchievements.length > 0) {
+          addAchievements(result.unlockedAchievements)
+        }
       } else {
         console.error('❌ Failed to submit battle results')
       }
@@ -466,16 +475,26 @@ export default function BattlePage() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6">
-      {/* Animated Background Elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
-        <div
-          className="absolute -bottom-40 -left-40 w-80 h-80 bg-orange-500/10 rounded-full blur-3xl animate-float"
-          style={{ animationDelay: "1s" }}
+    <>
+      {/* Achievement Notifications */}
+      {unlockedAchievements.map((achievement, index) => (
+        <AchievementNotification
+          key={`${achievement.code}-${index}`}
+          achievement={achievement}
+          onClose={() => dismissAchievement(index)}
         />
-      </div>
-      <div className="relative z-10 max-w-4xl mx-auto">
+      ))}
+
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6">
+        {/* Animated Background Elements */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
+          <div
+            className="absolute -bottom-40 -left-40 w-80 h-80 bg-orange-500/10 rounded-full blur-3xl animate-float"
+            style={{ animationDelay: "1s" }}
+          />
+        </div>
+        <div className="relative z-10 max-w-4xl mx-auto">
         {/* Cheat Warning Banner */}
         {showCheatWarning && (
           <div className="mb-6 p-4 bg-yellow-50 border-2 border-yellow-200 rounded-xl shadow-lg animate-in slide-in-from-top-2 duration-300">
@@ -785,6 +804,7 @@ export default function BattlePage() {
 
       <RewardToast show={showRewardToast} message={rewardMessage} />
     </div>
+    </>
   )
 }
 
@@ -1106,13 +1126,26 @@ function BattleResultsScreen({
                       <p className="font-bold text-white mb-2">
                         {question.question || question.q}
                       </p>
-                      <div className="text-sm space-y-1">
+                      <div className="text-sm space-y-2">
                         <p className="text-blue-100/70">
                           <strong className="text-white">Your answer:</strong> <span className="font-bold text-white">{userAnswerText}</span>
                         </p>
                         <p className="text-blue-100/70">
                           <strong className="text-white">Correct answer:</strong> <span className="font-bold text-white">{correctAnswerText}</span>
                         </p>
+                        {(question.explanation || question.answer) && (
+                          <div className="mt-3 p-3 rounded-lg bg-blue-500/10 border-2 border-blue-400/30">
+                            <div className="flex items-start gap-2">
+                              <Lightbulb className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" strokeWidth={3} />
+                              <div className="flex-1">
+                                <p className="text-blue-300 font-black text-xs mb-1">Explanation:</p>
+                                <p className="text-blue-100/90 font-bold text-sm leading-relaxed">
+                                  {question.explanation || question.answer || "This is the correct answer based on the study material."}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

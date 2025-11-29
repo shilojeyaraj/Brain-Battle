@@ -279,7 +279,7 @@ export default function SingleplayerPage() {
       includeDiagrams: true
     }
     setShowQuizConfig(false)
-    setQuizConfig(config)
+    setQuizConfig(config || null)
     setIsGenerating(true)
     
     try {
@@ -294,7 +294,7 @@ export default function SingleplayerPage() {
       }
       
       if (!userId) {
-        setError('You must be logged in to generate a quiz')
+        toastError('You must be logged in to generate a quiz', "Authentication Error")
         setIsGenerating(false)
         return
       }
@@ -340,6 +340,9 @@ export default function SingleplayerPage() {
         // Generate unique session ID
         const sessionId = crypto.randomUUID()
         
+        // Determine battle topic (use study notes title if available, otherwise use topic input)
+        const battleTopic = studyNotes?.title || topic || 'General Knowledge'
+        
         // Store questions and session ID in sessionStorage for the battle page
         sessionStorage.setItem('quizQuestions', JSON.stringify(result.questions))
         sessionStorage.setItem('quizTopic', battleTopic)
@@ -353,6 +356,9 @@ export default function SingleplayerPage() {
         sessionStorage.setItem('educationLevel', educationLevel)
         sessionStorage.setItem('contentFocus', activeConfig.contentFocus)
         sessionStorage.setItem('includeDiagrams', activeConfig.includeDiagrams.toString())
+        
+        // Store quiz ready flag to show popup
+        sessionStorage.setItem('quizReady', 'true')
         
         // Redirect to battle page with session ID in URL
         window.location.href = `/singleplayer/battle/${sessionId}`

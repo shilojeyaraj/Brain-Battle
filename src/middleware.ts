@@ -26,19 +26,9 @@ export async function middleware(request: NextRequest) {
   if (path.startsWith('/api/')) {
     const identifier = getRateLimitIdentifier(request)
     
-    // Define stricter limits for expensive/security-sensitive endpoints
-    let rateLimitConfig = { interval: 60000, limit: 100 } // Default: 100/min
-    
-    // Stricter limits for expensive operations
-    if (path.includes('/generate-quiz') || path.includes('/notes')) {
-      rateLimitConfig = { interval: 60000, limit: 10 } // 10 AI requests per minute
-    } else if (path.includes('/embeddings')) {
-      rateLimitConfig = { interval: 60000, limit: 20 } // 20 embedding requests per minute
-    } else if (path.includes('/auth/') || path.includes('/stripe/')) {
-      rateLimitConfig = { interval: 60000, limit: 20 } // 20 auth requests per minute
-    } else if (path.includes('/upload') || path.includes('/file')) {
-      rateLimitConfig = { interval: 60000, limit: 30 } // 30 file uploads per minute
-    }
+    // Use centralized rate limit configuration
+    const { getRateLimitConfig } = await import('@/lib/security/rate-limit-config')
+    const rateLimitConfig = getRateLimitConfig(path)
     
     const rateLimitResult = rateLimit(identifier, rateLimitConfig)
     

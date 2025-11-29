@@ -91,12 +91,62 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
         console.log('FormulaRenderer: Rendering formula:', cleanFormula)
       }
 
+      // Clear container before rendering
+      if (containerRef.current) {
+        containerRef.current.innerHTML = ''
+      }
+
       // Try to render as LaTeX
-      katex.render(cleanFormula, containerRef.current, {
-        throwOnError: false,
-        displayMode: displayMode,
-        errorColor: '#cc0000',
-      })
+      let renderSuccess = false
+      try {
+        katex.render(cleanFormula, containerRef.current, {
+          throwOnError: false,
+          displayMode: displayMode,
+          errorColor: '#ff6b6b', // Red for errors
+        })
+        renderSuccess = true
+      } catch (renderError) {
+        console.warn('KaTeX render error (non-fatal):', renderError)
+        renderSuccess = false
+      }
+
+      // Force text color on KaTeX-rendered elements to ensure visibility
+      // KaTeX CSS might override Tailwind classes, so we need to set it directly
+      if (containerRef.current) {
+        const katexElements = containerRef.current.querySelectorAll('.katex, .katex *')
+        
+        if (katexElements.length === 0 && renderSuccess) {
+          // KaTeX rendered but no elements found - might be a CSS issue
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('FormulaRenderer: KaTeX rendered but no elements found. Formula:', cleanFormula)
+          }
+        }
+        
+        katexElements.forEach((el) => {
+          const htmlEl = el as HTMLElement
+          // Ensure text is visible - use blue-300 color (#93c5fd)
+          htmlEl.style.color = '#93c5fd' // blue-300 - force visibility
+          // Ensure background is transparent so dark background shows through
+          htmlEl.style.backgroundColor = 'transparent'
+          // Ensure font is visible
+          htmlEl.style.opacity = '1'
+        })
+        
+        // Also set color on the container itself
+        containerRef.current.style.color = '#93c5fd' // blue-300
+        containerRef.current.style.opacity = '1'
+        
+        // If no KaTeX elements were created, show the formula as plain text
+        if (katexElements.length === 0) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('FormulaRenderer: Falling back to plain text display. Formula:', cleanFormula)
+          }
+          containerRef.current.textContent = cleanFormula
+          containerRef.current.style.fontSize = '1.2em'
+          containerRef.current.style.fontFamily = 'monospace'
+          containerRef.current.style.color = '#93c5fd' // blue-300
+        }
+      }
     } catch (error) {
       // Fallback to plain text if KaTeX fails
       console.error('KaTeX rendering error:', error, 'Formula:', formula)
@@ -123,6 +173,16 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
     }
   }, [formula, displayMode])
 
-  return <span ref={containerRef} className={className} />
+  return (
+    <span 
+      ref={containerRef} 
+      className={className}
+      style={{ 
+        color: '#93c5fd', // blue-300 - ensure visibility
+        display: 'inline-block',
+        minHeight: '1em',
+      }}
+    />
+  )
 }
 

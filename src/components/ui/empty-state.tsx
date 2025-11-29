@@ -7,12 +7,12 @@ import { cn } from "@/lib/utils"
 import { motion } from "framer-motion"
 
 export interface EmptyStateProps {
-  icon?: React.ComponentType<{ className?: string }>
+  icon?: React.ComponentType<{ className?: string; strokeWidth?: number }>
   title: string
   description: string
   action?: {
     label: string
-    onClick: () => void
+    onClick?: () => void
     href?: string
   }
   className?: string

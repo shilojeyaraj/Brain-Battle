@@ -123,11 +123,34 @@ Return as JSON:
 
 export async function POST(request: NextRequest) {
   try {
-    const { text, fileName, fileType, userId } = await request.json()
+    // SECURITY: Get userId from session cookie, not request body
+    const { getUserIdFromRequest } = await import('@/lib/auth/session-cookies')
+    const userId = await getUserIdFromRequest(request)
+    
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: 'Unauthorized - please log in' },
+        { status: 401 }
+      )
+    }
 
-    if (!text || !fileName || !fileType || !userId) {
+    const { text, fileName, fileType } = await request.json()
+
+    if (!text || !fileName || !fileType) {
       return NextResponse.json(
         { success: false, error: 'Missing required fields' },
+        { status: 400 }
+      )
+    }
+
+    // SECURITY: Validate and sanitize inputs
+    const { sanitizeString } = await import('@/lib/security/input-validation')
+    const sanitizedFileName = sanitizeString(fileName, 255)
+    const sanitizedFileType = sanitizeString(fileType, 50)
+    
+    if (!sanitizedFileName || !sanitizedFileType) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid file name or type' },
         { status: 400 }
       )
     }

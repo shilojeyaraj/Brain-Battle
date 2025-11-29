@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import OpenAI from 'openai'
 import { createClient } from '@/lib/supabase/server'
 import { checkQuizQuestionLimit } from '@/lib/subscription/limits'
 import { generateQuizSchema } from '@/lib/validation/schemas'
@@ -14,10 +13,9 @@ import {
   storeQuestionHistory,
   generateTopicHash
 } from '@/lib/quiz/question-deduplication'
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+import { createAIClient, isParallelTestingEnabled } from '@/lib/ai/client-factory'
+import { runParallelTest, logParallelTestResults } from '@/lib/ai/parallel-test'
+import type { AIChatMessage } from '@/lib/ai/types'
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,9 +30,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check for admin mode
-    const isAdminMode = request.headers.get('x-admin-mode') === 'true' || 
-                       request.nextUrl.searchParams.get('admin') === 'true'
+    // SECURITY: Admin mode removed - was vulnerable to header spoofing
+    // If admin features are needed, use environment variables or server-side config
+    const isAdminMode = false
     
     // Check if this is a JSON request (multiplayer) or form data (singleplayer)
     const contentType = request.headers.get('content-type')
@@ -224,6 +222,8 @@ export async function POST(request: NextRequest) {
     if (files && files.length > 0) {
       console.log(`📄 [QUIZ API] Processing ${files.length} uploaded files for quiz generation...`)
       try {
+        const { extractTextFromDocument } = await import('@/lib/document-text-extractor')
+        
         const fileTexts = await Promise.all(
           (files as File[]).map(async (file: File) => {
             const buffer = Buffer.from(await file.arrayBuffer())
@@ -257,6 +257,20 @@ export async function POST(request: NextRequest) {
               
               const text = textParts.join('\n\n')
               return `=== ${file.name} ===\n${text}\n`
+            } else if (
+              file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+              file.type === 'application/msword' ||
+              file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+              file.type === 'application/vnd.ms-powerpoint'
+            ) {
+              // Word or PowerPoint document
+              try {
+                const text = await extractTextFromDocument(file, buffer)
+                return `=== ${file.name} ===\n${text}\n`
+              } catch (docError) {
+                console.error(`Failed to extract text from ${file.name}:`, docError)
+                return ""
+              }
             }
             return ""
           })
@@ -603,12 +617,14 @@ IMAGES AND VISUAL CONTENT - DISABLED:
 Generate exactly ${numQuestions} questions that test knowledge of the specific document content provided.
 `
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: `You are an expert quiz generator. Your ONLY job is to create questions based on the EXACT document content provided. 
+    // Check if parallel testing is enabled
+    const parallelTesting = isParallelTestingEnabled()
+    const aiProvider = process.env.AI_PROVIDER?.toLowerCase() || 'openai'
+    
+    const messages: AIChatMessage[] = [
+      {
+        role: "system",
+        content: `You are an expert quiz generator. Your ONLY job is to create questions based on the EXACT document content provided. 
 
 STRICT RULES:
 1. NEVER create generic questions about a topic - only use what's in the documents
@@ -618,22 +634,76 @@ STRICT RULES:
 5. If you cannot find enough content in the documents to create questions, indicate this clearly
 6. DO NOT invent or assume content that isn't in the documents
 7. Always return valid JSON format`
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      response_format: {
-        type: "json_object"
       },
-      temperature: 0.3, // Lower temperature for more grounded, document-based output
-      max_tokens: 3000,
-    })
+      {
+        role: "user",
+        content: prompt
+      }
+    ]
 
-    const response = completion.choices[0]?.message?.content
+    let response: string
+    let modelUsed: string
+    let provider: 'openai' | 'moonshot'
+
+    if (parallelTesting) {
+      // Run parallel test on both providers
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`\n🔄 [QUIZ API] Running parallel test (OpenAI + Moonshot)...`)
+      }
+      
+      const parallelResult = await runParallelTest(messages, {
+        model: aiProvider === 'moonshot' ? (process.env.MOONSHOT_MODEL || 'kimi-k2-0711-preview') : 'gpt-4o',
+        temperature: 0.3,
+        responseFormat: 'json_object',
+        maxTokens: 3000,
+      })
+
+      // Log comparison results
+      logParallelTestResults(parallelResult, 'Quiz Generation')
+
+      // Use Moonshot result if available, otherwise fall back to OpenAI
+      if (parallelResult.moonshot) {
+        response = parallelResult.moonshot.content
+        modelUsed = parallelResult.moonshot.model
+        provider = 'moonshot'
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`✅ [QUIZ API] Using Moonshot (Kimi K2) response for production`)
+        }
+      } else if (parallelResult.openai) {
+        response = parallelResult.openai.content
+        modelUsed = parallelResult.openai.model
+        provider = 'openai'
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`⚠️ [QUIZ API] Moonshot failed, using OpenAI response as fallback`)
+          if (parallelResult.moonshotError) {
+            console.error(`   Moonshot error: ${parallelResult.moonshotError.message}`)
+          }
+        }
+      } else {
+        throw new Error('Both AI providers failed to generate quiz questions')
+      }
+    } else {
+      // Use single provider
+      const aiClient = createAIClient(aiProvider as 'openai' | 'moonshot')
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`\n🤖 [QUIZ API] Using ${aiProvider === 'moonshot' ? 'Moonshot (Kimi K2)' : 'OpenAI (GPT-4o)'} for quiz generation`)
+      }
+      
+      const aiResponse = await aiClient.chatCompletions(messages, {
+        model: aiProvider === 'moonshot' ? (process.env.MOONSHOT_MODEL || 'kimi-k2-0711-preview') : 'gpt-4o',
+        temperature: 0.3,
+        responseFormat: 'json_object',
+        maxTokens: 3000,
+      })
+
+      response = aiResponse.content
+      modelUsed = aiResponse.model
+      provider = aiResponse.provider
+    }
+
     if (!response) {
-      throw new Error("No response from OpenAI")
+      throw new Error(`No response from ${provider === 'moonshot' ? 'Moonshot' : 'OpenAI'}`)
     }
 
     // Parse the JSON response
@@ -680,7 +750,7 @@ STRICT RULES:
     // Filter out duplicates if we have previous questions
     if (previousQuestions.length > 0 && userId && !isAdminMode) {
       const originalCount = validatedQuestions.length
-      validatedQuestions = validatedQuestions.filter(q => {
+      validatedQuestions = validatedQuestions.filter((q: any) => {
         const isDuplicate = isQuestionDuplicate(q.question, previousQuestions)
         if (isDuplicate) {
           console.log(`⚠️ [QUIZ API] Filtered out duplicate question: "${q.question.substring(0, 50)}..."`)
@@ -851,7 +921,7 @@ STRICT RULES:
           userId,
           documentId,
           topicHash,
-          validatedQuestions.map(q => ({
+          validatedQuestions.map((q: any) => ({
             question: q.question,
             type: q.type,
             options: q.options,

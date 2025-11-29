@@ -220,6 +220,9 @@ export function validateInput<T>(schema: z.ZodSchema<T>, data: unknown): {
  * Sanitize string inputs (remove HTML, trim, etc.)
  */
 export function sanitizeString(input: string): string {
+  if (!input || typeof input !== 'string') {
+    return ''
+  }
   return input
     .trim()
     .replace(/[<>]/g, '') // Remove angle brackets

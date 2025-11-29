@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server-admin'
 import { playerStatsSchema } from '@/lib/validation/schemas'
-import { sanitizeDatabaseError, createSafeErrorResponse } from '@/lib/utils/error-sanitizer'
+import { sanitizeError, sanitizeDatabaseError, createSafeErrorResponse } from '@/lib/utils/error-sanitizer'
 
 /**
  * API route to create/update player stats

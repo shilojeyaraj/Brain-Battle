@@ -319,3 +319,67 @@
 .animate-bounce-lift {
   animation: bounce-lift 0.2s ease-out;
 }
+
+/* Ensure KaTeX formulas are always visible on dark backgrounds */
+.katex {
+  color: #93c5fd !important; /* blue-300 - ensure visibility */
+  font-size: 1.2em;
+}
+
+.katex * {
+  color: inherit !important;
+}
+
+.katex .base {
+  color: #93c5fd !important; /* blue-300 */
+}
+
+.katex .mord {
+  color: #93c5fd !important; /* blue-300 */
+}
+
+.katex .mop {
+  color: #93c5fd !important; /* blue-300 */
+}
+
+.katex .mbin {
+  color: #93c5fd !important; /* blue-300 */
+}
+
+.katex .mrel {
+  color: #93c5fd !important; /* blue-300 */
+}
+
+.katex .mopen {
+  color: #93c5fd !important; /* blue-300 */
+}
+
+.katex .mclose {
+  color: #93c5fd !important; /* blue-300 */
+}
+
+.katex .mpunct {
+  color: #93c5fd !important; /* blue-300 */
+}
+
+.katex .mfrac {
+  color: #93c5fd !important; /* blue-300 */
+}
+
+.katex .sqrt {
+  color: #93c5fd !important; /* blue-300 */
+}
+
+.katex .msubsup {
+  color: #93c5fd !important; /* blue-300 */
+}
+
+.katex .mspace {
+  color: #93c5fd !important; /* blue-300 */
+}
+
+/* Ensure background is transparent so dark background shows through */
+.katex,
+.katex * {
+  background-color: transparent !important;
+}

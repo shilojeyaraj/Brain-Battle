@@ -153,11 +153,11 @@ export function useFeedback() {
 
   // Don't initialize use-sound to prevent 404s - use fallback beeps directly
   // This prevents the library from trying to load missing files
-  const [playClickRaw] = useSound(null, soundOptions)
-  const [playCorrectRaw] = useSound(null, soundOptions)
-  const [playWrongRaw] = useSound(null, soundOptions)
-  const [playLevelUpRaw] = useSound(null, soundOptions)
-  const [playStreakRaw] = useSound(null, soundOptions)
+  const [playClickRaw] = useSound(null as any, soundOptions)
+  const [playCorrectRaw] = useSound(null as any, soundOptions)
+  const [playWrongRaw] = useSound(null as any, soundOptions)
+  const [playLevelUpRaw] = useSound(null as any, soundOptions)
+  const [playStreakRaw] = useSound(null as any, soundOptions)
 
   // Safe wrappers - use fallback beeps directly to avoid 404s
   // Since sound files don't exist, we skip use-sound and use beeps

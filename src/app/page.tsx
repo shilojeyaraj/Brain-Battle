@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { motion } from "@/components/ui/motion"
-import { Brain, Users, Zap, Trophy, Crown, Loader2, TrendingUp, Upload, Clock, Award, BookOpen, Gamepad2 } from "lucide-react"
+import { Brain, Users, Zap, Trophy, Crown, Loader2, TrendingUp, Upload, Clock, Award, BookOpen, Gamepad2, Sparkles } from "lucide-react"
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server"
-import OpenAI from "openai"
 import { notesSchema } from "@/lib/schemas/notes-schema"
 import { createClient } from "@/lib/supabase/server"
 import { extractImagesFromPDF as extractPDFImages } from "@/lib/pdf-image-extractor"
@@ -9,21 +8,32 @@ import { validateAndFilterVideos } from "@/lib/utils/youtube-validator"
 import { searchYouTubeVideosForTopic } from "@/lib/web/tavily-client"
 import { notesGenerationSchema, validateFile } from "@/lib/validation/schemas"
 import { sanitizeError, createSafeErrorResponse } from "@/lib/utils/error-sanitizer"
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+import { createAIClient, isParallelTestingEnabled } from "@/lib/ai/client-factory"
+import { runParallelTest, logParallelTestResults } from "@/lib/ai/parallel-test"
+import { extractTextFromDocument } from "@/lib/document-text-extractor"
+import type { AIChatMessage } from "@/lib/ai/types"
 
 export async function POST(req: NextRequest) {
   if (process.env.NODE_ENV === 'development') {
     console.log("🚀 [NOTES API] Starting notes generation request...")
   }
   try {
+    // SECURITY: Get userId from session cookie, not form data
+    const { getUserIdFromRequest } = await import('@/lib/auth/session-cookies')
+    const userId = await getUserIdFromRequest(req)
+    
+    if (!userId) {
+      return NextResponse.json(
+        { error: "Unauthorized - please log in" },
+        { status: 401 }
+      )
+    }
+
     const form = await req.formData()
     const files = form.getAll("files") as File[]
-    const topic = form.get("topic") as string
+    let topic = form.get("topic") as string
     const difficulty = form.get("difficulty") as string
-    const instructions = form.get("instructions") as string
+    let instructions = form.get("instructions") as string
     const studyContextStr = form.get("studyContext") as string
     let studyContext = null
     if (studyContextStr) {
@@ -60,19 +70,29 @@ export async function POST(req: NextRequest) {
       }
 
       // Sanitize topic (max 500 chars, trim)
-      if (topic) {
+      if (topic && typeof topic === 'string') {
         topic = topic.trim().slice(0, 500)
       }
 
       // Sanitize instructions (max 1000 chars, trim)
-      if (instructions) {
+      if (instructions && typeof instructions === 'string') {
         instructions = instructions.trim().slice(0, 1000)
       }
 
       // SECURITY: Validate all files
       for (const file of files) {
+        if (!file || !file.name || typeof file.size !== 'number') {
+          return NextResponse.json(
+            { error: 'Invalid file object' },
+            { status: 400 }
+          )
+        }
+
         const validation = validateFile(file)
         if (!validation.valid) {
+          if (process.env.NODE_ENV === 'development') {
+            console.error(`❌ [NOTES API] File validation failed for ${file.name}:`, validation.error)
+          }
           return NextResponse.json(
             { error: validation.error || 'Invalid file' },
             { status: 400 }
@@ -94,17 +114,25 @@ export async function POST(req: NextRequest) {
           'text/plain',
           'application/msword',
           'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'application/vnd.ms-powerpoint',
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
         ]
-        if (!allowedMimeTypes.includes(file.type)) {
+        if (!file.type || !allowedMimeTypes.includes(file.type)) {
+          if (process.env.NODE_ENV === 'development') {
+            console.error(`❌ [NOTES API] File type not allowed: ${file.name} (${file.type})`)
+          }
           return NextResponse.json(
-            { error: `File type not allowed: ${file.name}` },
+            { error: `File type not allowed: ${file.name}. Supported types: PDF, DOC, DOCX, PPT, PPTX, TXT` },
             { status: 400 }
           )
         }
       }
     } catch (validationError) {
+      if (process.env.NODE_ENV === 'development') {
+        console.error('❌ [NOTES API] Validation error:', validationError)
+      }
       return NextResponse.json(
-        { error: 'Invalid input data' },
+        { error: validationError instanceof Error ? validationError.message : 'Invalid input data' },
         { status: 400 }
       )
     }
@@ -210,6 +238,44 @@ export async function POST(req: NextRequest) {
         } catch (pdfError) {
           throw new Error(`Failed to parse PDF "${file.name}". Error: ${pdfError instanceof Error ? pdfError.message : String(pdfError)}`)
         }
+      } else if (
+        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        file.type === 'application/msword'
+      ) {
+        // Word document (.docx or .doc)
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`  📝 [NOTES API] Processing ${file.name} as Word document`)
+        }
+        try {
+          textContent = await extractTextFromDocument(file, buffer)
+          if (!textContent || textContent.trim().length < 10) {
+            throw new Error(`Word document "${file.name}" appears to be empty.`)
+          }
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`  ✅ [NOTES API] Extracted ${textContent.length} characters from ${file.name}`)
+          }
+        } catch (wordError) {
+          throw new Error(`Failed to parse Word document "${file.name}". Error: ${wordError instanceof Error ? wordError.message : String(wordError)}`)
+        }
+      } else if (
+        file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+        file.type === 'application/vnd.ms-powerpoint'
+      ) {
+        // PowerPoint presentation (.pptx or .ppt)
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`  📊 [NOTES API] Processing ${file.name} as PowerPoint presentation`)
+        }
+        try {
+          textContent = await extractTextFromDocument(file, buffer)
+          if (!textContent || textContent.trim().length < 10) {
+            throw new Error(`PowerPoint presentation "${file.name}" appears to be empty.`)
+          }
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`  ✅ [NOTES API] Extracted ${textContent.length} characters from ${file.name}`)
+          }
+        } catch (pptError) {
+          throw new Error(`Failed to parse PowerPoint "${file.name}". Error: ${pptError instanceof Error ? pptError.message : String(pptError)}`)
+        }
       } else if (file.type?.startsWith('text/')) {
         if (process.env.NODE_ENV === 'development') {
           console.log(`  📝 [NOTES API] Processing ${file.name} as text file (${file.type})`)
@@ -219,10 +285,7 @@ export async function POST(req: NextRequest) {
           throw new Error(`Text file "${file.name}" appears to be empty.`)
         }
       } else {
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`  ⚠️ [NOTES API] Unsupported file type for ${file.name}: ${file.type}`)
-        }
-        textContent = `[File: ${file.name} - Type: ${file.type} - Size: ${file.size} bytes]`
+        throw new Error(`Unsupported file type: ${file.type}. Supported types: PDF, DOC, DOCX, PPT, PPTX, TXT`)
       }
       
       return { textContent, fileName: file.name }
@@ -814,9 +877,18 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
         })()
       : Promise.resolve([])
     
+    // Check if parallel testing is enabled
+    const parallelTesting = isParallelTestingEnabled()
+    const aiProvider = process.env.AI_PROVIDER?.toLowerCase() || 'openai'
+    
     if (process.env.NODE_ENV === 'development') {
-      console.log(`\n🤖 [NOTES API] Preparing OpenAI API call...`)
-      console.log(`  - Model: gpt-4o`)
+      console.log(`\n🤖 [NOTES API] Preparing AI API call...`)
+      if (parallelTesting) {
+        console.log(`  - Mode: PARALLEL TESTING (OpenAI + Moonshot)`)
+      } else {
+        console.log(`  - Provider: ${aiProvider === 'moonshot' ? 'Moonshot (Kimi K2)' : 'OpenAI (GPT-4o)'}`)
+      }
+      console.log(`  - Model: ${aiProvider === 'moonshot' ? (process.env.MOONSHOT_MODEL || 'kimi-k2-0711-preview') : 'gpt-4o'}`)
       console.log(`  - Temperature: 0.2 (very low for maximum document fidelity)`)
       console.log(`  - System prompt length: ${systemPrompt.length} characters`)
       console.log(`  - User prompt length: ${userPrompt.length} characters`)
@@ -827,30 +899,84 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
     }
     
     const notesGenerationStart = Date.now()
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      response_format: {
-        type: "json_object"
-      },
-      temperature: 0.2  // Very low temperature for maximum document fidelity and comprehensive extraction
-    })
-    
-    console.log(`✅ [NOTES API] OpenAI API call successful`)
-    console.log(`  - Response ID: ${response.id}`)
-    console.log(`  - Model used: ${response.model}`)
-    console.log(`  - Usage: ${JSON.stringify(response.usage)}`)
+    let content: string
+    let responseId: string
+    let modelUsed: string
+    let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
+    let provider: 'openai' | 'moonshot'
 
-    const content = response.choices[0]?.message?.content
-    if (!content) {
-      console.log("❌ [NOTES API] No content in OpenAI response")
-      throw new Error("No response from OpenAI")
+    if (parallelTesting) {
+      // Run parallel test on both providers
+      console.log(`\n🔄 [NOTES API] Running parallel test (OpenAI + Moonshot)...`)
+      
+      const messages: AIChatMessage[] = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ]
+
+      const parallelResult = await runParallelTest(messages, {
+        model: aiProvider === 'moonshot' ? (process.env.MOONSHOT_MODEL || 'kimi-k2-0711-preview') : 'gpt-4o',
+        temperature: 0.2,
+        responseFormat: 'json_object',
+      })
+
+      // Log comparison results
+      logParallelTestResults(parallelResult, 'Study Notes Generation')
+
+      // Use Moonshot result if available, otherwise fall back to OpenAI
+      if (parallelResult.moonshot) {
+        content = parallelResult.moonshot.content
+        responseId = parallelResult.moonshot.id
+        modelUsed = parallelResult.moonshot.model
+        usage = parallelResult.moonshot.usage
+        provider = 'moonshot'
+        console.log(`✅ [NOTES API] Using Moonshot (Kimi K2) response for production`)
+      } else if (parallelResult.openai) {
+        content = parallelResult.openai.content
+        responseId = parallelResult.openai.id
+        modelUsed = parallelResult.openai.model
+        usage = parallelResult.openai.usage
+        provider = 'openai'
+        console.log(`⚠️ [NOTES API] Moonshot failed, using OpenAI response as fallback`)
+        if (parallelResult.moonshotError) {
+          console.error(`   Moonshot error: ${parallelResult.moonshotError.message}`)
+        }
+      } else {
+        throw new Error('Both AI providers failed')
+      }
+    } else {
+      // Use single provider
+      const aiClient = createAIClient(aiProvider as 'openai' | 'moonshot')
+      
+      const messages: AIChatMessage[] = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+      ]
+
+      const response = await aiClient.chatCompletions(messages, {
+        model: aiProvider === 'moonshot' ? (process.env.MOONSHOT_MODEL || 'kimi-k2-0711-preview') : 'gpt-4o',
+        temperature: 0.2,
+        responseFormat: 'json_object',
+      })
+
+      content = response.content
+      responseId = response.id
+      modelUsed = response.model
+      usage = response.usage
+      provider = response.provider
+
+      console.log(`✅ [NOTES API] ${provider === 'moonshot' ? 'Moonshot (Kimi K2)' : 'OpenAI (GPT-4o)'} API call successful`)
+      console.log(`  - Response ID: ${responseId}`)
+      console.log(`  - Model used: ${modelUsed}`)
+      console.log(`  - Usage: ${JSON.stringify(usage)}`)
     }
 
-    console.log(`📝 [NOTES API] Processing OpenAI response...`)
+    if (!content) {
+      console.log(`❌ [NOTES API] No content in ${provider} response`)
+      throw new Error(`No response from ${provider}`)
+    }
+
+    console.log(`📝 [NOTES API] Processing ${provider} response...`)
     console.log(`  - Content length: ${content.length} characters`)
     console.log(`  - Content preview: ${content.substring(0, 200)}...`)
 
@@ -1078,8 +1204,64 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
       const topicForVideos = notesData.title || studyTopic || fileNames.join(", ")
       const educationHint = (notesData.education_level || "") as string
       
-      // 6a) Use Tavily to fetch additional YouTube videos for this topic
-      const newVideos = await searchYouTubeVideosForTopic(topicForVideos, educationHint)
+      // Extract specific concepts from the notes for targeted video searches
+      const specificConcepts: string[] = []
+      
+      // Add key terms (these are usually the most specific)
+      if (Array.isArray(notesData.key_terms) && notesData.key_terms.length > 0) {
+        specificConcepts.push(...notesData.key_terms.slice(0, 5).map((term: any) => {
+          if (typeof term === 'string') return term
+          if (term && typeof term === 'object' && term.term) return term.term
+          return null
+        }).filter((t: string | null): t is string => t !== null && t.trim().length > 0))
+      }
+      
+      // Add concept names (these are usually detailed topics)
+      if (Array.isArray(notesData.concepts) && notesData.concepts.length > 0) {
+        specificConcepts.push(...notesData.concepts.slice(0, 3).map((concept: any) => {
+          if (typeof concept === 'string') return concept
+          if (concept && typeof concept === 'object' && concept.name) return concept.name
+          if (concept && typeof concept === 'object' && concept.topic) return concept.topic
+          return null
+        }).filter((c: string | null): c is string => c !== null && c.trim().length > 0))
+      }
+      
+      // Add outline items that are specific (not generic)
+      if (Array.isArray(notesData.outline) && notesData.outline.length > 0) {
+        const outlineItems = notesData.outline
+          .slice(0, 4)
+          .map((item: any) => {
+            if (typeof item === 'string') return item
+            if (item && typeof item === 'object' && item.title) return item.title
+            if (item && typeof item === 'object' && item.topic) return item.topic
+            return null
+          })
+          .filter((o: string | null): o is string => o !== null && o.trim().length > 0 && o.length < 100) // Filter out very long/generic items
+        
+        specificConcepts.push(...outlineItems)
+      }
+      
+      // Remove duplicates and limit to most relevant
+      const uniqueConcepts = Array.from(new Set(specificConcepts.map(c => c.trim().toLowerCase())))
+        .slice(0, 5) // Keep top 5 unique concepts
+        .map(lower => {
+          // Find original case version
+          return specificConcepts.find(c => c.trim().toLowerCase() === lower) || lower
+        })
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`  📚 [NOTES API] Extracted ${uniqueConcepts.length} specific concepts for video search:`)
+        uniqueConcepts.forEach((concept, idx) => {
+          console.log(`    ${idx + 1}. ${concept}`)
+        })
+      }
+      
+      // 6a) Use Tavily to fetch additional YouTube videos for specific concepts
+      const newVideos = await searchYouTubeVideosForTopic(
+        topicForVideos, 
+        educationHint,
+        uniqueConcepts.length > 0 ? uniqueConcepts : undefined
+      )
       if (newVideos.length > 0) {
         console.log(`  📹 [NOTES API] Tavily suggested ${newVideos.length} YouTube video(s) for topic: "${topicForVideos}"`)
       } else {

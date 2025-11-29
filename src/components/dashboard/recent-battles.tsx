@@ -66,7 +66,8 @@ export function RecentBattles() {
             description="Start a singleplayer battle or join a lobby to see your results here."
             action={{
               label: "Start Singleplayer Battle",
-              href: "/singleplayer"
+              href: "/singleplayer",
+              onClick: () => {}
             }}
             size="md"
           />

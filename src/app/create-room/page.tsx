@@ -246,3 +246,18 @@ function CreateRoomContent() {
     </div>
   )
 }
+
+export default function CreateRoomPage() {
+  return (
+    <Suspense fallback={
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 text-blue-400 animate-spin mx-auto mb-4" />
+          <p className="text-blue-200 font-bold">Loading...</p>
+        </div>
+      </div>
+    }>
+      <CreateRoomContent />
+    </Suspense>
+  )
+}

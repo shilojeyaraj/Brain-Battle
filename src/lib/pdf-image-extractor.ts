@@ -32,10 +32,10 @@ export async function extractImagesFromPDF(
     let images: Buffer[] = []
     
     try {
-      // Convert Buffer to Uint8Array as required by the library
+      // Convert Buffer to ArrayBuffer as required by the library
       // Create a copy to avoid detached ArrayBuffer issues when buffer is used in parallel
-      const uint8Array = new Uint8Array(buffer)
-      images = await extractImagesFromPdf(uint8Array)
+      const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer
+      images = await extractImagesFromPdf(arrayBuffer as any)
       
       if (process.env.NODE_ENV === 'development') {
         console.log(`  📄 [PDF EXTRACTOR] Found ${images.length} embedded images using pdf-extract-image`)

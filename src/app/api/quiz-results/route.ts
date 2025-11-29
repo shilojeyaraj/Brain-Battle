@@ -3,6 +3,8 @@ import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/server-admin"
 import { sanitizeError, sanitizeDatabaseError, createSafeErrorResponse } from "@/lib/utils/error-sanitizer"
 import { storeAnswerHistory } from "@/lib/quiz/question-deduplication"
+import { verifySessionOwnership } from "@/lib/security/ownership-validation"
+import { isValidUUID, isValidInteger, sanitizeString } from "@/lib/security/input-validation"
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,15 +40,42 @@ export async function POST(request: NextRequest) {
       duration
     })
 
+    // SECURITY: Validate input
+    if (sessionId && !isValidUUID(sessionId)) {
+      return NextResponse.json(
+        { error: "Invalid session ID format" },
+        { status: 400 }
+      )
+    }
+
+    // SECURITY: Validate numeric inputs
+    if (!isValidInteger(totalQuestions, 1, 100) || 
+        !isValidInteger(correctAnswers, 0, totalQuestions) ||
+        !isValidInteger(duration, 0, 3600)) {
+      return NextResponse.json(
+        { error: "Invalid quiz result data" },
+        { status: 400 }
+      )
+    }
+
     // 🚀 OPTIMIZATION: Create session and insert questions in one go
     // Use admin client to bypass RLS for inserts
     // If sessionId is provided, try to use it; otherwise create new session
     let sessionData
     if (sessionId) {
+      // SECURITY: Verify user owns this session before allowing updates
+      const ownsSession = await verifySessionOwnership(userId, sessionId)
+      if (!ownsSession) {
+        return NextResponse.json(
+          { error: "Unauthorized - you don't have access to this session" },
+          { status: 403 }
+        )
+      }
+
       // Check if session already exists
       const { data: existingSession, error: checkError } = await adminClient
         .from('quiz_sessions')
-        .select('id')
+        .select('id, user_id')
         .eq('id', sessionId)
         .single()
       

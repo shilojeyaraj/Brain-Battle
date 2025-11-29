@@ -41,6 +41,10 @@ Make sure the questions are:
 - Educational and informative
 `
 
+    const openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    })
+    
     const completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [

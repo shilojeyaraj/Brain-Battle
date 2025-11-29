@@ -177,7 +177,7 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
                 className="flex items-center gap-2 hover:scale-105 transition-transform duration-200 disabled:opacity-50 disabled:cursor-not-allowed relative"
               >
                 <Avatar className="h-12 w-12 cartoon-border cartoon-shadow cursor-pointer hover:shadow-lg transition-shadow">
-                  <AvatarImage src={userProfile?.avatar_url || "/placeholder.svg?height=48&width=48"} />
+                  <AvatarImage src={(userProfile as any)?.avatar_url || "/placeholder.svg?height=48&width=48"} />
                   <AvatarFallback className="bg-primary text-primary-foreground font-black text-lg">
                     <User className="h-6 w-6" strokeWidth={3} />
                   </AvatarFallback>
