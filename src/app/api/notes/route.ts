@@ -129,6 +129,19 @@ export async function POST(req: NextRequest) {
             { status: 400 }
           )
         }
+
+        // 🛡️ SECURITY: Validate file content by checking magic numbers (prevents MIME type spoofing)
+        const { validateFileContent } = await import('@/lib/security/input-validation')
+        const contentValidation = await validateFileContent(file)
+        if (!contentValidation.valid) {
+          if (process.env.NODE_ENV === 'development') {
+            console.error(`❌ [NOTES API] File content validation failed for ${file.name}:`, contentValidation.error)
+          }
+          return NextResponse.json(
+            { error: contentValidation.error || `File content validation failed for ${file.name}. Please ensure the file is not corrupted or malicious.` },
+            { status: 400 }
+          )
+        }
       }
     } catch (validationError) {
       if (process.env.NODE_ENV === 'development') {
@@ -882,7 +895,7 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
     
     // Check if parallel testing is enabled
     const parallelTesting = isParallelTestingEnabled()
-    const aiProvider = process.env.AI_PROVIDER?.toLowerCase() || 'openai'
+    const aiProvider = process.env.AI_PROVIDER?.toLowerCase() || 'moonshot'
     
     if (process.env.NODE_ENV === 'development') {
       console.log(`\n🤖 [NOTES API] Preparing AI API call...`)
@@ -1082,7 +1095,7 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
     } catch (parseError) {
       console.error(`❌ [NOTES API] Failed to parse JSON response:`, parseError)
       console.log(`📄 [NOTES API] Raw content:`, content)
-      throw new Error("Failed to parse OpenAI response as JSON")
+      throw new Error("Failed to parse AI response as JSON")
     }
 
     // 4) Wait for diagram analysis to complete (ran in parallel with notes generation)
@@ -1159,7 +1172,7 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
             return diagram
           })
         } else {
-          console.log(`⚠️ [NOTES API] Diagram analysis failed, will rely on text-based diagrams from OpenAI`)
+          console.log(`⚠️ [NOTES API] Diagram analysis failed, will rely on text-based diagrams from AI`)
           analyzedDiagrams = []
         }
       } catch (diagramError) {
@@ -1167,15 +1180,15 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
         analyzedDiagrams = []
       }
     } else {
-      // No images extracted (disabled for free tier), but we still have diagrams from OpenAI text analysis
+      // No images extracted (disabled for free tier), but we still have diagrams from AI text analysis
       // These diagrams won't have image_data_b64, but we can enrich with web images
       if (process.env.NODE_ENV === 'development') {
         console.log(`ℹ️ [NOTES API] PDF image extraction disabled (free tier)`)
-        console.log(`  ℹ️ [NOTES API] Using text-based diagrams from OpenAI analysis only`)
+        console.log(`  ℹ️ [NOTES API] Using text-based diagrams from AI analysis only`)
         console.log(`  💡 [NOTES API] Diagrams will be enriched with web images if keywords are available`)
       }
       
-      // Ensure diagrams from OpenAI have proper structure even without images
+      // Ensure diagrams from AI have proper structure even without images
       if (analyzedDiagrams && analyzedDiagrams.length > 0) {
         analyzedDiagrams = analyzedDiagrams.map((diagram: any) => ({
           ...diagram,
@@ -1279,7 +1292,7 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
       if (embeddingResult.value.success) {
         if (process.env.NODE_ENV === 'development') {
           console.log(`✅ [NOTES API] Embeddings generated successfully`)
-          if (embeddingResult.value.result) {
+          if (embeddingResult.value.success && 'result' in embeddingResult.value && embeddingResult.value.result) {
             console.log(`  - Chunks processed: ${embeddingResult.value.result.chunksProcessed}`)
             console.log(`  - Subject tags: ${embeddingResult.value.result.metadata?.subjectTags?.join(', ') || 'None'}`)
             console.log(`  - Course topics: ${embeddingResult.value.result.metadata?.courseTopics?.join(', ') || 'None'}`)

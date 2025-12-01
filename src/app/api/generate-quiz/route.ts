@@ -628,7 +628,7 @@ Generate exactly ${numQuestions} questions that test knowledge of the specific d
 
     // Check if parallel testing is enabled
     const parallelTesting = isParallelTestingEnabled()
-    const aiProvider = process.env.AI_PROVIDER?.toLowerCase() || 'openai'
+    const aiProvider = process.env.AI_PROVIDER?.toLowerCase() || 'moonshot'
     
     const messages: AIChatMessage[] = [
       {
@@ -728,15 +728,15 @@ STRICT RULES:
     try {
       quizData = JSON.parse(cleanedResponse)
     } catch (error) {
-      console.error("❌ [QUIZ API] Failed to parse OpenAI response as JSON:", error)
+      console.error("❌ [QUIZ API] Failed to parse AI response as JSON:", error)
       console.log("📄 [QUIZ API] Raw response:", response)
       console.log("📄 [QUIZ API] Cleaned response:", cleanedResponse)
-      throw new Error("Failed to parse quiz data from OpenAI")
+      throw new Error("Failed to parse quiz data from AI provider")
     }
     
     // Validate the response structure
     if (!quizData.questions || !Array.isArray(quizData.questions)) {
-      throw new Error("Invalid response format from OpenAI")
+      throw new Error("Invalid response format from AI provider")
     }
 
     // Ensure each question has the required fields

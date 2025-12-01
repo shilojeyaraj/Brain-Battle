@@ -18,16 +18,18 @@ interface MultiplayerResultsRequest {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
+    // SECURITY: Get userId from session cookie, not supabase.auth (custom auth doesn't use supabase.auth)
+    const { getUserIdFromRequest } = await import('@/lib/auth/session-cookies')
+    const userId = await getUserIdFromRequest(request)
     
-    // Get the authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
+    if (!userId) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized - please log in' },
         { status: 401 }
       )
     }
+
+    const supabase = await createClient()
 
     // Parse request body
     const body: MultiplayerResultsRequest = await request.json()
@@ -116,11 +118,36 @@ export async function POST(request: NextRequest) {
     // Import XP calculator once (not in loop)
     const { calculateXP } = await import('@/lib/xp-calculator')
 
+    // 🛡️ XP FARMING PREVENTION: Check for duplicate session completions
+    const { data: existingResults, error: duplicateCheckError } = await supabase
+      .from('game_results')
+      .select('user_id, session_id, xp_earned, completed_at')
+      .eq('session_id', session_id)
+      .in('user_id', userIds)
+
+    const duplicateMap = new Map<string, any>()
+    if (existingResults && existingResults.length > 0) {
+      existingResults.forEach((result: any) => {
+        duplicateMap.set(result.user_id, result)
+      })
+    }
+
     // Process each player's results
     const gameResults = []
     const statsUpdates = []
+    const skippedPlayers: string[] = []
 
     for (const playerResult of player_results) {
+      // Skip if player already completed this session
+      if (duplicateMap.has(playerResult.user_id)) {
+        const existing = duplicateMap.get(playerResult.user_id)
+        console.log(`⚠️ [MULTIPLAYER RESULTS] Player ${playerResult.user_id} already completed session ${session_id} - skipping XP`, {
+          previousCompletion: existing.completed_at
+        })
+        skippedPlayers.push(playerResult.user_id)
+        continue
+      }
+
       const rank = rankings.get(playerResult.user_id) || player_results.length
       const displayName = profileMap.get(playerResult.user_id) || 'Unknown Player'
       const winStreak = statsMap.get(playerResult.user_id) || 0
@@ -170,6 +197,9 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('✅ [MULTIPLAYER RESULTS] Game results inserted successfully')
+    if (skippedPlayers.length > 0) {
+      console.log(`⚠️ [MULTIPLAYER RESULTS] Skipped ${skippedPlayers.length} players due to duplicate session completion`)
+    }
 
     // Update quiz session status
     const { error: sessionUpdateError } = await supabase
@@ -201,6 +231,24 @@ export async function POST(request: NextRequest) {
     const responseResults = player_results.map(player => {
       const rank = rankings.get(player.user_id) || player_results.length
       const displayName = profileMap.get(player.user_id) || 'Unknown Player'
+      
+      // Check if player was skipped due to duplicate
+      const wasSkipped = skippedPlayers.includes(player.user_id)
+      if (wasSkipped) {
+        const existing = duplicateMap.get(player.user_id)
+        return {
+          user_id: player.user_id,
+          display_name: displayName,
+          rank: rank,
+          score: player.score,
+          questions_answered: player.questions_answered,
+          correct_answers: player.correct_answers,
+          accuracy: player.questions_answered > 0 ? (player.correct_answers / player.questions_answered * 100) : 0,
+          total_time: player.total_time,
+          xp_earned: 0,
+          message: "You've already completed this quiz session. No XP awarded for repeats."
+        }
+      }
       
       // Find the corresponding inserted result for XP info
       const insertedResult = insertedResults?.find(r => r.user_id === player.user_id)

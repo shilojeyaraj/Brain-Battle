@@ -1,19 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { stripe } from '@/lib/stripe/config';
+import { getUserIdFromRequest } from '@/lib/auth/session-cookies';
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient();
-    const body = await request.json();
-    const { userId } = body;
-
+    // SECURITY: Get userId from session cookie, not request body
+    const userId = await getUserIdFromRequest(request);
     if (!userId) {
       return NextResponse.json(
-        { error: 'User ID is required' },
-        { status: 400 }
+        { error: 'Unauthorized - please log in' },
+        { status: 401 }
       );
     }
+
+    const supabase = await createClient();
 
     // Get user from database with Stripe customer ID
     const { data: user, error: userError } = await supabase

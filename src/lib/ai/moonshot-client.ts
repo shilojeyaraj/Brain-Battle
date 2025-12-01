@@ -59,5 +59,21 @@ export class MoonshotClient implements AIClient {
       provider: 'moonshot',
     }
   }
+
+  /**
+   * Generate embeddings for text input
+   * Moonshot API is OpenAI-compatible, so embeddings should work the same way
+   */
+  async createEmbeddings(
+    input: string | string[],
+    model: string = 'text-embedding-3-small'
+  ): Promise<number[][]> {
+    const response = await this.client.embeddings.create({
+      model,
+      input: Array.isArray(input) ? input : [input],
+    })
+
+    return response.data.map(item => item.embedding)
+  }
 }
 

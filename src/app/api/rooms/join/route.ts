@@ -10,18 +10,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server-admin'
 import { getUserLimits } from '@/lib/subscription/limits'
+import { getUserIdFromRequest } from '@/lib/auth/session-cookies'
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { userId, roomCode } = body
-
+    // SECURITY: Get userId from session cookie, not request body
+    const userId = await getUserIdFromRequest(request)
     if (!userId) {
       return NextResponse.json(
-        { error: 'userId is required' },
-        { status: 400 }
+        { error: 'Unauthorized - please log in' },
+        { status: 401 }
       )
     }
+
+    const body = await request.json()
+    const { roomCode } = body
 
     if (!roomCode) {
       return NextResponse.json(
@@ -112,29 +115,39 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Update current_players count
-    const { error: updateError } = await adminClient
+    // 🛡️ RACE CONDITION FIX: Atomically increment current_players only if room is not full
+    // This prevents multiple concurrent joins from exceeding max_players
+    const { data: updatedRoom, error: updateError } = await adminClient
       .from('game_rooms')
       .update({ 
         current_players: room.current_players + 1 
       })
       .eq('id', room.id)
-
-    if (updateError) {
-      console.error('❌ [ROOM JOIN API] Error updating player count:', updateError)
-      // Don't fail the request, just log the error
-    }
-
-    // Fetch updated room
-    const { data: updatedRoom } = await adminClient
-      .from('game_rooms')
-      .select('*')
-      .eq('id', room.id)
+      .lt('current_players', 'max_players') // Only update if current_players < max_players
+      .select()
       .single()
+
+    if (updateError || !updatedRoom) {
+      console.error('❌ [ROOM JOIN API] Error updating player count or room is full:', updateError)
+      // Rollback: Remove the member we just added
+      await adminClient
+        .from('room_members')
+        .delete()
+        .eq('room_id', room.id)
+        .eq('user_id', userId)
+      
+      return NextResponse.json(
+        { 
+          success: false,
+          error: 'Room is full. Please try another room.' 
+        },
+        { status: 403 }
+      )
+    }
 
     return NextResponse.json({
       success: true,
-      room: updatedRoom || room
+      room: updatedRoom
     })
   } catch (error) {
     console.error('❌ [ROOM JOIN API] Error:', error)

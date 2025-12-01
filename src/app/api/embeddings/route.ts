@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import OpenAI from 'openai'
 import { createClient } from '@/lib/supabase/server'
+import { MoonshotClient } from '@/lib/ai/moonshot-client'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+const moonshotClient = new MoonshotClient()
 
 // Function to chunk text into smaller pieces for embedding
 function chunkText(text: string, chunkSize: number = 1000, overlap: number = 200): string[] {
@@ -36,12 +34,7 @@ function chunkText(text: string, chunkSize: number = 1000, overlap: number = 200
 // Function to generate embeddings for text chunks
 async function generateEmbeddings(textChunks: string[]): Promise<number[][]> {
   try {
-    const response = await openai.embeddings.create({
-      model: "text-embedding-3-small", // More cost-effective than ada-002
-      input: textChunks,
-    })
-    
-    return response.data.map(item => item.embedding)
+    return await moonshotClient.createEmbeddings(textChunks, "text-embedding-3-small")
   } catch (error) {
     console.error('Error generating embeddings:', error)
     throw new Error('Failed to generate embeddings')
@@ -71,9 +64,8 @@ Return as JSON:
 }
 `
 
-    const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [
+    const completion = await moonshotClient.chatCompletions(
+      [
         {
           role: "system",
           content: "You are an expert at analyzing educational content. Extract relevant metadata from academic text."
@@ -83,20 +75,23 @@ Return as JSON:
           content: prompt
         }
       ],
-      temperature: 0.3,
-      max_tokens: 500,
-    })
+      {
+        model: process.env.MOONSHOT_MODEL || 'kimi-k2-0711-preview',
+        temperature: 0.3,
+        maxTokens: 500,
+      }
+    )
 
-    const response = completion.choices[0]?.message?.content
+    const response = completion.content
     if (!response) {
-      throw new Error("No response from OpenAI")
+      throw new Error("No response from Moonshot")
     }
 
     let analysis
     try {
       analysis = JSON.parse(response)
     } catch (error) {
-      console.error("❌ [EMBEDDINGS API] Failed to parse OpenAI response as JSON:", error)
+      console.error("❌ [EMBEDDINGS API] Failed to parse Moonshot response as JSON:", error)
       console.log("📄 [EMBEDDINGS API] Raw response:", response)
       // Return default values if JSON parsing fails
       return {

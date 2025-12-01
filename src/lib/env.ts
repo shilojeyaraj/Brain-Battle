@@ -14,9 +14,10 @@ const envSchema = z.object({
   
   // Server-side variables
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  OPENAI_API_KEY: z.string().min(1),
+  MOONSHOT_API_KEY: z.string().min(1),
   
   // Optional variables
+  OPENAI_API_KEY: z.string().optional(), // Optional - only needed for parallel testing or fallback
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   VERCEL_URL: z.string().optional(),
 })
@@ -29,6 +30,7 @@ function validateEnv() {
       NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
       NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
       SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+      MOONSHOT_API_KEY: process.env.MOONSHOT_API_KEY,
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
       NODE_ENV: process.env.NODE_ENV,
       VERCEL_URL: process.env.VERCEL_URL,

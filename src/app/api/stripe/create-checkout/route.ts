@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { stripe, STRIPE_PRICE_IDS } from '@/lib/stripe/config';
 import { getOrCreateStripeCustomer } from '@/lib/stripe/utils';
+import { getUserIdFromRequest } from '@/lib/auth/session-cookies';
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,17 +15,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = await createClient();
-    const body = await request.json();
-    const { priceId, mode = 'subscription', userId } = body;
-
-    // Get userId from request body (sent from client)
+    // SECURITY: Get userId from session cookie, not request body
+    const userId = await getUserIdFromRequest(request);
     if (!userId) {
       return NextResponse.json(
-        { error: 'User ID is required' },
-        { status: 400 }
+        { error: 'Unauthorized - please log in' },
+        { status: 401 }
       );
     }
+
+    const supabase = await createClient();
+    const body = await request.json();
+    const { priceId, mode = 'subscription' } = body;
 
     // Get user from database
     const { data: user, error: userError } = await supabase

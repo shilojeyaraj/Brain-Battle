@@ -1,7 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import OpenAI from "openai"
+import { MoonshotClient } from "@/lib/ai/moonshot-client"
 import crypto from "crypto"
 
 export async function generateQuizQuestions(
@@ -41,13 +41,10 @@ Make sure the questions are:
 - Educational and informative
 `
 
-    const openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    })
+    const moonshotClient = new MoonshotClient()
     
-    const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [
+    const completion = await moonshotClient.chatCompletions(
+      [
         {
           role: "system",
           content: "You are an expert quiz generator. Create educational multiple choice questions that test understanding and knowledge."
@@ -57,13 +54,16 @@ Make sure the questions are:
           content: prompt
         }
       ],
-      temperature: 0.7,
-      max_tokens: 2000,
-    })
+      {
+        model: process.env.MOONSHOT_MODEL || 'kimi-k2-0711-preview',
+        temperature: 0.7,
+        maxTokens: 2000,
+      }
+    )
 
-    const response = completion.choices[0]?.message?.content
+    const response = completion.content
     if (!response) {
-      throw new Error("No response from OpenAI")
+      throw new Error("No response from Moonshot")
     }
 
     // Parse the JSON response
@@ -71,14 +71,14 @@ Make sure the questions are:
     try {
       quizData = JSON.parse(response)
     } catch (error) {
-      console.error("❌ [QUIZ GENERATION] Failed to parse OpenAI response as JSON:", error)
+      console.error("❌ [QUIZ GENERATION] Failed to parse Moonshot response as JSON:", error)
       console.log("📄 [QUIZ GENERATION] Raw response:", response)
-      throw new Error("Failed to parse quiz data from OpenAI")
+      throw new Error("Failed to parse quiz data from Moonshot")
     }
     
     // Validate the response structure
     if (!quizData.questions || !Array.isArray(quizData.questions)) {
-      throw new Error("Invalid response format from OpenAI")
+      throw new Error("Invalid response format from Moonshot")
     }
 
     return {

@@ -14,12 +14,12 @@ import { MoonshotClient } from './moonshot-client'
 export function getConfiguredProvider(): AIProvider {
   const provider = process.env.AI_PROVIDER?.toLowerCase() as AIProvider | undefined
   
-  if (provider === 'moonshot') {
-    return 'moonshot'
+  if (provider === 'openai') {
+    return 'openai'
   } else if (provider === 'both') {
     return 'both'
   } else {
-    return 'openai' // Default to OpenAI
+    return 'moonshot' // Default to Moonshot
   }
 }
 
@@ -30,12 +30,12 @@ export function createAIClient(provider?: AIProvider): AIClient {
   const configuredProvider = provider || getConfiguredProvider()
 
   switch (configuredProvider) {
-    case 'moonshot':
-      return new MoonshotClient()
     case 'openai':
       return new OpenAIClient()
+    case 'moonshot':
+      return new MoonshotClient()
     default:
-      return new OpenAIClient()
+      return new MoonshotClient() // Default to Moonshot
   }
 }
 

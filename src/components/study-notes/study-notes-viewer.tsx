@@ -131,6 +131,9 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
+      // Note: PDF generation is handled by React-PDF component (lines 125-128)
+      // The following unused jsPDF code has been removed to fix build errors
+      /*
       const lineHeight = 7
       const sectionSpacing = 10
       
@@ -220,6 +223,10 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
             // Regular text
             addText(line, 12, false, [0, 0, 0])
           }
+        }
+      }
+      */
+      
       link.download = `${notes.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_study_notes.pdf`
       document.body.appendChild(link)
       link.click()

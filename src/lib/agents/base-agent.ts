@@ -4,19 +4,15 @@
  * Provides common functionality for all agents
  */
 
-import OpenAI from "openai"
 import { Agent, AgentInput, AgentOutput } from "./agent-types"
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+import { createAIClient } from "@/lib/ai/client-factory"
 
 export abstract class BaseAgent implements Agent {
   abstract name: string
   abstract description: string
   abstract dependencies?: string[]
 
-  protected openai: OpenAI = openai
+  protected aiClient = createAIClient('moonshot')
 
   abstract execute(input: AgentInput): Promise<AgentOutput>
 
@@ -36,26 +32,23 @@ export abstract class BaseAgent implements Agent {
   ): Promise<{ content: string; usage: any }> {
     const startTime = Date.now()
     
-    const response = await this.openai.chat.completions.create({
-      model: options.model || "gpt-4o",
-      messages: [
+    const response = await this.aiClient.chatCompletions(
+      [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
       ],
-      response_format: options.responseFormat ? { type: options.responseFormat } : undefined,
-      temperature: options.temperature ?? 0.3,
-      max_tokens: options.maxTokens,
-    })
+      {
+        model: options.model || process.env.MOONSHOT_MODEL || 'kimi-k2-0711-preview',
+        responseFormat: options.responseFormat,
+        temperature: options.temperature ?? 0.3,
+        maxTokens: options.maxTokens,
+      }
+    )
 
     const processingTime = Date.now() - startTime
 
-    const content = response.choices[0]?.message?.content
-    if (!content) {
-      throw new Error(`No content in response from ${this.name}`)
-    }
-
     return {
-      content,
+      content: response.content,
       usage: {
         ...response.usage,
         processingTime,

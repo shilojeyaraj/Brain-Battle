@@ -1,10 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import OpenAI from 'openai'
+import { MoonshotClient } from '@/lib/ai/moonshot-client'
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+const moonshotClient = new MoonshotClient()
 
 export async function POST(request: NextRequest) {
   try {
@@ -18,12 +16,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate embedding for the search query
-    const embeddingResponse = await openai.embeddings.create({
-      model: "text-embedding-3-small",
-      input: [query],
-    })
-
-    const queryEmbedding = embeddingResponse.data[0].embedding
+    const embeddings = await moonshotClient.createEmbeddings([query], "text-embedding-3-small")
+    const queryEmbedding = embeddings[0]
 
     // Search for similar documents using pgvector
     const supabase = await createClient()

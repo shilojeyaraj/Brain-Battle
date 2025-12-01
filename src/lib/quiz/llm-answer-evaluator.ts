@@ -1,15 +1,13 @@
 /**
  * LLM-based Answer Evaluator
  * 
- * Uses OpenAI to evaluate open-ended text answers when fuzzy matching
+ * Uses Moonshot AI to evaluate open-ended text answers when fuzzy matching
  * is insufficient. This provides semantic understanding of answers.
  */
 
-import OpenAI from "openai"
+import { MoonshotClient } from "@/lib/ai/moonshot-client"
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
+const moonshotClient = new MoonshotClient()
 
 export interface LLMEvaluationRequest {
   question: string
@@ -68,9 +66,8 @@ Respond with JSON only:
   "reasoning": "brief explanation"
 }`
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Using mini for cost efficiency
-      messages: [
+    const response = await moonshotClient.chatCompletions(
+      [
         {
           role: "system",
           content: "You are an expert educational evaluator. Always respond with valid JSON only."
@@ -80,14 +77,17 @@ Respond with JSON only:
           content: prompt
         }
       ],
-      temperature: 0.2, // Low temperature for consistent evaluation
-      max_tokens: 200,
-      response_format: { type: "json_object" }
-    })
+      {
+        model: process.env.MOONSHOT_MODEL || 'kimi-k2-0711-preview',
+        temperature: 0.2, // Low temperature for consistent evaluation
+        maxTokens: 200,
+        responseFormat: "json_object"
+      }
+    )
 
-    const content = response.choices[0]?.message?.content
+    const content = response.content
     if (!content) {
-      throw new Error("No response from OpenAI")
+      throw new Error("No response from Moonshot")
     }
 
     try {

@@ -12,12 +12,21 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server-admin'
 import { checkRoomSizeLimit } from '@/lib/subscription/limits'
 import { generateRoomCode } from '@/lib/utils'
+import { getUserIdFromRequest } from '@/lib/auth/session-cookies'
 
 export async function POST(request: NextRequest) {
   try {
+    // SECURITY: Get userId from session cookie, not request body
+    const userId = await getUserIdFromRequest(request)
+    if (!userId) {
+      return NextResponse.json(
+        { error: 'Unauthorized - please log in' },
+        { status: 401 }
+      )
+    }
+
     const body = await request.json()
     const { 
-      userId, 
       name, 
       maxPlayers = 4,
       subject,
@@ -26,13 +35,6 @@ export async function POST(request: NextRequest) {
       timeLimit = 30,
       totalQuestions = 10
     } = body
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'userId is required' },
-        { status: 400 }
-      )
-    }
 
     if (!name) {
       return NextResponse.json(

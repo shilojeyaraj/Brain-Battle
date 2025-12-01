@@ -183,6 +183,39 @@ export async function POST(request: NextRequest) {
 
     console.log("✅ [QUIZ RESULTS] Created/retrieved quiz session:", sessionData.id)
 
+    // 🛡️ XP FARMING PREVENTION: Check if user has already completed this session
+    const { data: existingResult, error: duplicateCheckError } = await adminClient
+      .from('game_results')
+      .select('id, xp_earned, completed_at')
+      .eq('user_id', userId)
+      .eq('session_id', sessionData.id)
+      .maybeSingle()
+
+    if (existingResult) {
+      console.log("⚠️ [QUIZ RESULTS] User already completed this session - preventing XP farming", {
+        userId,
+        sessionId: sessionData.id,
+        previousCompletion: existingResult.completed_at
+      })
+      
+      // Get current stats to return them without modification
+      const { data: currentStats } = await adminClient
+        .from('player_stats')
+        .select('xp')
+        .eq('user_id', userId)
+        .single()
+      
+      return NextResponse.json({ 
+        success: true, 
+        sessionId: sessionData.id,
+        gameResultId: existingResult.id,
+        xpEarned: 0,
+        oldXP: currentStats?.xp || 0,
+        newXP: currentStats?.xp || 0,
+        message: "You've already completed this exact quiz. No XP awarded for repeats. Try a new quiz or redo with different questions!"
+      })
+    }
+
     // 🚀 OPTIMIZATION: Insert questions and get IDs back in one operation
     const questionsToInsert = questions.map((q: any, index: number) => {
       // Determine correct answer based on question type
@@ -383,11 +416,11 @@ export async function POST(request: NextRequest) {
     }
 
     // 5. Create game result record
-    // Calculate XP: base XP per question (10) + bonus for accuracy
-    // Base: 10 XP per correct answer
-    // Bonus: up to 50 XP for perfect score
-    const baseXP = correctAnswers * 10
-    const accuracyBonus = correctAnswers === totalQuestions ? 50 : Math.round((correctAnswers / totalQuestions) * 30)
+    // Calculate XP: base XP per question (20) + bonus for accuracy
+    // Base: 20 XP per correct answer (increased from 10 for better retention)
+    // Bonus: up to 100 XP for perfect score (increased from 50)
+    const baseXP = correctAnswers * 20
+    const accuracyBonus = correctAnswers === totalQuestions ? 100 : Math.round((correctAnswers / totalQuestions) * 60)
     const xpEarned = baseXP + accuracyBonus
     
     console.log("💰 [QUIZ RESULTS] XP Calculation:", {

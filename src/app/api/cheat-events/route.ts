@@ -1,19 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { getUserIdFromRequest } from '@/lib/auth/session-cookies'
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createClient()
-    
-    // Get the authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
+    // SECURITY: Get userId from session cookie, not request body
+    const authenticatedUserId = await getUserIdFromRequest(request)
+    if (!authenticatedUserId) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized - please log in' },
         { status: 401 }
       )
     }
 
+    const supabase = await createClient()
     const body = await request.json()
     const { room_id, user_id, violation_type, duration_seconds, timestamp } = body
 
@@ -23,6 +23,26 @@ export async function POST(request: NextRequest) {
         { error: 'Missing required fields: room_id, user_id, violation_type, duration_seconds, timestamp' },
         { status: 400 }
       )
+    }
+
+    // SECURITY: Verify authenticated user is either:
+    // 1. The user being reported (self-report), OR
+    // 2. A member of the room (can report others in their room)
+    if (authenticatedUserId !== user_id) {
+      // Check if authenticated user is a member of the room
+      const { data: roomMember } = await supabase
+        .from('room_members')
+        .select('user_id')
+        .eq('room_id', room_id)
+        .eq('user_id', authenticatedUserId)
+        .single()
+
+      if (!roomMember) {
+        return NextResponse.json(
+          { error: 'Unauthorized - you can only report cheating in rooms you are a member of' },
+          { status: 403 }
+        )
+      }
     }
 
     console.log('🚨 [CHEAT EVENTS] Recording cheat violation:', {

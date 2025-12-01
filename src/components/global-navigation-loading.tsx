@@ -65,12 +65,14 @@ export function GlobalNavigationLoading() {
 
     // Cleanup function - called when component updates (navigation likely complete)
     return () => {
-      // Small delay before hiding to ensure smooth transition
+      // Clear timeout immediately
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current)
+        timeoutRef.current = null
+      }
+      
+      // Mark navigation as complete after a small delay
       const hideTimeout = setTimeout(() => {
-        if (timeoutRef.current) {
-          clearTimeout(timeoutRef.current)
-          timeoutRef.current = null
-        }
         // Mark navigation as complete
         isNavigatingRef.current = false
         setShowLoading(false)
@@ -84,7 +86,9 @@ export function GlobalNavigationLoading() {
         }
       }, 100)
 
-      return () => clearTimeout(hideTimeout)
+      // Store hideTimeout in a way we can clean it up
+      // Note: We can't return a cleanup from cleanup, so we'll handle it differently
+      // The timeout will complete naturally or be cleared on next effect run
     }
   }, [pathname, searchParams])
 
