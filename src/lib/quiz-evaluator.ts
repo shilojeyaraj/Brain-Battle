@@ -105,5 +105,3 @@ export function isAnswerCorrect(question: QuizQuestion, userAnswer: number | str
   // Default conservative
   return false
 }
-
-

@@ -12,6 +12,7 @@ import { UserProfileModal } from "@/components/ui/user-profile-modal"
 import { getCurrentUserId, setUserSession } from "@/lib/auth/session"
 import Link from "next/link"
 import { SettingsModal } from "@/components/ui/settings-modal"
+import { AchievementsModal } from "@/components/achievements/achievements-modal"
 
 interface DashboardHeaderContentProps {
   onToggleStats?: () => void
@@ -22,6 +23,7 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const [isAchievementsOpen, setIsAchievementsOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -152,6 +154,16 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
           </div>
 
           <div className="flex items-center gap-4">
+            {/* Achievements Button */}
+            <Link href="/dashboard/achievements">
+              <Button
+                className="font-black border-4 border-orange-400/50 bg-gradient-to-r from-orange-500 to-orange-600 text-white hover:from-orange-600 hover:to-orange-700 cartoon-border cartoon-shadow"
+              >
+                <Trophy className="h-5 w-5 mr-2" strokeWidth={3} />
+                Achievements
+              </Button>
+            </Link>
+
             <div className="hidden md:flex items-center gap-4 text-sm">
               <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/60 border border-slate-700/50 backdrop-blur-sm">
                 <Trophy className="h-5 w-5 text-primary" strokeWidth={3} />
@@ -212,6 +224,14 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
                     <Settings className="h-4 w-4 text-foreground" strokeWidth={3} />
                     <span className="font-bold text-foreground">Settings</span>
                   </button>
+              <button
+                className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted rounded-lg text-left"
+                onClick={() => { setIsAchievementsOpen(true); setIsMenuOpen(false) }}
+                title="View Achievements"
+              >
+                <Trophy className="h-4 w-4 text-chart-3" strokeWidth={3} />
+                <span className="font-bold text-foreground">Achievements</span>
+              </button>
                   <button
                     className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted rounded-lg text-left"
                     onClick={() => { localStorage.removeItem('dashboard_tutorial_completed'); window.location.reload() }}
@@ -237,6 +257,12 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
               )}
             </div>
           </div>
+
+          <AchievementsModal
+            isOpen={isAchievementsOpen}
+            onClose={() => setIsAchievementsOpen(false)}
+            userId={currentUserId}
+          />
         </div>
       </div>
 

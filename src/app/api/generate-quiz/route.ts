@@ -13,6 +13,7 @@ import {
   storeQuestionHistory,
   generateTopicHash
 } from '@/lib/quiz/question-deduplication'
+import { ensureUserExists } from '@/lib/utils/ensure-user-exists'
 import { createAIClient, isParallelTestingEnabled } from '@/lib/ai/client-factory'
 import { runParallelTest, logParallelTestResults } from '@/lib/ai/parallel-test'
 import type { AIChatMessage } from '@/lib/ai/types'
@@ -28,6 +29,14 @@ export async function POST(request: NextRequest) {
         { success: false, error: 'Unauthorized - please log in' },
         { status: 401 }
       )
+    }
+
+    // Ensure user exists in users table (handles cases where session exists but user doesn't)
+    const userExists = await ensureUserExists(userId)
+    if (!userExists) {
+      console.error(`❌ [QUIZ API] Failed to ensure user exists: ${userId}`)
+      // Continue anyway - quiz generation shouldn't fail just because user creation failed
+      // The error will be caught when trying to store question history
     }
 
     // SECURITY: Admin mode removed - was vulnerable to header spoofing

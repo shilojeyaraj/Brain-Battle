@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 import { Settings, Loader2 } from 'lucide-react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
+import { requireAuthOrRedirect } from '@/lib/utils/require-auth-redirect';
 
 interface CustomerPortalButtonProps {
   children?: React.ReactNode;
@@ -13,14 +15,31 @@ export function CustomerPortalButton({
   className = '',
 }: CustomerPortalButtonProps) {
   const [loading, setLoading] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const handleClick = async () => {
     setLoading(true);
     try {
-      // Get userId from localStorage (your app's auth system)
-      const userId = localStorage.getItem('userId');
+      // Check authentication and redirect if not logged in
+      const isAuthenticated = await requireAuthOrRedirect(router, pathname, searchParams);
+      if (!isAuthenticated) {
+        setLoading(false);
+        return; // Already redirected to login
+      }
+
+      // Get userId from API (more reliable than localStorage)
+      const userResponse = await fetch('/api/user/current');
+      if (!userResponse.ok) {
+        setLoading(false);
+        return;
+      }
+      
+      const userData = await userResponse.json();
+      const userId = userData.userId;
+      
       if (!userId) {
-        alert('Please log in to manage your subscription');
         setLoading(false);
         return;
       }

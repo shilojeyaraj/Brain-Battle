@@ -5,6 +5,8 @@ import { sanitizeError, sanitizeDatabaseError, createSafeErrorResponse } from "@
 import { storeAnswerHistory } from "@/lib/quiz/question-deduplication"
 import { verifySessionOwnership } from "@/lib/security/ownership-validation"
 import { isValidUUID, isValidInteger, sanitizeString } from "@/lib/security/input-validation"
+import { isAnswerCorrect } from "@/lib/quiz-evaluator"
+import { evaluateAnswerWithFallback } from "@/lib/quiz/llm-answer-evaluator"
 
 export async function POST(request: NextRequest) {
   try {
@@ -245,23 +247,63 @@ export async function POST(request: NextRequest) {
 
     console.log("✅ [QUIZ RESULTS] Inserted questions with IDs")
 
-    // 4. Insert player answers
-    const answersToInsert = answers.map((answer: any, index: number) => {
+    // 4. Insert player answers with proper evaluation
+    const answersToInsertPromises = answers.map(async (answer: any, index: number) => {
       const question = insertedQuestions.find(q => q.order_index === index)
       const questionData = questions[index]
-      const isCorrect = answer.selectedIndex === (questionData.correct !== undefined ? questionData.correct : 0)
+      
+      // Extract user answer - could be index or text
+      let userAnswer: number | string
+      let answerText: string
+      
+      if (questionData.type === "multiple_choice" || questionData.type === "mcq") {
+        // Multiple choice: use selectedIndex
+        const selectedIndex = answer.selectedIndex !== undefined ? answer.selectedIndex : answer.selected
+        userAnswer = typeof selectedIndex === 'number' ? selectedIndex : parseInt(String(selectedIndex)) || 0
+        answerText = questionData.options && questionData.options[userAnswer] 
+          ? questionData.options[userAnswer] 
+          : `Option ${String.fromCharCode(65 + (userAnswer || 0))}`
+      } else {
+        // Open-ended: use selectedAnswer text
+        userAnswer = answer.selectedAnswer || answer.textAnswer || answer.answer || ""
+        answerText = String(userAnswer) || "No answer provided"
+      }
+      
+      // Use quiz evaluator for initial check
+      const fuzzyIsCorrect = isAnswerCorrect(questionData, userAnswer)
+      
+      // For open-ended questions, try LLM evaluation if fuzzy match fails
+      let isCorrect = fuzzyIsCorrect
+      if (!fuzzyIsCorrect && questionData.type === "open_ended" && typeof userAnswer === "string" && userAnswer.trim().length > 0) {
+        try {
+          const llmEvaluation = await evaluateAnswerWithFallback(questionData, userAnswer, fuzzyIsCorrect)
+          isCorrect = llmEvaluation.isCorrect
+          console.log(`📝 [QUIZ RESULTS] Question ${index + 1} LLM evaluation:`, {
+            isCorrect: llmEvaluation.isCorrect,
+            usedLLM: llmEvaluation.usedLLM,
+            confidence: llmEvaluation.confidence,
+            userAnswer: userAnswer.substring(0, 50) + "..."
+          })
+        } catch (error) {
+          console.error(`❌ [QUIZ RESULTS] LLM evaluation failed for question ${index + 1}:`, error)
+          // Fallback to fuzzy result
+          isCorrect = fuzzyIsCorrect
+        }
+      }
       
       return {
         question_id: question?.id,
         user_id: userId,
         room_id: null, // Singleplayer doesn't have a room
-        answer_text: questionData.options ? questionData.options[answer.selectedIndex] : answer.selectedAnswer,
+        answer_text: answerText,
         is_correct: isCorrect,
         response_time: answer.responseTime || 30,
         points_earned: isCorrect ? 10 : 0,
         answered_at: new Date(Date.now() - (totalQuestions - index) * 30 * 1000).toISOString()
       }
     })
+    
+    const answersToInsert = await Promise.all(answersToInsertPromises)
 
     const { error: answersError } = await adminClient
       .from('player_answers')
@@ -284,10 +326,34 @@ export async function POST(request: NextRequest) {
         for (let i = 0; i < questions.length; i++) {
           const question = questions[i]
           const answer = answers[i]
-          const isCorrect = answer.selectedIndex === (question.correct !== undefined ? question.correct : 0)
-          const userAnswer = question.options 
-            ? (question.options[answer.selectedIndex] || String(answer.selectedIndex))
-            : (answer.selectedAnswer || '')
+          
+          // Extract user answer properly
+          let userAnswer: number | string
+          if (question.type === "multiple_choice" || question.type === "mcq") {
+            const selectedIndex = answer.selectedIndex !== undefined ? answer.selectedIndex : answer.selected
+            userAnswer = typeof selectedIndex === 'number' ? selectedIndex : parseInt(String(selectedIndex)) || 0
+          } else {
+            userAnswer = answer.selectedAnswer || answer.textAnswer || answer.answer || ""
+          }
+          
+          // Use quiz evaluator for correctness
+          const fuzzyIsCorrect = isAnswerCorrect(question, userAnswer)
+          
+          // For open-ended, try LLM if fuzzy fails
+          let isCorrect = fuzzyIsCorrect
+          if (!fuzzyIsCorrect && question.type === "open_ended" && typeof userAnswer === "string" && userAnswer.trim().length > 0) {
+            try {
+              const llmEvaluation = await evaluateAnswerWithFallback(question, userAnswer, fuzzyIsCorrect)
+              isCorrect = llmEvaluation.isCorrect
+            } catch (error) {
+              // Fallback to fuzzy result
+              isCorrect = fuzzyIsCorrect
+            }
+          }
+          
+          const userAnswerText = question.options 
+            ? (question.options[typeof userAnswer === 'number' ? userAnswer : 0] || String(userAnswer))
+            : (String(userAnswer) || '')
           
           // Find the question in history by matching question text
           const { data: questionHistory } = await adminClient
@@ -303,7 +369,7 @@ export async function POST(request: NextRequest) {
             await storeAnswerHistory(
               userId,
               questionHistory.id,
-              userAnswer,
+              String(userAnswer),
               isCorrect,
               sessionData.id
             )
@@ -323,6 +389,15 @@ export async function POST(request: NextRequest) {
     const baseXP = correctAnswers * 10
     const accuracyBonus = correctAnswers === totalQuestions ? 50 : Math.round((correctAnswers / totalQuestions) * 30)
     const xpEarned = baseXP + accuracyBonus
+    
+    console.log("💰 [QUIZ RESULTS] XP Calculation:", {
+      correctAnswers,
+      totalQuestions,
+      baseXP,
+      accuracyBonus,
+      xpEarned,
+      isPerfectScore: correctAnswers === totalQuestions
+    })
     const { data: gameResult, error: gameResultError } = await adminClient
       .from('game_results')
       .insert({
@@ -443,6 +518,12 @@ export async function POST(request: NextRequest) {
       xpEarned
     })
 
+    // Ensure XP is a valid number
+    if (isNaN(newXP) || newXP < 0) {
+      console.error("❌ [QUIZ RESULTS] Invalid XP value:", { newXP, xpEarned, currentXP: currentStats.xp })
+      return NextResponse.json({ error: "Invalid XP calculation" }, { status: 500 })
+    }
+
     const { data: updatedStats, error: statsError } = await adminClient
       .from('player_stats')
       .update({
@@ -465,13 +546,34 @@ export async function POST(request: NextRequest) {
       console.error("❌ [QUIZ RESULTS] Error updating player stats:", statsError)
       console.error("❌ [QUIZ RESULTS] Stats error details:", JSON.stringify(statsError, null, 2))
       // Don't fail the request if stats update fails, but log it
+      // Try to verify the update actually failed
+      const { data: verifyStats } = await adminClient
+        .from('player_stats')
+        .select('xp, level')
+        .eq('user_id', userId)
+        .single()
+      
+      if (verifyStats) {
+        console.log("⚠️ [QUIZ RESULTS] Stats after failed update attempt:", verifyStats)
+      }
     } else {
       console.log("✅ [QUIZ RESULTS] Updated player stats successfully:", {
+        userId,
+        oldXP: currentStats.xp,
+        xpEarned,
+        newXP: updatedStats?.xp,
+        oldLevel: currentStats.level,
+        newLevel: updatedStats?.level,
         total_games: updatedStats?.total_games,
         total_wins: updatedStats?.total_wins,
-        xp: updatedStats?.xp,
-        level: updatedStats?.level
+        total_questions_answered: updatedStats?.total_questions_answered,
+        correct_answers: updatedStats?.correct_answers
       })
+      
+      // Verify the update was successful
+      if (updatedStats?.xp !== newXP) {
+        console.error("❌ [QUIZ RESULTS] XP mismatch! Expected:", newXP, "Got:", updatedStats?.xp)
+      }
     }
 
     // Update daily streak after quiz completion

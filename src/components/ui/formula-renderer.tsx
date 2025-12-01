@@ -96,17 +96,45 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
         containerRef.current.innerHTML = ''
       }
 
+      // Convert common plain text patterns to LaTeX before rendering
+      let latexFormula = cleanFormula
+      
+      // Superscript map for conversion
+      const superscriptMap: Record<string, string> = {
+        '²': '2', '³': '3', '¹': '1', '⁰': '0', '⁴': '4', '⁵': '5',
+        '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9', '⁺': '+', '⁻': '-'
+      }
+      
+      // Convert subscripts: l_f -> l_{f}, A_0 -> A_{0}
+      latexFormula = latexFormula.replace(/([A-Za-z])_([0-9a-z]+)/g, '$1_{$2}')
+      
+      // Convert superscripts: x² -> x^{2}, x³ -> x^{3}
+      Object.entries(superscriptMap).forEach(([sup, num]) => {
+        latexFormula = latexFormula.replace(new RegExp(`([A-Za-z0-9])${sup.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'), `$1^{${num}}`)
+      })
+      
+      // Convert fractions: a/b -> \frac{a}{b} (but be careful with complex expressions)
+      // Only convert simple fractions (number/number or single variable/variable)
+      latexFormula = latexFormula.replace(/(\d+)\s*\/\s*(\d+)/g, '\\frac{$1}{$2}')
+      latexFormula = latexFormula.replace(/([A-Za-z])\s*\/\s*([A-Za-z])/g, '\\frac{$1}{$2}')
+      
+      // Convert percentages: % -> \%
+      latexFormula = latexFormula.replace(/%/g, '\\%')
+      
       // Try to render as LaTeX
       let renderSuccess = false
       try {
-        katex.render(cleanFormula, containerRef.current, {
+        katex.render(latexFormula, containerRef.current, {
           throwOnError: false,
           displayMode: displayMode,
           errorColor: '#ff6b6b', // Red for errors
+          strict: false, // Allow more flexible parsing
         })
         renderSuccess = true
       } catch (renderError) {
-        console.warn('KaTeX render error (non-fatal):', renderError)
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('KaTeX render error (non-fatal):', renderError, 'Formula:', latexFormula)
+        }
         renderSuccess = false
       }
 
@@ -136,15 +164,32 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
         containerRef.current.style.color = '#93c5fd' // blue-300
         containerRef.current.style.opacity = '1'
         
-        // If no KaTeX elements were created, show the formula as plain text
+        // If no KaTeX elements were created, show the formula as formatted plain text
         if (katexElements.length === 0) {
           if (process.env.NODE_ENV === 'development') {
-            console.warn('FormulaRenderer: Falling back to plain text display. Formula:', cleanFormula)
+            console.warn('FormulaRenderer: Falling back to formatted text display. Formula:', cleanFormula)
           }
-          containerRef.current.textContent = cleanFormula
-          containerRef.current.style.fontSize = '1.2em'
-          containerRef.current.style.fontFamily = 'monospace'
+          
+          // Format the formula with HTML for better display
+          let formattedText = cleanFormula
+          
+          // Convert subscripts to HTML: l_f -> l<sub>f</sub>
+          formattedText = formattedText.replace(/([A-Za-z])_([0-9a-z]+)/g, '$1<sub>$2</sub>')
+          
+          // Convert superscripts to HTML: x² -> x<sup>2</sup>
+          Object.entries(superscriptMap).forEach(([sup, num]) => {
+            formattedText = formattedText.replace(new RegExp(`([A-Za-z0-9])${sup}`, 'g'), `$1<sup>${num}</sup>`)
+          })
+          
+          // Use dangerouslySetInnerHTML for formatted text (we've already sanitized)
+          containerRef.current.innerHTML = DOMPurify.sanitize(formattedText, {
+            ALLOWED_TAGS: ['sub', 'sup'],
+            ALLOWED_ATTR: [],
+          })
+          containerRef.current.style.fontSize = '1.25em'
+          containerRef.current.style.fontFamily = 'system-ui, -apple-system, sans-serif'
           containerRef.current.style.color = '#93c5fd' // blue-300
+          containerRef.current.style.lineHeight = '1.6'
         }
       }
     } catch (error) {

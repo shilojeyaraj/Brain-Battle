@@ -114,12 +114,14 @@ export function XPProgressBar({
           />
         </div>
         
-        {/* XP to Next Level */}
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className={`${classes.text} font-bold text-primary-foreground drop-shadow-sm`}>
-            {xpToNextLevel > 0 ? `${xpToNextLevel} to next level` : 'Max Level!'}
-          </span>
-        </div>
+        {/* XP to Next Level - Only show text when bar is wide enough */}
+        {levelProgressPercent > 15 && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <span className="text-xs font-bold text-black drop-shadow-[0_1px_1px_rgba(255,255,255,0.8)]">
+              {xpToNextLevel > 0 ? `${xpToNextLevel} to next level` : 'Max Level!'}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Rank Progress (if not at highest rank) */}

@@ -4,8 +4,11 @@ import { createClient } from "@/lib/supabase/server"
 import { extractImagesFromPDF as extractPDFImages } from "@/lib/pdf-image-extractor"
 import { smartExtractDiagrams } from "@/lib/pdf-smart-extractor"
 import { DiagramAnalyzerAgent } from "@/lib/agents/diagram-analyzer-agent"
-import { validateAndFilterVideos } from "@/lib/utils/youtube-validator"
-import { searchYouTubeVideosForTopic } from "@/lib/web/tavily-client"
+import { 
+  enrichDiagramsWithWebImages, 
+  enrichWithYouTubeVideos, 
+  generateEmbeddingsForNotes 
+} from "@/lib/utils/parallel-enrichment"
 import { notesGenerationSchema, validateFile } from "@/lib/validation/schemas"
 import { sanitizeError, createSafeErrorResponse } from "@/lib/utils/error-sanitizer"
 import { createAIClient, isParallelTestingEnabled } from "@/lib/ai/client-factory"
@@ -1184,165 +1187,112 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
       }
     }
 
-    // 5) Enrich with web images if needed (for diagrams without extracted images)
-    console.log(`\n🖼️ [NOTES API] Enriching diagrams with web images if needed...`)
-    console.log(`  📊 [NOTES API] Diagram status before enrichment:`)
-    analyzedDiagrams.forEach((diagram: any, idx: number) => {
-      console.log(`    - Diagram ${idx + 1}: "${diagram.title}"`)
-      console.log(`      Source: ${diagram.source}, Page: ${diagram.page || 'N/A'}`)
-      console.log(`      Has image_data_b64: ${!!diagram.image_data_b64}`)
-      console.log(`      Has image_url: ${!!diagram.image_url}`)
-    })
-    const enrichedDiagrams = await enrichWithWebImages({ diagrams: analyzedDiagrams })
-    let enrichedNotes = { ...notesData, diagrams: enrichedDiagrams.diagrams || enrichedDiagrams }
-    console.log(`✅ [NOTES API] Diagram enrichment completed`)
-    console.log(`  📊 [NOTES API] Final diagram count: ${enrichedNotes.diagrams.length}`)
-
-    // 6) Enrich with YouTube videos using Tavily, then validate URLs
-    console.log(`\n🎥 [NOTES API] Enriching and validating YouTube video resources...`)
-    try {
-      const topicForVideos = notesData.title || studyTopic || fileNames.join(", ")
-      const educationHint = (notesData.education_level || "") as string
-      
-      // Extract specific concepts from the notes for targeted video searches
-      const specificConcepts: string[] = []
-      
-      // Add key terms (these are usually the most specific)
-      if (Array.isArray(notesData.key_terms) && notesData.key_terms.length > 0) {
-        specificConcepts.push(...notesData.key_terms.slice(0, 5).map((term: any) => {
-          if (typeof term === 'string') return term
-          if (term && typeof term === 'object' && term.term) return term.term
-          return null
-        }).filter((t: string | null): t is string => t !== null && t.trim().length > 0))
-      }
-      
-      // Add concept names (these are usually detailed topics)
-      if (Array.isArray(notesData.concepts) && notesData.concepts.length > 0) {
-        specificConcepts.push(...notesData.concepts.slice(0, 3).map((concept: any) => {
-          if (typeof concept === 'string') return concept
-          if (concept && typeof concept === 'object' && concept.name) return concept.name
-          if (concept && typeof concept === 'object' && concept.topic) return concept.topic
-          return null
-        }).filter((c: string | null): c is string => c !== null && c.trim().length > 0))
-      }
-      
-      // Add outline items that are specific (not generic)
-      if (Array.isArray(notesData.outline) && notesData.outline.length > 0) {
-        const outlineItems = notesData.outline
-          .slice(0, 4)
-          .map((item: any) => {
-            if (typeof item === 'string') return item
-            if (item && typeof item === 'object' && item.title) return item.title
-            if (item && typeof item === 'object' && item.topic) return item.topic
-            return null
-          })
-          .filter((o: string | null): o is string => o !== null && o.trim().length > 0 && o.length < 100) // Filter out very long/generic items
-        
-        specificConcepts.push(...outlineItems)
-      }
-      
-      // Remove duplicates and limit to most relevant
-      const uniqueConcepts = Array.from(new Set(specificConcepts.map(c => c.trim().toLowerCase())))
-        .slice(0, 5) // Keep top 5 unique concepts
-        .map(lower => {
-          // Find original case version
-          return specificConcepts.find(c => c.trim().toLowerCase() === lower) || lower
-        })
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`  📚 [NOTES API] Extracted ${uniqueConcepts.length} specific concepts for video search:`)
-        uniqueConcepts.forEach((concept, idx) => {
-          console.log(`    ${idx + 1}. ${concept}`)
-        })
-      }
-      
-      // 6a) Use Tavily to fetch additional YouTube videos for specific concepts
-      const newVideos = await searchYouTubeVideosForTopic(
-        topicForVideos, 
-        educationHint,
-        uniqueConcepts.length > 0 ? uniqueConcepts : undefined
-      )
-      if (newVideos.length > 0) {
-        console.log(`  📹 [NOTES API] Tavily suggested ${newVideos.length} YouTube video(s) for topic: "${topicForVideos}"`)
-      } else {
-        console.log(`  ℹ️ [NOTES API] No additional YouTube videos returned from Tavily for topic: "${topicForVideos}"`)
-      }
-
-      const existingVideos = Array.isArray(enrichedNotes.resources?.videos)
-        ? enrichedNotes.resources.videos
-        : []
-
-      // Merge existing and new videos, preferring existing entries for duplicate URLs
-      const mergedByUrl = new Map<string, any>()
-      for (const v of existingVideos) {
-        if (v?.url) mergedByUrl.set(v.url, v)
-      }
-      for (const v of newVideos) {
-        if (v?.url && !mergedByUrl.has(v.url)) {
-          mergedByUrl.set(v.url, v)
-        }
-      }
-
-      const mergedVideos = Array.from(mergedByUrl.values())
-      console.log(`  📹 [NOTES API] Total videos before validation: ${mergedVideos.length}`)
-
-      // 6b) Validate and filter YouTube URLs
-      if (mergedVideos.length > 0) {
-        const validatedVideos = await validateAndFilterVideos(mergedVideos)
-        const removedCount = mergedVideos.length - validatedVideos.length
-
-        if (removedCount > 0) {
-          console.log(`  ⚠️ [NOTES API] Removed ${removedCount} invalid or inaccessible video(s) after validation`)
-        } else {
-          console.log(`  ✅ [NOTES API] All ${validatedVideos.length} video(s) are valid`)
-        }
-
-        enrichedNotes = {
-          ...enrichedNotes,
-          resources: {
-            ...enrichedNotes.resources,
-            videos: validatedVideos,
-          },
-        }
-      } else {
-        console.log(`  ℹ️ [NOTES API] No videos to validate after merging`)
-      }
-    } catch (videoError) {
-      console.error(`  ❌ [NOTES API] Error enriching or validating YouTube videos:`, videoError)
-    }
-
-    // 5) Generate and store embeddings for semantic search
-    console.log(`\n🧠 [NOTES API] Generating embeddings for semantic search...`)
-    try {
-      const combinedText = fileContents.join('\n\n')
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
-      console.log(`  🌐 [NOTES API] Using base URL: ${baseUrl}`)
-      console.log(`  🔧 [NOTES API] Environment check: VERCEL_URL=${process.env.VERCEL_URL}, NEXT_PUBLIC_APP_URL=${process.env.NEXT_PUBLIC_APP_URL}`)
-      const embeddingResponse = await fetch(`${baseUrl}/api/embeddings`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: combinedText,
-          fileName: fileNames.join(', '),
-          fileType: 'study_notes',
-          userId: 'temp-user' // In production, get from auth
-        })
+    // 5) Parallel enrichment: diagrams, videos, and embeddings
+    // Run all enrichment operations in parallel for maximum speed
+    const enrichmentStart = Date.now()
+    console.log(`\n🚀 [NOTES API] Starting parallel enrichment operations...`)
+    
+    // Prepare data for parallel operations
+    const topicForVideos = notesData.title || studyTopic || fileNames.join(", ")
+    let baseNotes = { ...notesData, diagrams: analyzedDiagrams }
+    
+    // Log diagram status before enrichment
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`  📊 [NOTES API] Diagram status before enrichment:`)
+      analyzedDiagrams.forEach((diagram: any, idx: number) => {
+        console.log(`    - Diagram ${idx + 1}: "${diagram.title}"`)
+        console.log(`      Source: ${diagram.source}, Page: ${diagram.page || 'N/A'}`)
+        console.log(`      Has image_data_b64: ${!!diagram.image_data_b64}`)
+        console.log(`      Has image_url: ${!!diagram.image_url}`)
       })
+    }
+    
+    // Run all enrichment operations in parallel
+    const [enrichedDiagrams, videoEnrichmentResult, embeddingResult] = await Promise.allSettled([
+      // 5a) Enrich diagrams with web images (parallel processing)
+      enrichDiagramsWithWebImages(analyzedDiagrams).catch((error) => {
+        console.error(`  ❌ [NOTES API] Diagram enrichment error:`, error)
+        return analyzedDiagrams // Return original diagrams on error
+      }),
       
-      if (embeddingResponse.ok) {
-        const embeddingResult = await embeddingResponse.json()
-        console.log(`✅ [NOTES API] Embeddings generated successfully`)
-        console.log(`  - Chunks processed: ${embeddingResult.chunksProcessed}`)
-        console.log(`  - Subject tags: ${embeddingResult.metadata?.subjectTags?.join(', ') || 'None'}`)
-        console.log(`  - Course topics: ${embeddingResult.metadata?.courseTopics?.join(', ') || 'None'}`)
-        console.log(`  - Difficulty: ${embeddingResult.metadata?.difficultyLevel || 'Unknown'}`)
-      } else {
-        console.log(`⚠️ [NOTES API] Failed to generate embeddings: ${embeddingResponse.status}`)
+      // 5b) Enrich with YouTube videos (includes search and validation)
+      enrichWithYouTubeVideos(
+        baseNotes,
+        topicForVideos,
+        fileNames
+      ).catch((error) => {
+        console.error(`  ❌ [NOTES API] Video enrichment error:`, error)
+        return { videos: baseNotes.resources?.videos || [] } // Return existing videos on error
+      }),
+      
+      // 5c) Generate embeddings (non-blocking, can fail without affecting notes)
+      generateEmbeddingsForNotes(
+        fileContents,
+        fileNames,
+        userId || 'temp-user' // Fallback for safety
+      ).catch((error) => {
+        console.error(`  ❌ [NOTES API] Embedding generation error:`, error)
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
+      })
+    ])
+    
+    const enrichmentTime = Date.now() - enrichmentStart
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`  ⏱️ [NOTES API] Parallel enrichment completed in ${enrichmentTime}ms`)
+    }
+    
+    // Process enrichment results
+    let enrichedNotes = baseNotes
+    
+    // Process diagram enrichment result
+    if (enrichedDiagrams.status === 'fulfilled') {
+      enrichedNotes = { ...enrichedNotes, diagrams: enrichedDiagrams.value }
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ [NOTES API] Diagram enrichment completed`)
+        console.log(`  📊 [NOTES API] Final diagram count: ${enrichedNotes.diagrams.length}`)
       }
-    } catch (embeddingError) {
-      console.error(`❌ [NOTES API] Error generating embeddings:`, embeddingError)
+    } else {
+      console.error(`  ❌ [NOTES API] Diagram enrichment failed:`, enrichedDiagrams.reason)
+      // Keep original diagrams
+    }
+    
+    // Process video enrichment result
+    if (videoEnrichmentResult.status === 'fulfilled') {
+      enrichedNotes = {
+        ...enrichedNotes,
+        resources: {
+          ...enrichedNotes.resources,
+          videos: videoEnrichmentResult.value.videos,
+        },
+      }
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ [NOTES API] Video enrichment completed`)
+        console.log(`  📹 [NOTES API] Total videos: ${videoEnrichmentResult.value.videos.length}`)
+      }
+    } else {
+      console.error(`  ❌ [NOTES API] Video enrichment failed:`, videoEnrichmentResult.reason)
+      // Keep existing videos if any
+    }
+    
+    // Process embedding result (non-blocking, just log)
+    if (embeddingResult.status === 'fulfilled') {
+      if (embeddingResult.value.success) {
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`✅ [NOTES API] Embeddings generated successfully`)
+          if (embeddingResult.value.result) {
+            console.log(`  - Chunks processed: ${embeddingResult.value.result.chunksProcessed}`)
+            console.log(`  - Subject tags: ${embeddingResult.value.result.metadata?.subjectTags?.join(', ') || 'None'}`)
+            console.log(`  - Course topics: ${embeddingResult.value.result.metadata?.courseTopics?.join(', ') || 'None'}`)
+            console.log(`  - Difficulty: ${embeddingResult.value.result.metadata?.difficultyLevel || 'Unknown'}`)
+          }
+        }
+      } else {
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`⚠️ [NOTES API] Embedding generation failed: ${embeddingResult.value.error || 'Unknown error'}`)
+        }
+      }
+    } else {
+      console.error(`  ❌ [NOTES API] Embedding generation failed:`, embeddingResult.reason)
     }
 
     console.log(`\n🎉 [NOTES API] Notes generation completed successfully!`)
@@ -1414,55 +1364,6 @@ async function extractImagesFromPDF(buffer: Buffer, filename: string): Promise<{
   }
 }
 
-// Helper function to enrich notes with web images
-async function enrichWithWebImages(notes: { diagrams: { source: string; keywords?: string[]; image_url?: string; credit?: string }[] }) {
-  console.log(`  🔍 [IMAGE ENRICHMENT] Processing ${notes.diagrams.length} diagrams...`)
-  const enrichedDiagrams = []
-  
-  for (let i = 0; i < notes.diagrams.length; i++) {
-    const diagram = notes.diagrams[i]
-    console.log(`    📊 [IMAGE ENRICHMENT] Processing diagram ${i + 1}/${notes.diagrams.length}: ${(diagram as any).title || 'Untitled'}`)
-    console.log(`      - Source: ${diagram.source}`)
-    console.log(`      - Keywords: ${diagram.keywords?.join(', ') || 'None'}`)
-    
-    if (diagram.source === "web" && diagram.keywords) {
-      try {
-        console.log(`      🌐 [IMAGE ENRICHMENT] Fetching web image for: ${diagram.keywords.join(' ')}`)
-        // Use Unsplash API for high-quality images
-        // Make search more specific by adding educational/academic terms
-        const searchQuery = `${diagram.keywords.join(" ")} educational diagram academic`
-        console.log(`      🔍 [IMAGE ENRICHMENT] Enhanced search query: ${searchQuery}`)
-        const response = await fetch(
-          `https://api.unsplash.com/search/photos?query=${encodeURIComponent(searchQuery)}&per_page=1&client_id=${process.env.UNSPLASH_ACCESS_KEY}`
-        )
-        
-        if (response.ok) {
-          const data = await response.json()
-          if (data.results && data.results.length > 0) {
-            const image = data.results[0]
-            diagram.image_url = image.urls.regular
-            diagram.credit = `Unsplash: ${image.user.name}`
-            console.log(`      ✅ [IMAGE ENRICHMENT] Found image: ${image.urls.regular}`)
-          } else {
-            console.log(`      ⚠️ [IMAGE ENRICHMENT] No images found for: ${searchQuery}`)
-          }
-        } else {
-          console.log(`      ❌ [IMAGE ENRICHMENT] API error: ${response.status} ${response.statusText}`)
-        }
-      } catch (error) {
-        console.error(`      ❌ [IMAGE ENRICHMENT] Error fetching web image:`, error)
-      }
-    } else {
-      console.log(`      ℹ️ [IMAGE ENRICHMENT] Skipping (not web source or no keywords)`)
-    }
-    
-    enrichedDiagrams.push(diagram)
-  }
-  
-  console.log(`  ✅ [IMAGE ENRICHMENT] Completed processing ${enrichedDiagrams.length} diagrams`)
-  return {
-    ...notes,
-    diagrams: enrichedDiagrams
-  }
-}
+// Note: enrichWithWebImages has been replaced with parallel enrichment
+// See src/lib/utils/parallel-enrichment.ts for enrichDiagramsWithWebImages
 

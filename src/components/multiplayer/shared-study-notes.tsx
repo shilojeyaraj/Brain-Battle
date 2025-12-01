@@ -14,8 +14,7 @@ import {
   Clock,
   ChevronLeft,
   ChevronRight,
-  Download,
-  Share2
+  Youtube
 } from 'lucide-react'
 
 interface SharedStudyNotesProps {
@@ -77,25 +76,6 @@ export default function SharedStudyNotes({
               </div>
             </div>
           </div>
-          
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="cartoon-border"
-            >
-              <Download className="h-4 w-4 mr-1" strokeWidth={3} />
-              Export
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="cartoon-border"
-            >
-              <Share2 className="h-4 w-4 mr-1" strokeWidth={3} />
-              Share
-            </Button>
-          </div>
         </div>
 
         {/* Source Files */}
@@ -114,7 +94,7 @@ export default function SharedStudyNotes({
       {/* Study Notes Content */}
       <Card className="p-6 bg-card cartoon-border cartoon-shadow">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-4 cartoon-border">
+          <TabsList className="grid w-full grid-cols-5 cartoon-border">
             <TabsTrigger value="outline" className="cartoon-border">
               <BookOpen className="h-4 w-4 mr-2" strokeWidth={3} />
               Outline
@@ -126,6 +106,10 @@ export default function SharedStudyNotes({
             <TabsTrigger value="diagrams" className="cartoon-border">
               <Image className="h-4 w-4 mr-2" strokeWidth={3} />
               Diagrams
+            </TabsTrigger>
+            <TabsTrigger value="videos" className="cartoon-border">
+              <Youtube className="h-4 w-4 mr-2" strokeWidth={3} />
+              Videos
             </TabsTrigger>
             <TabsTrigger value="quiz" className="cartoon-border">
               <FileText className="h-4 w-4 mr-2" strokeWidth={3} />
@@ -248,9 +232,15 @@ export default function SharedStudyNotes({
                       <h4 className="font-black text-foreground mb-2">
                         {notes.diagrams[currentDiagram]?.title || `Diagram ${currentDiagram + 1}`}
                       </h4>
-                      <p className="text-muted-foreground font-bold">
-                        {notes.diagrams[currentDiagram]?.caption || 'No description available'}
+                      <p className="text-muted-foreground font-bold mb-2">
+                        {notes.diagrams[currentDiagram]?.caption || notes.diagrams[currentDiagram]?.description || 'No description available'}
                       </p>
+                      {notes.diagrams[currentDiagram]?.description && 
+                       notes.diagrams[currentDiagram]?.description !== notes.diagrams[currentDiagram]?.caption && (
+                        <p className="text-muted-foreground/80 font-bold text-sm mb-2">
+                          {notes.diagrams[currentDiagram].description}
+                        </p>
+                      )}
                       {notes.diagrams[currentDiagram]?.credit && (
                         <p className="text-xs text-muted-foreground mt-2">
                           Credit: {notes.diagrams[currentDiagram].credit}
@@ -263,6 +253,72 @@ export default function SharedStudyNotes({
                 <div className="text-center py-8">
                   <Image className="h-12 w-12 text-muted-foreground mx-auto mb-3" strokeWidth={1} />
                   <p className="text-muted-foreground font-bold">No diagrams available</p>
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* Videos Tab */}
+          <TabsContent value="videos" className="mt-6">
+            <div className="space-y-6">
+              <h3 className="text-xl font-black text-foreground">Recommended Videos</h3>
+              
+              {notes.resources?.videos && Array.isArray(notes.resources.videos) && notes.resources.videos.length > 0 ? (
+                <div className="space-y-4">
+                  {notes.resources.videos.map((video: any, index: number) => {
+                    // Extract YouTube video ID from URL
+                    const url = video.url || ''
+                    const videoIdMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\s]+)/)
+                    const videoId = videoIdMatch ? videoIdMatch[1] : null
+                    const embedUrl = videoId ? `https://www.youtube.com/embed/${videoId}` : null
+
+                    return (
+                      <div key={index} className="p-4 rounded-lg bg-secondary/30 cartoon-border">
+                        <div className="space-y-3">
+                          {embedUrl ? (
+                            <div className="aspect-video bg-muted rounded-lg overflow-hidden cartoon-border">
+                              <iframe
+                                src={embedUrl}
+                                title={video.title || `Video ${index + 1}`}
+                                className="w-full h-full"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                allowFullScreen
+                              />
+                            </div>
+                          ) : (
+                            <div className="aspect-video bg-muted rounded-lg flex items-center justify-center cartoon-border">
+                              <Youtube className="h-12 w-12 text-red-500/60" strokeWidth={1} />
+                            </div>
+                          )}
+                          
+                          <div>
+                            <h4 className="font-black text-foreground mb-2">
+                              {video.title || `Video ${index + 1}`}
+                            </h4>
+                            <p className="text-muted-foreground font-bold text-sm mb-2">
+                              {video.description || 'No description available'}
+                            </p>
+                            {video.url && (
+                              <a
+                                href={video.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary hover:text-primary/80 font-bold text-sm inline-flex items-center gap-1"
+                              >
+                                <Youtube className="h-4 w-4" strokeWidth={2} />
+                                Open video on YouTube
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Youtube className="h-12 w-12 text-muted-foreground mx-auto mb-3" strokeWidth={1} />
+                  <p className="text-muted-foreground font-bold">No video recommendations available</p>
                 </div>
               )}
             </div>

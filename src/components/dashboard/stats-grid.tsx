@@ -67,10 +67,18 @@ export const StatsGrid = memo(function StatsGrid() {
       }
     }
     
+    // Listen for quiz completion events to refresh stats
+    const handleQuizComplete = () => {
+      console.log('🔄 [STATS] Quiz completed, refreshing stats...')
+      fetchUserStats()
+    }
+    
     document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('quizCompleted', handleQuizComplete)
     
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('quizCompleted', handleQuizComplete)
     }
   }, [fetchUserStats])
 

@@ -7,9 +7,12 @@ import { Badge } from "@/components/ui/badge"
 import { Plus, Search, Users, Lock, Globe, LogIn, Zap } from "lucide-react"
 import { useState, useEffect } from "react"
 import Link from "next/link"
-import { useRouter, usePathname } from "next/navigation"
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { motion } from "framer-motion"
 import { useFeedback } from "@/hooks/useFeedback"
+import { useNavigationLoading } from "@/hooks/use-navigation-loading"
+import { NavigationLoadingOverlay } from "@/components/ui/navigation-loading-overlay"
+import { requireAuthOrRedirect } from "@/lib/utils/require-auth-redirect"
 
 const activeLobbies: any[] = [
   // Empty array - no active lobbies yet
@@ -22,7 +25,10 @@ export function LobbySection() {
   const [loadingButton, setLoadingButton] = useState<string | null>(null)
   const router = useRouter()
   const pathname = usePathname()
+  const searchParams = useSearchParams()
   const { playClick, burstConfetti } = useFeedback()
+  const isNavigating = loadingButton !== null
+  const showLoadingOverlay = useNavigationLoading(isNavigating)
   
   // Clear loading state when pathname changes (navigation completed)
   useEffect(() => {
@@ -56,6 +62,11 @@ export function LobbySection() {
 
   const handleCreateLobby = async () => {
     playClick()
+    
+    // Check authentication first
+    const isAuthenticated = await requireAuthOrRedirect(router, pathname, searchParams)
+    if (!isAuthenticated) return // Already redirected to login
+    
     // Set loading immediately for visual feedback
     setLoadingButton('create')
     try {
@@ -71,6 +82,11 @@ export function LobbySection() {
 
   const handleJoinLobby = async () => {
     playClick()
+    
+    // Check authentication first
+    const isAuthenticated = await requireAuthOrRedirect(router, pathname, searchParams)
+    if (!isAuthenticated) return // Already redirected to login
+    
     // Set loading immediately for visual feedback
     setLoadingButton('join')
     try {
@@ -86,6 +102,11 @@ export function LobbySection() {
 
   const handleStartSingleplayer = async () => {
     playClick()
+    
+    // Check authentication first
+    const isAuthenticated = await requireAuthOrRedirect(router, pathname, searchParams)
+    if (!isAuthenticated) return // Already redirected to login
+    
     // Set loading immediately for visual feedback
     setLoadingButton('singleplayer')
     
@@ -117,7 +138,15 @@ export function LobbySection() {
   }
 
   return (
-    <Card className="p-8 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg" data-tutorial="lobby-section">
+    <>
+      <NavigationLoadingOverlay 
+        show={showLoadingOverlay} 
+        message={loadingButton === 'create' ? 'Creating lobby...' : 
+                 loadingButton === 'join' ? 'Joining lobby...' : 
+                 loadingButton === 'singleplayer' ? 'Starting battle...' : 
+                 'Loading...'} 
+      />
+      <Card className="p-8 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg" data-tutorial="lobby-section">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h2 className="text-4xl font-black text-white mb-2" style={{ fontFamily: "var(--font-display)" }}>
@@ -244,5 +273,6 @@ export function LobbySection() {
         )}
       </div>
     </Card>
+    </>
   )
 }

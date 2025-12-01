@@ -16,13 +16,18 @@ function MotionProvider({ children }: { children: React.ReactNode }) {
   )
 }
 
+import { GlobalNavigationLoading } from "@/components/global-navigation-loading"
+
 export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <ClientWrapper>
       <SoundSettingsProvider>
         <PostHogProvider>
           <ToastProvider>
-            <MotionProvider>{children}</MotionProvider>
+            <MotionProvider>
+              {children}
+              <GlobalNavigationLoading />
+            </MotionProvider>
           </ToastProvider>
         </PostHogProvider>
       </SoundSettingsProvider>

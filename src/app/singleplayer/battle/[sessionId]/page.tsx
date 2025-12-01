@@ -322,6 +322,13 @@ export default function BattlePage() {
 
       if (response.ok) {
         const result = await response.json()
+        
+        // Dispatch event to refresh stats on dashboard
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('quizCompleted', { 
+            detail: { xpEarned: result.xpEarned, newXP: result.newXP } 
+          }))
+        }
         console.log('✅ Battle results submitted:', result)
         
         // Check if user leveled up
@@ -930,8 +937,7 @@ function BattleResultsScreen({
         <div className="mb-6">
           <Button 
             onClick={onBackToDashboard}
-            variant="outline" 
-            className="font-black border-4 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70 cartoon-border cartoon-shadow"
+            className="font-black border-4 border-orange-400/50 bg-gradient-to-r from-orange-500 to-orange-600 text-white hover:from-orange-600 hover:to-orange-700 cartoon-border cartoon-shadow"
           >
             <ArrowLeft className="h-5 w-5 mr-2" strokeWidth={3} />
             Back to Dashboard
@@ -1091,7 +1097,19 @@ function BattleResultsScreen({
               const coercedUserAnswer = question.type === "multiple_choice"
                 ? (typeof rawUserAnswer === 'number' ? rawUserAnswer : parseInt(rawUserAnswer as string))
                 : (typeof rawUserAnswer === 'string' ? rawUserAnswer : String(rawUserAnswer ?? ""))
-              const isCorrect = isAnswerCorrect(question, coercedUserAnswer as any)
+              
+              // Use quiz evaluator for initial check
+              const fuzzyIsCorrect = isAnswerCorrect(question, coercedUserAnswer as any)
+              
+              // For open-ended questions, we'll use the stored is_correct from the database
+              // since LLM evaluation happens server-side. For now, use fuzzy matching.
+              // The server-side evaluation in quiz-results route will have the final say.
+              let isCorrect = fuzzyIsCorrect
+              
+              // If fuzzy matching failed for open-ended, we could try LLM evaluation here
+              // but to avoid extra API calls, we'll trust the server-side evaluation
+              // The results screen should ideally use the stored is_correct value
+              // For now, we'll use fuzzy matching as a fallback
               
               // Get correct answer text
               let correctAnswerText = ""
@@ -1113,12 +1131,12 @@ function BattleResultsScreen({
               return (
                 <div key={index} className={`p-4 rounded-xl border-4 ${
                   isCorrect 
-                    ? "bg-orange-500/20 border-orange-400/50" 
+                    ? "bg-green-500/20 border-green-400/50" 
                     : "bg-red-500/20 border-red-400/50"
                 } cartoon-border`}>
                   <div className="flex items-start gap-3">
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black border-2 ${
-                      isCorrect ? "bg-orange-500 text-white border-orange-400" : "bg-red-500 text-white border-red-400"
+                      isCorrect ? "bg-green-500 text-white border-green-400" : "bg-red-500 text-white border-red-400"
                     }`}>
                       {isCorrect ? "✓" : "✗"}
                     </div>
@@ -1127,9 +1145,17 @@ function BattleResultsScreen({
                         {question.question || question.q}
                       </p>
                       <div className="text-sm space-y-2">
-                        <p className="text-blue-100/70">
-                          <strong className="text-white">Your answer:</strong> <span className="font-bold text-white">{userAnswerText}</span>
-                        </p>
+                        <div className={`p-3 rounded-lg border-2 ${
+                          isCorrect 
+                            ? "bg-green-500/20 border-green-400/50" 
+                            : "bg-red-500/20 border-red-400/50"
+                        }`}>
+                          <p className={`font-bold ${
+                            isCorrect ? "text-green-300" : "text-red-300"
+                          }`}>
+                            <strong className={isCorrect ? "text-green-200" : "text-red-200"}>Your answer:</strong> <span className={isCorrect ? "text-green-100" : "text-red-100"}>{userAnswerText}</span>
+                          </p>
+                        </div>
                         <p className="text-blue-100/70">
                           <strong className="text-white">Correct answer:</strong> <span className="font-bold text-white">{correctAnswerText}</span>
                         </p>

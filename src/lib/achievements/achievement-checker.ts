@@ -5,6 +5,7 @@
 
 import { createAdminClient } from '@/lib/supabase/server-admin'
 import type { UserAchievement, AchievementDefinition } from './achievement-types'
+import { ensureAchievementDefinitions } from './initialize-achievements'
 
 export interface UnlockedAchievement {
   code: string
@@ -327,6 +328,13 @@ export async function getAllAchievementDefinitions(): Promise<AchievementDefinit
   const adminClient = createAdminClient()
 
   try {
+    // Ensure achievements are initialized (this also ensures tables exist)
+    const initialized = await ensureAchievementDefinitions()
+    if (!initialized) {
+      console.error('❌ [ACHIEVEMENTS] Failed to initialize achievement definitions')
+      return []
+    }
+
     const { data, error } = await adminClient
       .from('achievement_definitions')
       .select('*')
@@ -339,7 +347,12 @@ export async function getAllAchievementDefinitions(): Promise<AchievementDefinit
       return []
     }
 
-    return (data || []).map((def: any) => ({
+    if (!data || data.length === 0) {
+      console.warn('⚠️ [ACHIEVEMENTS] No achievement definitions found in database')
+      return []
+    }
+
+    return data.map((def: any) => ({
       id: def.id,
       code: def.code,
       name: def.name,

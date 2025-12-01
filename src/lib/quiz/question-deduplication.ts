@@ -205,6 +205,30 @@ export async function storeQuestionHistory(
   const adminClient = createAdminClient()
 
   try {
+    // Check if user exists before trying to insert
+    const { data: userExists } = await adminClient
+      .from('users')
+      .select('id')
+      .eq('id', userId)
+      .single()
+
+    if (!userExists) {
+      console.error(`❌ [QUIZ DEDUP] User ${userId} does not exist in users table. Cannot store question history.`)
+      // Try to ensure user exists
+      try {
+        const { ensureUserExists } = await import('@/lib/utils/ensure-user-exists')
+        const created = await ensureUserExists(userId)
+        if (!created) {
+          console.error(`❌ [QUIZ DEDUP] Failed to create user ${userId}. Skipping question history storage.`)
+          return
+        }
+        console.log(`✅ [QUIZ DEDUP] User ${userId} created, proceeding with question history storage`)
+      } catch (ensureError) {
+        console.error(`❌ [QUIZ DEDUP] Error ensuring user exists:`, ensureError)
+        return
+      }
+    }
+
     const questionsToInsert = questions.map(q => ({
       user_id: userId,
       document_id: documentId,
@@ -225,7 +249,13 @@ export async function storeQuestionHistory(
       .insert(questionsToInsert)
 
     if (error) {
-      console.error('❌ [QUIZ DEDUP] Error storing question history:', error)
+      // Check if it's a foreign key constraint violation
+      if (error.code === '23503' && error.message.includes('user_id')) {
+        console.error(`❌ [QUIZ DEDUP] Foreign key violation: User ${userId} does not exist in users table`)
+        console.error(`   This should have been caught earlier. User may have been deleted.`)
+      } else {
+        console.error('❌ [QUIZ DEDUP] Error storing question history:', error)
+      }
       // Don't throw - this is not critical for quiz generation
     } else {
       console.log(`✅ [QUIZ DEDUP] Stored ${questionsToInsert.length} questions in history`)

@@ -18,13 +18,14 @@ import {
   Calculator,
   Youtube,
   FileText,
-  Share2,
   Copy
 } from "lucide-react"
 import { StudyNotes } from "@/lib/schemas/notes-schema"
 import { formatFormulaForPDF } from "@/lib/utils/formula-formatter"
-import { formatNotesToMarkdown } from "@/lib/utils/markdown-formatter"
 import { FormulaRenderer } from "@/components/ui/formula-renderer"
+import { formatNotesToMarkdown } from "@/lib/utils/markdown-formatter"
+import { StudyNotesPDFDocument } from "./pdf-document"
+import { pdf } from "@react-pdf/renderer"
 
 interface StudyNotesViewerProps {
   notes: StudyNotes
@@ -117,70 +118,19 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
     setFlippedCards(newFlipped)
   }
 
-  const handleDownloadMarkdown = () => {
-    try {
-      const cleanMarkdown = formatNotesToMarkdown(notes)
-      const blob = new Blob([cleanMarkdown], { type: 'text/markdown' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${notes.title || 'study-notes'}.md`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-    } catch (error) {
-      console.error('Error downloading markdown:', error)
-      alert('Failed to download markdown file')
-    }
-  }
-
-  const handleShareNotes = async () => {
-    try {
-      const cleanMarkdown = formatNotesToMarkdown(notes)
-      const shareData = {
-        title: notes.title || 'Study Notes',
-        text: cleanMarkdown.substring(0, 1000) + '...', // Preview
-        url: window.location.href,
-      }
-
-      if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
-        await navigator.share(shareData)
-      } else {
-        // Fallback: Copy to clipboard
-        await navigator.clipboard.writeText(cleanMarkdown)
-        alert('Notes copied to clipboard!')
-      }
-    } catch (error) {
-      // User cancelled or error occurred
-      if ((error as Error).name !== 'AbortError') {
-        console.error('Error sharing notes:', error)
-        // Fallback: Copy to clipboard
-        try {
-          const cleanMarkdown = formatNotesToMarkdown(notes)
-          await navigator.clipboard.writeText(cleanMarkdown)
-          alert('Notes copied to clipboard!')
-        } catch (clipboardError) {
-          alert('Failed to share notes. Please try downloading instead.')
-        }
-      }
-    }
-  }
 
   const handleDownloadNotes = async () => {
     try {
-      // First, convert notes to clean markdown format
-      const cleanMarkdown = formatNotesToMarkdown(notes)
+      // Create PDF document using React-PDF
+      const pdfDoc = <StudyNotesPDFDocument notes={notes} fileNames={fileNames} />
       
-      // Dynamically import jsPDF
-      const { jsPDF } = await import('jspdf')
-      const doc = new jsPDF()
+      // Generate PDF blob
+      const blob = await pdf(pdfDoc).toBlob()
       
-      let yPosition = 20
-      const pageWidth = doc.internal.pageSize.getWidth()
-      const pageHeight = doc.internal.pageSize.getHeight()
-      const margin = 20
-      const maxWidth = pageWidth - (margin * 2)
+      // Create download link
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
       const lineHeight = 7
       const sectionSpacing = 10
       
@@ -270,15 +220,11 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
             // Regular text
             addText(line, 12, false, [0, 0, 0])
           }
-        }
-      }
-      
-      // Convert markdown to PDF
-      parseMarkdownToPDF(cleanMarkdown)
-      
-      // Save the PDF
-      const fileName = `${notes.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_study_notes.pdf`
-      doc.save(fileName)
+      link.download = `${notes.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_study_notes.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
     } catch (error) {
       console.error('Error downloading notes:', error)
       alert('Failed to download notes. Please try again.')
@@ -1087,32 +1033,15 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
                 <Play className="h-6 w-6 mr-2" strokeWidth={3} />
                 Start Singleplayer Battle
               </Button>
-              <div className="grid grid-cols-3 gap-2">
-                <Button
-                  variant="outline"
-                  className="font-black border-2 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70"
-                  onClick={handleDownloadNotes}
-                  title="Download as PDF"
-                >
-                  <Download className="h-4 w-4" strokeWidth={3} />
-                </Button>
-                <Button
-                  variant="outline"
-                  className="font-black border-2 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70"
-                  onClick={handleDownloadMarkdown}
-                  title="Download as Markdown"
-                >
-                  <FileText className="h-4 w-4" strokeWidth={3} />
-                </Button>
-                <Button
-                  variant="outline"
-                  className="font-black border-2 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70"
-                  onClick={handleShareNotes}
-                  title="Share Notes"
-                >
-                  <Share2 className="h-4 w-4" strokeWidth={3} />
-                </Button>
-              </div>
+              <Button
+                variant="outline"
+                className="font-black border-2 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70"
+                onClick={handleDownloadNotes}
+                title="Download as PDF"
+              >
+                <Download className="h-4 w-4 mr-2" strokeWidth={3} />
+                Download PDF
+              </Button>
             </div>
           </Card>
 

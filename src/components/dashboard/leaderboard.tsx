@@ -345,140 +345,125 @@ const Leaderboard = memo(function Leaderboard() {
 
           return (
             <>
-              {displayPlayers.map((player) => {
+              {displayPlayers.map((player, index) => {
             const rank = getRankFromXP(player.xp)
             const isCurrentUser = currentUserRank?.user_id === player.user_id
             
             return (
-              <div
-                key={player.rank}
-                className={`p-6 rounded-xl border-4 transition-all duration-300 shadow-lg ${
-                  player.rank === 1
-                    ? "bg-gradient-to-br from-blue-500/20 to-blue-600/20 border-blue-400/50"
-                    : player.rank === 2
-                    ? "bg-gradient-to-br from-orange-500/20 to-orange-600/20 border-orange-400/50"
-                    : player.rank === 3
-                    ? "bg-gradient-to-br from-green-500/20 to-green-600/20 border-green-400/50"
-                    : isCurrentUser
-                    ? "bg-gradient-to-br from-slate-700/50 to-slate-800/50 border-blue-400/50"
-                    : "bg-gradient-to-br from-slate-700/50 to-slate-800/50 border-slate-600/50 hover:border-blue-400/50"
-                }`}
-              >
-                <div className="flex items-center gap-6">
-                  <div className="relative">
-                    <div
-                      className={`text-2xl font-black w-12 h-12 rounded-full flex items-center justify-center border-4 ${
-                        player.rank === 1
-                          ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white border-blue-400"
-                          : player.rank === 2
-                          ? "bg-gradient-to-br from-orange-500 to-orange-600 text-white border-orange-400"
-                          : player.rank === 3
-                          ? "bg-gradient-to-br from-green-500 to-green-600 text-white border-green-400"
-                          : "bg-gradient-to-br from-slate-600 to-slate-700 text-blue-100/70 border-slate-500/50"
-                      }`}
-                    >
-                      {player.rank}
-                    </div>
-                    {player.rank === 1 && (
-                      <Crown className="absolute -top-2 -right-2 h-6 w-6 text-blue-400" strokeWidth={3} />
-                    )}
-                  </div>
-
-                  <Avatar className="h-14 w-14 border-4 border-slate-600/50">
-                    <AvatarImage src={player.avatar_url || "/placeholder.svg"} />
-                    <AvatarFallback className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 text-blue-300 border-2 border-blue-400/50 font-black">
-                      {player.username.slice(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3">
-                      <p className="font-black text-white truncate text-xl">{player.username}</p>
-                      {isCurrentUser && (
-                        <Badge className="bg-blue-500/20 text-blue-300 border-2 border-blue-400/50 text-sm px-2 py-1">You</Badge>
+              <div key={player.rank}>
+                <div
+                  className={`p-6 rounded-xl border-4 transition-all duration-300 shadow-lg ${
+                    player.rank === 1
+                      ? "bg-gradient-to-br from-blue-500/20 to-blue-600/20 border-blue-400/50"
+                      : player.rank === 2
+                      ? "bg-gradient-to-br from-orange-500/20 to-orange-600/20 border-orange-400/50"
+                      : player.rank === 3
+                      ? "bg-gradient-to-br from-green-500/20 to-green-600/20 border-green-400/50"
+                      : isCurrentUser
+                      ? "bg-gradient-to-br from-slate-700/50 to-slate-800/50 border-blue-400/50"
+                      : "bg-gradient-to-br from-slate-700/50 to-slate-800/50 border-slate-600/50 hover:border-blue-400/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-6">
+                    <div className="relative">
+                      <div
+                        className={`text-2xl font-black w-12 h-12 rounded-full flex items-center justify-center border-4 ${
+                          player.rank === 1
+                            ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white border-blue-400"
+                            : player.rank === 2
+                            ? "bg-gradient-to-br from-orange-500 to-orange-600 text-white border-orange-400"
+                            : player.rank === 3
+                            ? "bg-gradient-to-br from-green-500 to-green-600 text-white border-green-400"
+                            : "bg-gradient-to-br from-slate-600 to-slate-700 text-blue-100/70 border-slate-500/50"
+                        }`}
+                      >
+                        {player.rank}
+                      </div>
+                      {player.rank === 1 && (
+                        <Crown className="absolute -top-2 -right-2 h-6 w-6 text-blue-400" strokeWidth={3} />
                       )}
                     </div>
-                    <div className="flex items-center gap-3 text-base text-blue-100/70 font-bold">
-                      <span>{formatXP(player.xp)} XP</span>
-                      <span>•</span>
-                      <span>{player.wins} wins</span>
-                      <span>•</span>
-                      <div className="flex items-center gap-2">
-                        {getRankIcon(rank, "h-4 w-4")}
-                        <span>{rank.name}</span>
+
+                    <Avatar className="h-14 w-14 border-4 border-slate-600/50">
+                      <AvatarImage src={player.avatar_url || "/placeholder.svg"} />
+                      <AvatarFallback className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 text-blue-300 border-2 border-blue-400/50 font-black">
+                        {player.username.slice(0, 2).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3">
+                        <p className="font-black text-white truncate text-xl">{player.username}</p>
+                        {isCurrentUser && (
+                          <Badge className="bg-blue-500/20 text-blue-300 border-2 border-blue-400/50 text-sm px-2 py-1">You</Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 text-base text-blue-100/70 font-bold">
+                        <span>{formatXP(player.xp)} XP</span>
+                        <span>•</span>
+                        <span>{player.wins} wins</span>
+                        <span>•</span>
+                        <div className="flex items-center gap-2">
+                          {getRankIcon(rank, "h-4 w-4")}
+                          <span>{rank.name}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {player.rank <= 3 && (
+                      <TrendingUp className="h-6 w-6 text-chart-3" strokeWidth={3} />
+                    )}
+                  </div>
+                </div>
+                
+                {/* Show current user right after 5th player if not in top 5 and not searching */}
+                {!searchQuery && index === 4 && currentUserRank && currentUserRank.rank > 5 && (
+                  <div className="mt-4 pt-4 border-t-4 border-slate-600/50">
+                    <div
+                      className="p-6 rounded-xl border-4 bg-gradient-to-br from-slate-700/50 to-slate-800/50 border-blue-400/50 shadow-lg"
+                    >
+                      <div className="flex items-center gap-6">
+                        <div className="relative">
+                          <div className="text-2xl font-black w-12 h-12 rounded-full flex items-center justify-center border-4 bg-gradient-to-br from-blue-500/20 to-blue-600/20 text-blue-300 border-blue-400/50">
+                            {currentUserRank.rank}
+                          </div>
+                        </div>
+
+                        <Avatar className="h-14 w-14 border-4 border-blue-400/50">
+                          <AvatarImage src={currentUserRank.avatar_url || "/placeholder.svg"} />
+                          <AvatarFallback className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 text-blue-300 border-2 border-blue-400/50 font-black">
+                            {currentUserRank.username.slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-3">
+                            <p className="font-black text-white truncate text-xl">{currentUserRank.username}</p>
+                            <Badge className="bg-blue-500/20 text-blue-300 border-2 border-blue-400/50 text-sm px-2 py-1">You</Badge>
+                          </div>
+                          <div className="flex items-center gap-3 text-base text-blue-100/70 font-bold">
+                            <span>{formatXP(currentUserRank.xp)} XP</span>
+                            <span>•</span>
+                            <span>{currentUserRank.wins} wins</span>
+                            <span>•</span>
+                            <div className="flex items-center gap-2">
+                              {getRankIcon(getRankFromXP(currentUserRank.xp), "h-4 w-4")}
+                              <span>{getRankFromXP(currentUserRank.xp).name}</span>
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
-
-                  {player.rank <= 3 && (
-                    <TrendingUp className="h-6 w-6 text-chart-3" strokeWidth={3} />
-                  )}
-                </div>
+                )}
               </div>
             )
           })}
-          
-          {/* Show current user if not in top 5 and not searching */}
-          {!searchQuery && currentUserRank && currentUserRank.rank > 5 && (
-            <div className="mt-4 pt-4 border-t-4 border-slate-600/50">
-              <div
-                className="p-6 rounded-xl border-4 bg-gradient-to-br from-slate-700/50 to-slate-800/50 border-blue-400/50 shadow-lg"
-              >
-                <div className="flex items-center gap-6">
-                  <div className="relative">
-                    <div className="text-2xl font-black w-12 h-12 rounded-full flex items-center justify-center border-4 bg-gradient-to-br from-blue-500/20 to-blue-600/20 text-blue-300 border-blue-400/50">
-                      {currentUserRank.rank}
-                    </div>
-                  </div>
-
-                  <Avatar className="h-14 w-14 border-4 border-blue-400/50">
-                    <AvatarImage src={currentUserRank.avatar_url || "/placeholder.svg"} />
-                    <AvatarFallback className="bg-gradient-to-br from-blue-500/20 to-blue-600/20 text-blue-300 border-2 border-blue-400/50 font-black">
-                      {currentUserRank.username.slice(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-3">
-                      <p className="font-black text-white truncate text-xl">{currentUserRank.username}</p>
-                      <Badge className="bg-blue-500/20 text-blue-300 border-2 border-blue-400/50 text-sm px-2 py-1">You</Badge>
-                    </div>
-                    <div className="flex items-center gap-3 text-base text-blue-100/70 font-bold">
-                      <span>{formatXP(currentUserRank.xp)} XP</span>
-                      <span>•</span>
-                      <span>{currentUserRank.wins} wins</span>
-                      <span>•</span>
-                      <div className="flex items-center gap-2">
-                        {getRankIcon(getRankFromXP(currentUserRank.xp), "h-4 w-4")}
-                        <span>{getRankFromXP(currentUserRank.xp).name}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
             </>
           )
         })()}
       </div>
 
-      {/* Show current user's rank if not in top 10 */}
-      {currentUserRank && currentUserRank.rank > 10 && (
-        <div className="mt-4 p-4 rounded-xl bg-gradient-to-br from-slate-700/50 to-slate-800/50 border-4 border-blue-400/50 shadow-lg">
-          <div className="flex items-center gap-4">
-            <div className="text-lg font-black w-8 h-8 rounded-full flex items-center justify-center bg-blue-500/20 text-blue-300 border-2 border-blue-400/50">
-              {currentUserRank.rank}
-            </div>
-            <div className="flex-1">
-              <p className="font-bold text-white">Your Rank</p>
-              <p className="text-sm text-blue-100/70">
-                {formatXP(currentUserRank.xp)} XP • {currentUserRank.wins} wins
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
 
       <div className="mt-6 p-6 rounded-xl bg-gradient-to-br from-slate-700/50 to-slate-800/50 border-4 border-slate-600/50 shadow-lg">
         <div className="flex items-center justify-between">

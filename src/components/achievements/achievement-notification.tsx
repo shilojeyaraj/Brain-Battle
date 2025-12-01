@@ -7,6 +7,7 @@ import { Zap, X } from "lucide-react"
 import { AchievementRarity, RARITY_COLORS, RARITY_BORDER_COLORS } from "@/lib/achievements/achievement-types"
 import { cn } from "@/lib/utils"
 import { ACHIEVEMENT_ICONS, type AchievementIconName } from "./icons/achievement-icons"
+import { getAchievementIconName } from "@/lib/achievements/icon-mapping"
 import { BadgeFrame } from "./badge-frame"
 
 export interface AchievementNotificationData {
@@ -38,7 +39,9 @@ const RARITY_GLOW: Record<AchievementRarity, string> = {
 }
 
 export function AchievementNotification({ achievement, onClose }: AchievementNotificationProps) {
-  const IconComponent = ACHIEVEMENT_ICONS[achievement.icon as AchievementIconName]
+  // Map achievement code to icon component name
+  const iconName = getAchievementIconName(achievement.code) || achievement.icon as AchievementIconName
+  const IconComponent = ACHIEVEMENT_ICONS[iconName]
   const hasCustomIcon = IconComponent !== undefined
 
   return (
@@ -106,7 +109,7 @@ export function AchievementNotification({ achievement, onClose }: AchievementNot
                       RARITY_BORDER_COLORS[achievement.rarity],
                       RARITY_COLORS[achievement.rarity]
                     )}>
-                      <div className="w-8 h-8 bg-white rounded" />
+                      <div className="w-8 h-8 bg-slate-300 rounded" />
                     </div>
                   )}
                 </motion.div>

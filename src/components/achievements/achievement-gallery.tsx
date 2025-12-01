@@ -9,6 +9,7 @@ import { AchievementCategory, AchievementRarity, RARITY_COLORS, RARITY_BORDER_CO
 import { cn } from "@/lib/utils"
 import { ACHIEVEMENT_ICONS, type AchievementIconName } from "./icons/achievement-icons"
 import { BadgeFrame } from "./badge-frame"
+import { getAchievementIconName } from "@/lib/achievements/icon-mapping"
 
 interface Achievement {
   id?: string
@@ -63,11 +64,20 @@ export function AchievementGallery({ userId }: AchievementGalleryProps) {
         if (response.ok) {
           const data = await response.json()
           if (data.success && data.allAchievements) {
+            console.log(`✅ [AchievementGallery] Loaded ${data.allAchievements.length} achievements`)
             setAchievements(data.allAchievements)
+          } else {
+            console.warn('⚠️ [AchievementGallery] No achievements in response:', data)
+            setAchievements([])
           }
+        } else {
+          const errorData = await response.json().catch(() => ({}))
+          console.error('❌ [AchievementGallery] Failed to fetch achievements:', response.status, errorData)
+          setAchievements([])
         }
       } catch (error) {
-        console.error('Error fetching achievements:', error)
+        console.error('❌ [AchievementGallery] Error fetching achievements:', error)
+        setAchievements([])
       } finally {
         setLoading(false)
       }
@@ -180,7 +190,9 @@ export function AchievementGallery({ userId }: AchievementGalleryProps) {
       {/* Achievement Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {filteredAchievements.map((achievement) => {
-          const IconComponent = ACHIEVEMENT_ICONS[achievement.icon as AchievementIconName]
+          // Map achievement code to icon component name
+          const iconName = getAchievementIconName(achievement.code) || achievement.icon as AchievementIconName
+          const IconComponent = ACHIEVEMENT_ICONS[iconName]
           const hasCustomIcon = IconComponent !== undefined
           const isEarned = achievement.earned
           const progress = achievement.progress
@@ -245,7 +257,7 @@ export function AchievementGallery({ userId }: AchievementGalleryProps) {
                     )}>
                       <div className={cn(
                         "w-8 h-8 rounded",
-                        isEarned ? "bg-white" : "bg-slate-500"
+                        isEarned ? "bg-slate-300" : "bg-slate-500"
                       )} />
                     </div>
                   )}

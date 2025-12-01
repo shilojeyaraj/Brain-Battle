@@ -10,7 +10,6 @@ import { ClansSection } from "@/components/clans/clans-section"
 import { DashboardTutorial } from "@/components/tutorial/dashboard-tutorial"
 import { SubscriptionBanner } from "@/components/dashboard/subscription-banner"
 import { StreakDisplay } from "@/components/dashboard/streak-display"
-import { AchievementGallery } from "@/components/achievements/achievement-gallery"
 import { Button } from "@/components/ui/button"
 import { ChevronDown, ChevronUp, BarChart3 } from "lucide-react"
 import dynamicImport from "next/dynamic"
@@ -143,11 +142,6 @@ export default function DashboardPage() {
 
         {/* Subscription Banner - Shows for free users */}
         <SubscriptionBanner />
-
-        {/* Achievement Gallery */}
-        <div className="mb-6">
-          <AchievementGallery />
-        </div>
 
         {/* Daily Streak Display */}
         <div className="mb-6">
