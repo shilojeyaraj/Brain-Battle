@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getUserIdFromRequest } from '@/lib/auth/session-cookies'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { createAdminClient } from '@/lib/supabase/server-admin'
 import { checkAndUnlockAchievements } from '@/lib/achievements/achievement-checker'
 
 /**
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
     // 1. Check if achievement_definitions table has data
     const { data: definitions, error: defError } = await adminClient
       .from('achievement_definitions')
-      .select('code, name, category, requirement_type, is_active')
+      .select('code, name, category, requirement_type, requirement_value, is_active')
       .eq('is_active', true)
 
     if (defError) {
