@@ -14,6 +14,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check if Stripe is configured
+    if (!stripe) {
+      return NextResponse.json(
+        { error: 'Stripe is not configured' },
+        { status: 500 }
+      );
+    }
+
     const supabase = await createClient();
 
     // Get user's subscription
@@ -28,13 +36,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: 'No active subscription found' },
         { status: 404 }
-      );
-    }
-
-    if (!stripe) {
-      return NextResponse.json(
-        { error: 'Stripe is not configured' },
-        { status: 500 }
       );
     }
 
