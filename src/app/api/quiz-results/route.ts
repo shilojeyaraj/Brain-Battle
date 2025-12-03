@@ -524,10 +524,9 @@ export async function POST(request: NextRequest) {
       sessionName: sessionData.session_name
     })
     
-    // Only update games/wins for multiplayer battles
-    const newTotalGames = isSingleplayer 
-      ? (currentStats.total_games || 0) 
-      : (currentStats.total_games || 0) + 1
+    // Update games count for both singleplayer and multiplayer (for achievements)
+    // But only count multiplayer games for win/loss stats
+    const newTotalGames = (currentStats.total_games || 0) + 1
     const newTotalWins = isSingleplayer
       ? (currentStats.total_wins || 0)
       : (currentStats.total_wins || 0) + 1 // Only multiplayer wins count

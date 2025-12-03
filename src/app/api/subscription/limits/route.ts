@@ -21,11 +21,16 @@ export async function GET(request: NextRequest) {
     
     // Get document usage
     const docLimit = await checkDocumentLimit(userId)
+    
+    // Get quiz usage
+    const { checkQuizLimit } = await import('@/lib/subscription/limits')
+    const quizLimit = await checkQuizLimit(userId)
 
     return NextResponse.json({
       success: true,
       limits: {
         maxDocumentsPerMonth: limits.maxDocumentsPerMonth,
+        maxQuizzesPerMonth: limits.maxQuizzesPerMonth,
         maxQuestionsPerQuiz: limits.maxQuestionsPerQuiz,
         maxPlayersPerRoom: limits.maxPlayersPerRoom,
         canExport: limits.canExport,
@@ -40,6 +45,12 @@ export async function GET(request: NextRequest) {
           limit: docLimit.limit,
           remaining: docLimit.remaining,
           isUnlimited: docLimit.limit === Infinity,
+        },
+        quizzes: {
+          count: quizLimit.count,
+          limit: quizLimit.limit,
+          remaining: quizLimit.remaining,
+          isUnlimited: quizLimit.limit === Infinity,
         },
       },
     })

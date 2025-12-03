@@ -16,6 +16,7 @@ import type { SubscriptionInfo } from '@/lib/stripe/utils'
  */
 export interface FeatureLimits {
   maxDocumentsPerMonth: number
+  maxQuizzesPerMonth: number // Monthly quiz generation limit
   maxQuestionsPerQuiz: number
   maxPlayersPerRoom: number
   canExport: boolean
@@ -37,6 +38,16 @@ export interface FeatureLimits {
  * Document limit check result
  */
 export interface DocumentLimitResult {
+  allowed: boolean
+  count: number
+  limit: number
+  remaining: number
+}
+
+/**
+ * Quiz limit check result
+ */
+export interface QuizLimitResult {
   allowed: boolean
   count: number
   limit: number
@@ -69,9 +80,10 @@ export async function getUserLimits(userId: string): Promise<FeatureLimits> {
   
   if (isPro) {
     return {
-      maxDocumentsPerMonth: Infinity,
-      maxQuestionsPerQuiz: Infinity,
-      maxPlayersPerRoom: 20,
+      maxDocumentsPerMonth: 50, // Pro: 50 documents per month
+      maxQuizzesPerMonth: 50, // Pro: 50 quizzes per month
+      maxQuestionsPerQuiz: 20, // Pro: Up to 20 questions per quiz
+      maxPlayersPerRoom: 15, // Pro: Up to 15 players per room
       canExport: true,
       hasPriorityProcessing: true,
       hasAdvancedAnalytics: true,
@@ -92,9 +104,10 @@ export async function getUserLimits(userId: string): Promise<FeatureLimits> {
   // Free tier limits - Designed to encourage upgrades
   // These limits are restrictive enough to show value but generous enough to try the product
   return {
-    maxDocumentsPerMonth: 10, // Increased to 10 to ensure users use the app consistently
-    maxQuestionsPerQuiz: 10,  // Increased to 10 questions for free users
-    maxPlayersPerRoom: 4,
+    maxDocumentsPerMonth: 15, // Free: 15 documents per month
+    maxQuizzesPerMonth: 15, // Free: 15 quizzes per month
+    maxQuestionsPerQuiz: Infinity, // Free: Unlimited questions per quiz (no per-quiz limit)
+    maxPlayersPerRoom: 4, // Free: Up to 4 players per room (can create)
     canExport: false,
     hasPriorityProcessing: false,
     hasAdvancedAnalytics: false,
@@ -188,6 +201,57 @@ export async function checkRoomSizeLimit(
 }
 
 /**
+ * Check if user has reached their quiz generation limit for the current month
+ * 
+ * @param userId - The user's ID
+ * @returns Quiz limit check result
+ */
+export async function checkQuizLimit(userId: string): Promise<QuizLimitResult> {
+  const limits = await getUserLimits(userId)
+  
+  // Pro users with unlimited quizzes
+  if (limits.maxQuizzesPerMonth === Infinity) {
+    return { 
+      allowed: true, 
+      count: 0, 
+      limit: Infinity,
+      remaining: Infinity
+    }
+  }
+  
+  const adminClient = createAdminClient()
+  const startOfMonth = new Date()
+  startOfMonth.setDate(1)
+  startOfMonth.setHours(0, 0, 0, 0)
+  
+  // Count unique quiz sessions generated/participated in by user this month
+  // We count from game_results which tracks completed quizzes:
+  // - Singleplayer: user completes their own generated quiz
+  // - Multiplayer: user participates in quiz (host or participant)
+  
+  // Get unique session IDs from game_results (tracks completed quizzes)
+  // This counts quizzes the user has completed, which is a good proxy for quizzes generated/participated in
+  const { data: uniqueSessions } = await adminClient
+    .from('game_results')
+    .select('session_id')
+    .eq('user_id', userId)
+    .gte('completed_at', startOfMonth.toISOString())
+    .not('session_id', 'is', null)
+  
+  const uniqueSessionIds = new Set(uniqueSessions?.map(r => r.session_id) || [])
+  const quizCount = uniqueSessionIds.size
+  
+  const remaining = Math.max(0, limits.maxQuizzesPerMonth - quizCount)
+  
+  return {
+    allowed: quizCount < limits.maxQuizzesPerMonth,
+    count: quizCount,
+    limit: limits.maxQuizzesPerMonth,
+    remaining
+  }
+}
+
+/**
  * Check if user can generate a quiz with the requested number of questions
  * 
  * @param userId - The user's ID
@@ -204,7 +268,7 @@ export async function checkQuizQuestionLimit(
   return {
     allowed: requestedQuestions <= maxAllowed,
     limit: maxAllowed,
-    requiresPro: requestedQuestions > 10 && limits.maxQuestionsPerQuiz === 10
+    requiresPro: requestedQuestions > 20 && limits.maxQuestionsPerQuiz < 20
   }
 }
 

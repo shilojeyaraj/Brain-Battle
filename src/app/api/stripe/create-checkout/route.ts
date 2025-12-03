@@ -59,7 +59,8 @@ export async function POST(request: NextRequest) {
       user.email
     );
 
-    // Create checkout session
+    // Create checkout session with automatic renewal enabled
+    // Stripe subscriptions automatically renew unless cancel_at_period_end is set to true
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: mode as 'subscription',
@@ -79,6 +80,8 @@ export async function POST(request: NextRequest) {
         metadata: {
           userId: user.id,
         },
+        // Explicitly ensure subscription auto-renews (this is the default, but being explicit)
+        // cancel_at_period_end defaults to false, meaning subscription will automatically renew
       },
     });
 

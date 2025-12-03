@@ -265,6 +265,11 @@ COMMENT ON FUNCTION public.check_and_unlock_achievements IS 'Checks user stats a
 ALTER TABLE public.achievement_definitions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.achievements ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies first (safe to run multiple times)
+DROP POLICY IF EXISTS "achievement_definitions_select_all" ON public.achievement_definitions;
+DROP POLICY IF EXISTS "achievements_select_own" ON public.achievements;
+DROP POLICY IF EXISTS "achievements_insert_own" ON public.achievements;
+
 -- Achievement definitions: everyone can read
 CREATE POLICY "achievement_definitions_select_all"
   ON public.achievement_definitions

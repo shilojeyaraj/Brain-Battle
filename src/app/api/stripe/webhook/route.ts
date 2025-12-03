@@ -67,12 +67,15 @@ export async function POST(request: NextRequest) {
 
       case 'invoice.payment_succeeded': {
         const invoice = event.data.object as Stripe.Invoice;
-        console.log('Invoice payment succeeded:', invoice.id);
+        console.log('Invoice payment succeeded (subscription renewal):', invoice.id);
+        // This event fires when a subscription automatically renews
+        // Update subscription to reflect new billing period
         if (invoice.subscription) {
           const subscription = await stripe.subscriptions.retrieve(
             invoice.subscription as string
           );
           await updateSubscriptionFromStripe(subscription);
+          console.log('✅ Subscription renewed successfully:', subscription.id);
         }
         break;
       }

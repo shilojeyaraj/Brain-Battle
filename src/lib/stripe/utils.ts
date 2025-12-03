@@ -9,6 +9,7 @@ export interface SubscriptionInfo {
   currentPeriodEnd: Date | null;
   cancelAtPeriodEnd: boolean;
   isActive: boolean;
+  interval?: 'month' | 'year'; // Billing interval
 }
 
 /**
@@ -93,6 +94,16 @@ export async function getUserSubscription(
 
   const supabase = await createClient();
 
+  // Get subscription from subscriptions table to check plan_id for interval
+  const { data: subscription } = await supabase
+    .from('subscriptions')
+    .select('plan_id, status')
+    .eq('user_id', userId)
+    .in('status', ['active', 'trialing'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single();
+
   const { data: user } = await supabase
     .from('users')
     .select(
@@ -115,6 +126,17 @@ export async function getUserSubscription(
     user.subscription_status === 'active' ||
     user.subscription_status === 'trialing';
 
+  // Determine interval from plan_id
+  let interval: 'month' | 'year' | undefined;
+  if (subscription?.plan_id) {
+    const { STRIPE_PRICE_IDS } = await import('./config');
+    if (subscription.plan_id === STRIPE_PRICE_IDS.PRO_YEARLY) {
+      interval = 'year';
+    } else if (subscription.plan_id === STRIPE_PRICE_IDS.PRO_MONTHLY) {
+      interval = 'month';
+    }
+  }
+
   return {
     tier: (user.subscription_tier as SubscriptionTier) || 'free',
     status: (user.subscription_status as SubscriptionStatus) || 'free',
@@ -123,6 +145,7 @@ export async function getUserSubscription(
       : null,
     cancelAtPeriodEnd: user.subscription_cancel_at_period_end || false,
     isActive,
+    interval,
   };
 }
 
@@ -165,9 +188,10 @@ export async function updateSubscriptionFromStripe(
   const status = subscription.status;
 
   // Upsert subscription record
+  // Get existing subscription to check if this is a renewal
   const { data: existingSubscription } = await supabase
     .from('subscriptions')
-    .select('id')
+    .select('id, current_period_end')
     .eq('stripe_subscription_id', subscription.id)
     .single();
 
@@ -203,12 +227,51 @@ export async function updateSubscriptionFromStripe(
     });
   }
 
-  // Log subscription event
+  // Update user table with subscription status (for quick lookups)
+  // This ensures the user's subscription status is always up-to-date, including after renewals
+  await supabase
+    .from('users')
+    .update({
+      subscription_status: status,
+      subscription_tier: planName === 'pro' ? 'pro' : 'free',
+      subscription_current_period_end: subscriptionData.current_period_end,
+      subscription_cancel_at_period_end: subscriptionData.cancel_at_period_end,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', user.id);
+
+  // Log subscription event with proper event type
+  // Determine event type based on subscription state
+  let eventType: string;
+  if (!existingSubscription) {
+    eventType = 'created';
+  } else if (subscription.cancel_at_period_end) {
+    eventType = 'cancel_scheduled';
+  } else if (subscription.status === 'active' && existingSubscription) {
+    // If subscription was already active and is still active, it likely renewed
+    // Check if period_end was extended (renewal indicator)
+    const oldPeriodEnd = existingSubscription.current_period_end 
+      ? new Date(existingSubscription.current_period_end).getTime()
+      : 0;
+    const newPeriodEnd = subscription.current_period_end * 1000;
+    eventType = newPeriodEnd > oldPeriodEnd ? 'renewed' : 'updated';
+  } else {
+    eventType = 'updated';
+  }
+  
   await supabase.from('subscription_history').insert({
     user_id: user.id,
     subscription_id: existingSubscription?.id || null,
-    event_type: existingSubscription ? 'updated' : 'created',
+    event_type: eventType,
     event_data: subscription as any,
+  });
+  
+  console.log(`✅ [STRIPE] Subscription ${eventType}:`, {
+    subscriptionId: subscription.id,
+    userId: user.id,
+    status,
+    periodEnd: subscriptionData.current_period_end,
+    autoRenew: !subscriptionData.cancel_at_period_end
   });
 }
 

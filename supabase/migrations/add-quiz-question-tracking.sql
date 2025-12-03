@@ -161,6 +161,12 @@ ALTER TABLE public.quiz_question_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.quiz_answer_history ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for quiz_question_history
+-- Drop existing policies first (safe to run multiple times)
+DROP POLICY IF EXISTS "quiz_question_history_select_own" ON public.quiz_question_history;
+DROP POLICY IF EXISTS "quiz_question_history_insert_own" ON public.quiz_question_history;
+DROP POLICY IF EXISTS "quiz_question_history_update_own" ON public.quiz_question_history;
+DROP POLICY IF EXISTS "quiz_question_history_delete_own" ON public.quiz_question_history;
+
 CREATE POLICY "quiz_question_history_select_own"
   ON public.quiz_question_history FOR SELECT
   USING (auth.uid() = user_id);
@@ -179,6 +185,12 @@ CREATE POLICY "quiz_question_history_delete_own"
   USING (auth.uid() = user_id);
 
 -- RLS Policies for quiz_answer_history
+-- Drop existing policies first (safe to run multiple times)
+DROP POLICY IF EXISTS "quiz_answer_history_select_own" ON public.quiz_answer_history;
+DROP POLICY IF EXISTS "quiz_answer_history_insert_own" ON public.quiz_answer_history;
+DROP POLICY IF EXISTS "quiz_answer_history_update_own" ON public.quiz_answer_history;
+DROP POLICY IF EXISTS "quiz_answer_history_delete_own" ON public.quiz_answer_history;
+
 CREATE POLICY "quiz_answer_history_select_own"
   ON public.quiz_answer_history FOR SELECT
   USING (auth.uid() = user_id);

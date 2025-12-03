@@ -118,7 +118,7 @@ export default function PricingPage() {
           )}
 
         {/* Pricing Cards */}
-        <div className="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto mb-12" style={{ gridAutoRows: '1fr' }}>
+        <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto mb-12" style={{ gridAutoRows: '1fr' }}>
           {/* Free Plan */}
           <PricingCard
             name="Free"
@@ -126,10 +126,11 @@ export default function PricingPage() {
             period="month"
             priceId=""
             features={[
-              '3 documents per month',
-              'Basic AI study notes',
-              '10 quiz questions per session',
-              'Basic multiplayer rooms (up to 4 players)',
+              '15 documents per month',
+              '15 quizzes per month',
+              'Up to 15 questions per quiz',
+              'Multiplayer rooms (up to 4 players)',
+              'Can join any lobby',
               'Standard XP system',
               'Basic analytics',
             ]}
@@ -144,10 +145,11 @@ export default function PricingPage() {
             period="month"
             priceId={PRO_MONTHLY_PRICE_ID}
             features={[
-              'Unlimited documents',
-              'Advanced AI study notes with images',
-              'Unlimited quiz questions',
-              'Large multiplayer rooms (up to 20 players)',
+              '50 documents per month',
+              '50 quizzes per month',
+              'Up to 20 questions per quiz',
+              'Large multiplayer rooms (up to 15 players)',
+              'Create and join clans',
               'Advanced XP system with bonuses',
               'Detailed analytics & insights',
               'Priority AI processing',
@@ -156,13 +158,11 @@ export default function PricingPage() {
               'Advanced anti-cheat features',
             ]}
             popular={true}
-            currentPlan={isPro}
+            currentPlan={isPro && subscriptionStatus?.interval !== 'year'}
           />
-        </div>
 
-        {/* Yearly Option - Only show if configured */}
-        {hasYearlyPlan && (
-          <div className="max-w-md mx-auto">
+          {/* Pro Plan - Yearly */}
+          {hasYearlyPlan ? (
             <PricingCard
               name="Pro (Yearly)"
               price="49.99"
@@ -170,14 +170,21 @@ export default function PricingPage() {
               priceId={PRO_YEARLY_PRICE_ID}
               features={[
                 'Everything in Pro Monthly',
-                'Save 17% with annual billing ($4.99/month)',
+                '50 documents per month',
+                '50 quizzes per month',
+                'Up to 20 questions per quiz',
+                'Large multiplayer rooms (up to 15 players)',
+                'Create and join clans',
+                'Save 17% with annual billing',
                 'Priority support',
                 'Early access to new features',
               ]}
-              currentPlan={false}
+              currentPlan={isPro && subscriptionStatus?.interval === 'year'}
             />
-          </div>
-        )}
+          ) : (
+            <div className="hidden md:block" /> // Placeholder to maintain grid layout
+          )}
+        </div>
 
 
           {/* FAQ Section */}

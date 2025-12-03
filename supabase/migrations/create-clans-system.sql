@@ -85,6 +85,8 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Trigger to auto-update updated_at
+-- Drop existing trigger first (safe to run multiple times)
+DROP TRIGGER IF EXISTS trigger_update_clan_updated_at ON public.clans;
 CREATE TRIGGER trigger_update_clan_updated_at
     BEFORE UPDATE ON public.clans
     FOR EACH ROW
@@ -134,6 +136,12 @@ ALTER TABLE public.clan_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.clan_sessions ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies for clans table
+-- Drop existing policies first (safe to run multiple times)
+DROP POLICY IF EXISTS "clans_select" ON public.clans;
+DROP POLICY IF EXISTS "clans_insert" ON public.clans;
+DROP POLICY IF EXISTS "clans_update" ON public.clans;
+DROP POLICY IF EXISTS "clans_delete" ON public.clans;
+
 -- Users can view clans they are members of or public clans
 CREATE POLICY "clans_select"
     ON public.clans FOR SELECT
@@ -163,6 +171,11 @@ CREATE POLICY "clans_delete"
     USING (owner_id = auth.uid()::UUID);
 
 -- RLS Policies for clan_members table
+-- Drop existing policies first (safe to run multiple times)
+DROP POLICY IF EXISTS "clan_members_select" ON public.clan_members;
+DROP POLICY IF EXISTS "clan_members_insert" ON public.clan_members;
+DROP POLICY IF EXISTS "clan_members_delete" ON public.clan_members;
+
 -- Users can view members of clans they belong to
 CREATE POLICY "clan_members_select"
     ON public.clan_members FOR SELECT
@@ -198,6 +211,10 @@ CREATE POLICY "clan_members_delete"
     );
 
 -- RLS Policies for clan_sessions table
+-- Drop existing policies first (safe to run multiple times)
+DROP POLICY IF EXISTS "clan_sessions_select" ON public.clan_sessions;
+DROP POLICY IF EXISTS "clan_sessions_insert" ON public.clan_sessions;
+
 -- Users can view sessions of clans they belong to
 CREATE POLICY "clan_sessions_select"
     ON public.clan_sessions FOR SELECT

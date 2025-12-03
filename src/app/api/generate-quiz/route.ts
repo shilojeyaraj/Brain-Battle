@@ -184,14 +184,34 @@ export async function POST(request: NextRequest) {
       console.log(`📊 [QUIZ API] No totalQuestions specified, using user limit: ${totalQuestions}`)
     }
 
-    // Check subscription limits for quiz questions
+    // Check subscription limits for quiz generation (monthly limit)
+    if (userId) {
+      const { checkQuizLimit } = await import('@/lib/subscription/limits')
+      const quizLimit = await checkQuizLimit(userId)
+      
+      if (!quizLimit.allowed) {
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: `You've reached your monthly limit of ${quizLimit.limit} quizzes. Upgrade to Pro for ${quizLimit.limit === 15 ? 50 : 'more'} quizzes per month and advanced features!`,
+            requiresPro: true,
+            count: quizLimit.count,
+            limit: quizLimit.limit,
+            remaining: quizLimit.remaining
+          },
+          { status: 403 }
+        )
+      }
+    }
+
+    // Check subscription limits for quiz questions per quiz
     if (userId && totalQuestions) {
       const questionLimit = await checkQuizQuestionLimit(userId, totalQuestions)
       if (!questionLimit.allowed) {
         return NextResponse.json(
           { 
             success: false, 
-            error: `Free users are limited to ${questionLimit.limit} questions per quiz. Upgrade to Pro for unlimited questions and advanced features!`,
+            error: `You're limited to ${questionLimit.limit} questions per quiz. ${questionLimit.requiresPro ? 'Upgrade to Pro for up to 20 questions per quiz!' : ''}`,
             requiresPro: questionLimit.requiresPro,
             limit: questionLimit.limit,
             requested: totalQuestions

@@ -129,6 +129,12 @@ ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.study_notes_cache ENABLE ROW LEVEL SECURITY;
 
 -- Documents: users can only see and manage their own
+-- Drop existing policies first (safe to run multiple times)
+DROP POLICY IF EXISTS "Documents: users can view their own" ON public.documents;
+DROP POLICY IF EXISTS "Documents: users can insert their own" ON public.documents;
+DROP POLICY IF EXISTS "Documents: users can update their own" ON public.documents;
+DROP POLICY IF EXISTS "Documents: users can delete their own" ON public.documents;
+
 CREATE POLICY "Documents: users can view their own"
 ON public.documents
 FOR SELECT
@@ -151,6 +157,12 @@ FOR DELETE
 USING (auth.uid() = user_id);
 
 -- Study notes cache: users can only see their own cached notes
+-- Drop existing policies first (safe to run multiple times)
+DROP POLICY IF EXISTS "Study notes: users can view their own" ON public.study_notes_cache;
+DROP POLICY IF EXISTS "Study notes: users can insert their own" ON public.study_notes_cache;
+DROP POLICY IF EXISTS "Study notes: users can update their own" ON public.study_notes_cache;
+DROP POLICY IF EXISTS "Study notes: users can delete their own" ON public.study_notes_cache;
+
 CREATE POLICY "Study notes: users can view their own"
 ON public.study_notes_cache
 FOR SELECT

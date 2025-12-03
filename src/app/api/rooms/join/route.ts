@@ -63,20 +63,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check subscription limits - Free users cannot join rooms with > 4 players
-    const limits = await getUserLimits(userId)
-    if (room.max_players > limits.maxPlayersPerRoom) {
-      return NextResponse.json(
-        { 
-          success: false,
-          error: `This room supports up to ${room.max_players} players, but free users can only join rooms with up to ${limits.maxPlayersPerRoom} players. Upgrade to Pro to join larger rooms.`,
-          requiresPro: true,
-          roomMaxPlayers: room.max_players,
-          userMaxPlayers: limits.maxPlayersPerRoom
-        },
-        { status: 403 }
-      )
-    }
+    // Free users can join any lobby regardless of size
+    // Only room creation is limited (handled in /api/rooms/create)
 
     // Check if user is already a member
     const { data: existingMember } = await adminClient
