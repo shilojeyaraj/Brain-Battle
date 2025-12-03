@@ -1,0 +1,23 @@
+warning: in the working copy of '.github/workflows/ci.yml', CRLF will be replaced by LF the next time Git touches it
+[1mdiff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml[m
+[1mindex 0d0edbe..a00a900 100644[m
+[1m--- a/.github/workflows/ci.yml[m
+[1m+++ b/.github/workflows/ci.yml[m
+[36m@@ -12,7 +12,7 @@[m [mjobs:[m
+ [m
+     strategy:[m
+       matrix:[m
+[31m-        node-version: [20.x][m
+[32m+[m[32m        node-version: [22.x][m
+ [m
+     steps:[m
+     - uses: actions/checkout@v4[m
+[36m@@ -52,7 +52,7 @@[m [mjobs:[m
+     - name: Use Node.js[m
+       uses: actions/setup-node@v4[m
+       with:[m
+[31m-        node-version: '20.x'[m
+[32m+[m[32m        node-version: '22.x'[m
+         cache: 'npm'[m
+     [m
+     - name: Install dependencies[m
