@@ -19,6 +19,7 @@ export function GlobalNavigationLoading() {
   const navigationStartRef = useRef<number | null>(null)
   const previousPathnameRef = useRef<string | null>(null)
   const isNavigatingRef = useRef(false)
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     // Check if pathname actually changed (not just initial mount)
@@ -28,36 +29,30 @@ export function GlobalNavigationLoading() {
     // Update previous pathname
     previousPathnameRef.current = pathname
 
-    // Clear any existing timeout
+    // Clear any existing timeouts
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current)
       timeoutRef.current = null
     }
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current)
+      hideTimeoutRef.current = null
+    }
+
+    // Hide loading immediately when pathname changes (navigation started)
+    setShowLoading(false)
+    isNavigatingRef.current = false
 
     // If pathname changed, we're navigating
     if (pathnameChanged) {
       // Mark navigation as starting
       isNavigatingRef.current = true
       navigationStartRef.current = Date.now()
-      setShowLoading(false)
 
       // Set timeout to show loading if navigation takes more than 2 seconds
       timeoutRef.current = setTimeout(() => {
-        // Only show loading if we're still navigating
-        if (isNavigatingRef.current) {
-          setShowLoading(true)
-        }
-      }, LOADING_DELAY_MS)
-    } else {
-      // Initial mount or same pathname - check if page is still loading
-      // This handles slow initial page loads
-      isNavigatingRef.current = true
-      navigationStartRef.current = Date.now()
-      
-      timeoutRef.current = setTimeout(() => {
-        // Check if document is still loading or if React hasn't hydrated yet
-        if (isNavigatingRef.current && (document.readyState === 'loading' || 
-            typeof window !== 'undefined' && !(window as any).__NEXT_DATA__?.props?.pageProps)) {
+        // Only show loading if we're still navigating and document is still loading
+        if (isNavigatingRef.current && document.readyState !== 'complete') {
           setShowLoading(true)
         }
       }, LOADING_DELAY_MS)
@@ -72,57 +67,43 @@ export function GlobalNavigationLoading() {
       }
       
       // Mark navigation as complete after a small delay
-      const hideTimeout = setTimeout(() => {
+      hideTimeoutRef.current = setTimeout(() => {
         // Mark navigation as complete
         isNavigatingRef.current = false
         setShowLoading(false)
-        
-        // Log navigation time for debugging
-        if (navigationStartRef.current) {
-          const navigationTime = Date.now() - navigationStartRef.current
-          if (navigationTime > LOADING_DELAY_MS) {
-            console.log(`⏱️ [NAV] Navigation took ${navigationTime}ms (showed loading)`)
-          }
-        }
       }, 100)
-
-      // Store hideTimeout in a way we can clean it up
-      // Note: We can't return a cleanup from cleanup, so we'll handle it differently
-      // The timeout will complete naturally or be cleared on next effect run
     }
   }, [pathname, searchParams])
 
-  // Also handle page visibility changes and document ready state
+  // Handle document ready state changes
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        // Page became visible, check if we should show loading
-        if (isNavigatingRef.current && navigationStartRef.current) {
-          const elapsed = Date.now() - navigationStartRef.current
-          if (elapsed > LOADING_DELAY_MS && document.readyState !== 'complete') {
-            setShowLoading(true)
-          }
-        }
-      }
-    }
-
     const handleLoad = () => {
-      // Page fully loaded, hide loading
+      // Page fully loaded, hide loading immediately
       isNavigatingRef.current = false
       setShowLoading(false)
     }
 
-    document.addEventListener('visibilitychange', handleVisibilityChange)
+    // If document is already complete, don't show loading
+    if (document.readyState === 'complete') {
+      isNavigatingRef.current = false
+      setShowLoading(false)
+    }
+
     window.addEventListener('load', handleLoad)
     
     return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
       window.removeEventListener('load', handleLoad)
     }
   }, [])
 
+  // Don't render anything if not loading
   if (!showLoading) return null
   
-  return <BrainBattleLoading message="Loading page..." />
+  // Render as fixed overlay to prevent it from appearing in document flow
+  return (
+    <div className="fixed inset-0 z-[9999]">
+      <BrainBattleLoading message="Loading page..." />
+    </div>
+  )
 }
 
