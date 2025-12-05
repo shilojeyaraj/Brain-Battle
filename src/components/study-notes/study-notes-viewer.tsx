@@ -31,9 +31,10 @@ interface StudyNotesViewerProps {
   notes: StudyNotes
   onStartBattle: () => void
   fileNames?: string[]
+  hideActions?: boolean // Hide "Ready to Test?" section for multiplayer
 }
 
-export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotesViewerProps) {
+export function StudyNotesViewer({ notes, onStartBattle, fileNames, hideActions = false }: StudyNotesViewerProps) {
   const [activeSection, setActiveSection] = useState<"outline" | "concepts" | "diagrams" | "formulas" | "videos" | "quiz">("outline")
   const [currentDiagram, setCurrentDiagram] = useState(0)
   const [expandedOutlineItems, setExpandedOutlineItems] = useState<Set<number>>(new Set())
@@ -638,12 +639,12 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
                         </div>
                         
                         {/* Formula Display */}
-                        <div className="bg-slate-900/50 p-6 rounded-xl border-4 border-blue-400/30 mb-4 min-h-[80px] flex items-center justify-center">
-                          <div className="text-xl md:text-2xl text-blue-300 text-center leading-relaxed flex items-center justify-center">
+                        <div className="bg-slate-900/50 p-6 rounded-xl border-4 border-blue-400/30 mb-4 min-h-[80px] flex items-center justify-center overflow-hidden">
+                          <div className="text-xl md:text-2xl text-blue-300 text-center leading-relaxed flex items-center justify-center w-full max-w-full">
                             {formula.formula && formula.formula.trim() ? (
                               <FormulaRenderer 
                                 formula={formula.formula}
-                                className="text-blue-300"
+                                className="text-blue-300 max-w-full break-words"
                                 displayMode={true}
                               />
                             ) : (
@@ -935,28 +936,30 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames }: StudyNotes
 
         {/* Sidebar - Right side for better visibility */}
         <div className="lg:col-span-5 xl:col-span-4 space-y-6 order-2">
-          {/* Start Battle Button - Prominent Position */}
-          <Card className="p-6 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-blue-500/50 shadow-lg sticky top-4">
-            <h3 className="text-lg font-black text-white mb-4">Ready to Test?</h3>
-            <div className="space-y-3">
-              <Button
-                onClick={onStartBattle}
-                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-black text-lg h-14 border-2 border-blue-400 shadow-lg"
-              >
-                <Play className="h-6 w-6 mr-2" strokeWidth={3} />
-                Start Singleplayer Battle
-              </Button>
-              <Button
-                variant="outline"
-                className="font-black border-2 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70"
-                onClick={handleDownloadNotes}
-                title="Download as PDF"
-              >
-                <Download className="h-4 w-4 mr-2" strokeWidth={3} />
-                Download PDF
-              </Button>
-            </div>
-          </Card>
+          {/* Start Battle Button - Prominent Position (Hidden in multiplayer) */}
+          {!hideActions && (
+            <Card className="p-6 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-blue-500/50 shadow-lg sticky top-4">
+              <h3 className="text-lg font-black text-white mb-6">Ready to Test?</h3>
+              <div className="space-y-4">
+                <Button
+                  onClick={onStartBattle}
+                  className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-black text-lg h-14 border-2 border-blue-400 shadow-lg"
+                >
+                  <Play className="h-6 w-6 mr-2" strokeWidth={3} />
+                  Start Singleplayer Battle
+                </Button>
+                <Button
+                  variant="outline"
+                  className="w-full font-black border-2 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70 h-12"
+                  onClick={handleDownloadNotes}
+                  title="Download as PDF"
+                >
+                  <Download className="h-4 w-4 mr-2" strokeWidth={3} />
+                  Download PDF
+                </Button>
+              </div>
+            </Card>
+          )}
 
           {/* Key Terms - More Visible */}
           <Card className="p-6 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-orange-500/50 shadow-lg sticky top-[260px]">

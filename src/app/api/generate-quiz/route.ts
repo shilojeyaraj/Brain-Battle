@@ -14,8 +14,7 @@ import {
   generateTopicHash
 } from '@/lib/quiz/question-deduplication'
 import { ensureUserExists } from '@/lib/utils/ensure-user-exists'
-import { createAIClient, isParallelTestingEnabled } from '@/lib/ai/client-factory'
-import { runParallelTest, logParallelTestResults } from '@/lib/ai/parallel-test'
+import { createAIClient } from '@/lib/ai/client-factory'
 import type { AIChatMessage } from '@/lib/ai/types'
 
 export async function POST(request: NextRequest) {
@@ -646,9 +645,8 @@ IMAGES AND VISUAL CONTENT - DISABLED:
 Generate exactly ${numQuestions} questions that test knowledge of the specific document content provided.
 `
 
-    // Check if parallel testing is enabled
-    const parallelTesting = isParallelTestingEnabled()
-    const aiProvider = process.env.AI_PROVIDER?.toLowerCase() || 'moonshot'
+    // Use Moonshot for quiz generation
+    const aiProvider = 'moonshot' as const
     
     const messages: AIChatMessage[] = [
       {
@@ -672,67 +670,33 @@ STRICT RULES:
 
     let response: string
     let modelUsed: string
-    let provider: 'openai' | 'moonshot'
+    const provider: 'moonshot' = 'moonshot'
 
-    if (parallelTesting) {
-      // Run parallel test on both providers
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`\n🔄 [QUIZ API] Running parallel test (OpenAI + Moonshot)...`)
-      }
-      
-      const parallelResult = await runParallelTest(messages, {
-        model: aiProvider === 'moonshot' ? (process.env.MOONSHOT_MODEL || 'kimi-k2-0711-preview') : 'gpt-4o',
-        temperature: 0.3,
-        responseFormat: 'json_object',
-        maxTokens: 3000,
-      })
-
-      // Log comparison results
-      logParallelTestResults(parallelResult, 'Quiz Generation')
-
-      // Use Moonshot result if available, otherwise fall back to OpenAI
-      if (parallelResult.moonshot) {
-        response = parallelResult.moonshot.content
-        modelUsed = parallelResult.moonshot.model
-        provider = 'moonshot'
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`✅ [QUIZ API] Using Moonshot (Kimi K2) response for production`)
-        }
-      } else if (parallelResult.openai) {
-        response = parallelResult.openai.content
-        modelUsed = parallelResult.openai.model
-        provider = 'openai'
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`⚠️ [QUIZ API] Moonshot failed, using OpenAI response as fallback`)
-          if (parallelResult.moonshotError) {
-            console.error(`   Moonshot error: ${parallelResult.moonshotError.message}`)
-          }
-        }
-      } else {
-        throw new Error('Both AI providers failed to generate quiz questions')
-      }
-    } else {
-      // Use single provider
-      const aiClient = createAIClient(aiProvider as 'openai' | 'moonshot')
-      
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`\n🤖 [QUIZ API] Using ${aiProvider === 'moonshot' ? 'Moonshot (Kimi K2)' : 'OpenAI (GPT-4o)'} for quiz generation`)
-      }
-      
-      const aiResponse = await aiClient.chatCompletions(messages, {
-        model: aiProvider === 'moonshot' ? (process.env.MOONSHOT_MODEL || 'kimi-k2-0711-preview') : 'gpt-4o',
-        temperature: 0.3,
-        responseFormat: 'json_object',
-        maxTokens: 3000,
-      })
-
-      response = aiResponse.content
-      modelUsed = aiResponse.model
-      provider = aiResponse.provider
+    // Use Moonshot for quiz generation
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`\n🤖 [QUIZ API] Using Moonshot (Kimi K2) for quiz generation`)
+      console.log(`   Checking MOONSHOT_API_KEY: ${process.env.MOONSHOT_API_KEY ? 'SET (length: ' + process.env.MOONSHOT_API_KEY.length + ')' : 'NOT SET'}`)
     }
+    
+    const aiClient = createAIClient('moonshot')
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`   ✅ [QUIZ API] Moonshot client created successfully`)
+    }
+    
+    const aiResponse = await aiClient.chatCompletions(messages, {
+      model: process.env.MOONSHOT_MODEL || 'kimi-k2-thinking',
+      temperature: 0.3,
+      responseFormat: 'json_object',
+      maxTokens: 3000,
+    })
+
+    response = aiResponse.content
+    modelUsed = aiResponse.model
+    // Provider is always 'moonshot' since we're using Moonshot client
 
     if (!response) {
-      throw new Error(`No response from ${provider === 'moonshot' ? 'Moonshot' : 'OpenAI'}`)
+      throw new Error(`No response from Moonshot`)
     }
 
     // Parse the JSON response

@@ -78,7 +78,7 @@ Respond with JSON only:
         }
       ],
       {
-        model: process.env.MOONSHOT_MODEL || 'kimi-k2-0711-preview',
+        model: process.env.MOONSHOT_MODEL || 'kimi-k2-thinking',
         temperature: 0.2, // Low temperature for consistent evaluation
         maxTokens: 200,
         responseFormat: "json_object"

@@ -38,7 +38,7 @@ export abstract class BaseAgent implements Agent {
         { role: "user", content: userPrompt }
       ],
       {
-        model: options.model || process.env.MOONSHOT_MODEL || 'kimi-k2-0711-preview',
+        model: options.model || process.env.MOONSHOT_MODEL || 'kimi-k2-thinking',
         responseFormat: options.responseFormat,
         temperature: options.temperature ?? 0.3,
         maxTokens: options.maxTokens,

@@ -76,7 +76,7 @@ Return as JSON:
         }
       ],
       {
-        model: process.env.MOONSHOT_MODEL || 'kimi-k2-0711-preview',
+        model: process.env.MOONSHOT_MODEL || 'kimi-k2-thinking',
         temperature: 0.3,
         maxTokens: 500,
       }

@@ -55,7 +55,7 @@ Make sure the questions are:
         }
       ],
       {
-        model: process.env.MOONSHOT_MODEL || 'kimi-k2-0711-preview',
+        model: process.env.MOONSHOT_MODEL || 'kimi-k2-thinking',
         temperature: 0.7,
         maxTokens: 2000,
       }

@@ -61,11 +61,32 @@ const nextConfig: NextConfig = {
     
     // Keep webpack cache enabled for stability (removed cache = false)
     // Only configure watch options for development
+    // Fix for Windows -4058 errors: Use aggregateTimeout and better file watching
     if (dev) {
       config.watchOptions = {
-        ignored: ['**/node_modules', '**/.next'],
-        poll: false,  // Disable polling to prevent race conditions
+        ignored: [
+          '**/node_modules/**',
+          '**/.next/**',
+          '**/.git/**',
+          '**/dist/**',
+          '**/build/**',
+          '**/*.log',
+          '**/.cache/**',
+          '**/prerender-manifest.json', // Ignore prerender manifest to prevent -4058 errors
+        ],
+        // Use polling on Windows to prevent -4058 ENOENT errors
+        // Polling is more reliable on Windows file systems
+        poll: process.platform === 'win32' ? 1000 : false, // 1 second polling on Windows
+        aggregateTimeout: 300, // Wait 300ms before rebuilding after first change
+        followSymlinks: false, // Don't follow symlinks (can cause issues on Windows)
       };
+      
+      // Add stability options for Windows file system
+      if (process.platform === 'win32') {
+        config.infrastructureLogging = {
+          level: 'error', // Reduce logging noise
+        };
+      }
     }
     
     return config;

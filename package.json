@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/ensure-prerender-manifest.js && next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -11,6 +11,8 @@
     "clean:cache": "powershell -ExecutionPolicy Bypass -File scripts/clear-cache.ps1",
     "dev:clean": "npm run clean && npm run dev",
     "build:clean": "npm run clean && npm run build",
+    "ensure:manifest": "node scripts/ensure-prerender-manifest.js",
+    "test:moonshot": "node scripts/test-moonshot-key.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",

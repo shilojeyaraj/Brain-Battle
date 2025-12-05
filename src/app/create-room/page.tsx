@@ -32,6 +32,16 @@ function CreateRoomContent() {
   const router = useRouter()
   const { userId, loading: authLoading } = useRequireAuth()
   const { isPro, limits, loading: subscriptionLoading } = useSubscription(userId)
+  
+  // Set max players based on subscription when limits load
+  // CRITICAL: This hook must be called unconditionally before any early returns
+  // to maintain consistent hook order across renders
+  useEffect(() => {
+    // Only update if we have valid limits and subscription has finished loading
+    if (!subscriptionLoading && limits && limits.maxPlayersPerRoom) {
+      setMaxPlayers(limits.maxPlayersPerRoom)
+    }
+  }, [limits, subscriptionLoading])
 
   if (authLoading) {
     return (
@@ -47,13 +57,6 @@ function CreateRoomContent() {
   if (!userId) {
     return null // Redirecting to login
   }
-
-  // Set max players based on subscription when limits load
-  useEffect(() => {
-    if (!subscriptionLoading && limits) {
-      setMaxPlayers(limits.maxPlayersPerRoom)
-    }
-  }, [limits, subscriptionLoading])
 
   const handleCreateRoom = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -117,35 +120,44 @@ function CreateRoomContent() {
 
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <div className="container mx-auto px-4 py-16">
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl animate-float" />
+        <div
+          className="absolute -bottom-40 -left-40 w-80 h-80 bg-orange-500/20 rounded-full blur-3xl animate-float"
+          style={{ animationDelay: "1s" }}
+        />
+      </div>
+
+      <div className="relative z-10 container mx-auto px-4 py-16">
         {/* Header */}
         <div className="text-center mb-12">
-          <Link href="/" className="inline-flex items-center text-indigo-600 hover:text-indigo-700 mb-6">
-            <ArrowLeft className="h-5 w-5 mr-2" />
-            Back to Home
+          <Link href="/dashboard" className="inline-flex items-center text-blue-300 hover:text-blue-200 transition-colors mb-6">
+            <ArrowLeft className="h-5 w-5 mr-2" strokeWidth={3} />
+            <span className="font-bold">Back to Dashboard</span>
           </Link>
           <div className="flex items-center justify-center mb-4">
-            <Brain className="h-10 w-10 text-indigo-600 mr-3" />
-            <h1 className="text-4xl font-bold text-gray-900">Create Study Room</h1>
+            <Brain className="h-10 w-10 text-blue-400 mr-3" strokeWidth={3} />
+            <h1 className="text-4xl font-black text-white">Create Study Room</h1>
           </div>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
+          <p className="text-xl text-blue-100/80 max-w-2xl mx-auto font-bold">
             Start a new study session and invite friends to compete with you!
           </p>
         </div>
 
         {/* Create Room Form */}
         <div className="max-w-md mx-auto">
-          <div className="bg-white rounded-2xl shadow-lg p-8">
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 rounded-2xl shadow-lg p-8">
             <form onSubmit={handleCreateRoom} className="space-y-6">
               {error && (
-                <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg">
-                  {error}
+                <div className="bg-red-500/10 border-2 border-red-500/50 text-red-400 px-4 py-3 rounded-lg">
+                  <p className="font-bold">{error}</p>
                 </div>
               )}
 
               <div>
-                <label htmlFor="roomName" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="roomName" className="block text-sm font-black text-blue-100 mb-2">
                   Room Name
                 </label>
                 <input
@@ -153,22 +165,22 @@ function CreateRoomContent() {
                   type="text"
                   value={roomName}
                   onChange={(e) => setRoomName(e.target.value)}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border-2 border-slate-600/50 bg-slate-900/50 text-white placeholder:text-blue-100/50 rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
                   placeholder="e.g., Physics Study Session"
                   required
                 />
               </div>
 
               <div>
-                <label htmlFor="maxPlayers" className="block text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="maxPlayers" className="block text-sm font-black text-blue-100 mb-2">
                   Maximum Players
                   {!isPro && (
-                    <span className="ml-2 text-xs text-orange-600 font-semibold">
+                    <span className="ml-2 text-xs text-orange-400 font-bold">
                       (Free: Max 4)
                     </span>
                   )}
                   {isPro && (
-                    <span className="ml-2 text-xs text-yellow-600 font-semibold flex items-center gap-1">
+                    <span className="ml-2 text-xs text-yellow-400 font-bold flex items-center gap-1">
                       <Crown className="w-3 h-3" />
                       Pro: Up to 20
                     </span>
@@ -186,10 +198,10 @@ function CreateRoomContent() {
                       setMaxPlayers(value)
                     }
                   }}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border-2 border-slate-600/50 bg-slate-900/50 text-white rounded-lg focus:ring-2 focus:ring-blue-400 focus:border-blue-400 disabled:opacity-50"
                   disabled={subscriptionLoading}
                 />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-blue-100/70 mt-1 font-bold">
                   {isPro 
                     ? 'Pro users can create rooms with up to 20 players'
                     : 'Upgrade to Pro to create rooms with up to 20 players'
@@ -211,7 +223,7 @@ function CreateRoomContent() {
                 loading={loading || subscriptionLoading}
                 loadingText="Creating Room..."
                 disabled={subscriptionLoading}
-                className="w-full bg-indigo-600 text-white py-3 px-4 rounded-lg hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-black text-lg py-3 px-4 rounded-lg border-2 border-blue-400"
               >
                 <Users className="h-5 w-5 mr-2" />
                 Create Room
@@ -220,24 +232,24 @@ function CreateRoomContent() {
           </div>
 
           {/* Features */}
-          <div className="mt-8 bg-white rounded-2xl shadow-lg p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">What happens next?</h3>
-            <ul className="space-y-3 text-gray-600">
+          <div className="mt-8 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 rounded-2xl shadow-lg p-6">
+            <h3 className="text-lg font-black text-white mb-4">What happens next?</h3>
+            <ul className="space-y-3 text-blue-100/80">
               <li className="flex items-start">
-                <div className="w-2 h-2 bg-indigo-600 rounded-full mt-2 mr-3 flex-shrink-0"></div>
-                <span>You'll get a unique room code to share with friends</span>
+                <div className="w-2 h-2 bg-blue-400 rounded-full mt-2 mr-3 flex-shrink-0"></div>
+                <span className="font-bold">You'll get a unique room code to share with friends</span>
               </li>
               <li className="flex items-start">
-                <div className="w-2 h-2 bg-indigo-600 rounded-full mt-2 mr-3 flex-shrink-0"></div>
-                <span>Upload your study materials (PDFs, documents, etc.)</span>
+                <div className="w-2 h-2 bg-blue-400 rounded-full mt-2 mr-3 flex-shrink-0"></div>
+                <span className="font-bold">Upload your study materials (PDFs, documents, etc.)</span>
               </li>
               <li className="flex items-start">
-                <div className="w-2 h-2 bg-indigo-600 rounded-full mt-2 mr-3 flex-shrink-0"></div>
-                <span>Select what topics you want to be quizzed on</span>
+                <div className="w-2 h-2 bg-blue-400 rounded-full mt-2 mr-3 flex-shrink-0"></div>
+                <span className="font-bold">Select what topics you want to be quizzed on</span>
               </li>
               <li className="flex items-start">
-                <div className="w-2 h-2 bg-indigo-600 rounded-full mt-2 mr-3 flex-shrink-0"></div>
-                <span>AI generates questions and the competition begins!</span>
+                <div className="w-2 h-2 bg-blue-400 rounded-full mt-2 mr-3 flex-shrink-0"></div>
+                <span className="font-bold">AI generates questions and the competition begins!</span>
               </li>
             </ul>
           </div>

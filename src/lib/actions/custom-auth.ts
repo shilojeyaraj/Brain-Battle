@@ -386,33 +386,44 @@ export async function authenticateUser(
       }
     }
     
-    // Treat the first parameter as username (trim and lowercase for consistency)
-    const normalizedUsername = email.trim().toLowerCase()
-    console.log('🔐 [AUTH] Authenticating user (by username):', normalizedUsername)
+    // Treat the first parameter as username or email (trim and lowercase for consistency)
+    const normalizedInput = email.trim().toLowerCase()
+    console.log('🔐 [AUTH] Authenticating user (by username or email):', normalizedInput)
     
-    // Get user from database by username
-    console.log('🔍 [AUTH] Looking for user with username:', normalizedUsername)
-    const { data: userData, error: userError } = await supabase
+    // Try to get user from database by username first, then by email
+    console.log('🔍 [AUTH] Looking for user with username or email:', normalizedInput)
+    
+    // First try username
+    let { data: userData, error: userError } = await supabase
       .from('users')
       .select('*')
-      .eq('username', normalizedUsername)
-      .single()
+      .eq('username', normalizedInput)
+      .maybeSingle()
     
-    if (userError) {
+    // If not found by username, try email
+    if (!userData && !userError) {
+      console.log('🔍 [AUTH] Not found by username, trying email...')
+      const emailResult = await supabase
+        .from('users')
+        .select('*')
+        .eq('email', normalizedInput)
+        .maybeSingle()
+      
+      userData = emailResult.data
+      userError = emailResult.error
+    }
+    
+    if (userError && userError.code !== 'PGRST116') {
       console.error('❌ [AUTH] Database error:', userError)
-      if (userError.code === 'PGRST116') {
-        console.log('❌ [AUTH] No user found with this username')
-        return { success: false, error: 'Invalid username or password' }
-      }
       return { success: false, error: `Database error: ${userError.message}` }
     }
     
     if (!userData) {
-      console.error('❌ [AUTH] No user data returned')
-      return { success: false, error: 'Invalid username or password' }
+      console.log('❌ [AUTH] No user found with this username or email')
+      return { success: false, error: 'Invalid username/email or password' }
     }
     
-    console.log('✅ [AUTH] User found:', userData.username)
+    console.log('✅ [AUTH] User found:', userData.username, '(email:', userData.email, ')')
     
     // Verify password
     const isValidPassword = await bcrypt.compare(password, userData.password_hash)

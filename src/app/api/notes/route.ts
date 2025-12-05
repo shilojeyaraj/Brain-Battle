@@ -11,8 +11,7 @@ import {
 } from "@/lib/utils/parallel-enrichment"
 import { notesGenerationSchema, validateFile } from "@/lib/validation/schemas"
 import { sanitizeError, createSafeErrorResponse } from "@/lib/utils/error-sanitizer"
-import { createAIClient, isParallelTestingEnabled } from "@/lib/ai/client-factory"
-import { runParallelTest, logParallelTestResults } from "@/lib/ai/parallel-test"
+import { createAIClient } from "@/lib/ai/client-factory"
 import { extractTextFromDocument } from "@/lib/document-text-extractor"
 import type { AIChatMessage } from "@/lib/ai/types"
 
@@ -893,18 +892,13 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
         })()
       : Promise.resolve([])
     
-    // Check if parallel testing is enabled
-    const parallelTesting = isParallelTestingEnabled()
-    const aiProvider = process.env.AI_PROVIDER?.toLowerCase() || 'moonshot'
+    // Use Moonshot for study notes generation
+    const aiProvider = 'moonshot' as const
     
     if (process.env.NODE_ENV === 'development') {
       console.log(`\n🤖 [NOTES API] Preparing AI API call...`)
-      if (parallelTesting) {
-        console.log(`  - Mode: PARALLEL TESTING (OpenAI + Moonshot)`)
-      } else {
-        console.log(`  - Provider: ${aiProvider === 'moonshot' ? 'Moonshot (Kimi K2)' : 'OpenAI (GPT-4o)'}`)
-      }
-      console.log(`  - Model: ${aiProvider === 'moonshot' ? (process.env.MOONSHOT_MODEL || 'kimi-k2-0711-preview') : 'gpt-4o'}`)
+      console.log(`  - Provider: Moonshot (Kimi K2)`)
+      console.log(`  - Model: ${process.env.MOONSHOT_MODEL || 'kimi-k2-thinking'}`)
       console.log(`  - Temperature: 0.2 (very low for maximum document fidelity)`)
       console.log(`  - System prompt length: ${systemPrompt.length} characters`)
       console.log(`  - User prompt length: ${userPrompt.length} characters`)
@@ -919,80 +913,39 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
     let responseId: string
     let modelUsed: string
     let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
-    let provider: 'openai' | 'moonshot'
+    let provider: 'moonshot' = 'moonshot'
 
-    if (parallelTesting) {
-      // Run parallel test on both providers
-      console.log(`\n🔄 [NOTES API] Running parallel test (OpenAI + Moonshot)...`)
+    // Use Moonshot for study notes generation
+    const aiClient = createAIClient('moonshot')
       
-      const messages: AIChatMessage[] = [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ]
+    const messages: AIChatMessage[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: userPrompt }
+    ]
 
-      const parallelResult = await runParallelTest(messages, {
-        model: aiProvider === 'moonshot' ? (process.env.MOONSHOT_MODEL || 'kimi-k2-0711-preview') : 'gpt-4o',
-        temperature: 0.2,
-        responseFormat: 'json_object',
-      })
+    const response = await aiClient.chatCompletions(messages, {
+      model: process.env.MOONSHOT_MODEL || 'kimi-k2-thinking',
+      temperature: 0.2,
+      responseFormat: 'json_object',
+    })
 
-      // Log comparison results
-      logParallelTestResults(parallelResult, 'Study Notes Generation')
+    content = response.content
+    responseId = response.id
+    modelUsed = response.model
+    usage = response.usage
+    // Provider is always 'moonshot' since we're using Moonshot client
 
-      // Use Moonshot result if available, otherwise fall back to OpenAI
-      if (parallelResult.moonshot) {
-        content = parallelResult.moonshot.content
-        responseId = parallelResult.moonshot.id
-        modelUsed = parallelResult.moonshot.model
-        usage = parallelResult.moonshot.usage
-        provider = 'moonshot'
-        console.log(`✅ [NOTES API] Using Moonshot (Kimi K2) response for production`)
-      } else if (parallelResult.openai) {
-        content = parallelResult.openai.content
-        responseId = parallelResult.openai.id
-        modelUsed = parallelResult.openai.model
-        usage = parallelResult.openai.usage
-        provider = 'openai'
-        console.log(`⚠️ [NOTES API] Moonshot failed, using OpenAI response as fallback`)
-        if (parallelResult.moonshotError) {
-          console.error(`   Moonshot error: ${parallelResult.moonshotError.message}`)
-        }
-      } else {
-        throw new Error('Both AI providers failed')
-      }
-    } else {
-      // Use single provider
-      const aiClient = createAIClient(aiProvider as 'openai' | 'moonshot')
-      
-      const messages: AIChatMessage[] = [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ]
-
-      const response = await aiClient.chatCompletions(messages, {
-        model: aiProvider === 'moonshot' ? (process.env.MOONSHOT_MODEL || 'kimi-k2-0711-preview') : 'gpt-4o',
-        temperature: 0.2,
-        responseFormat: 'json_object',
-      })
-
-      content = response.content
-      responseId = response.id
-      modelUsed = response.model
-      usage = response.usage
-      provider = response.provider
-
-      console.log(`✅ [NOTES API] ${provider === 'moonshot' ? 'Moonshot (Kimi K2)' : 'OpenAI (GPT-4o)'} API call successful`)
-      console.log(`  - Response ID: ${responseId}`)
-      console.log(`  - Model used: ${modelUsed}`)
-      console.log(`  - Usage: ${JSON.stringify(usage)}`)
-    }
+    console.log(`✅ [NOTES API] Moonshot (Kimi K2) API call successful`)
+    console.log(`  - Response ID: ${responseId}`)
+    console.log(`  - Model used: ${modelUsed}`)
+    console.log(`  - Usage: ${JSON.stringify(usage)}`)
 
     if (!content) {
-      console.log(`❌ [NOTES API] No content in ${provider} response`)
-      throw new Error(`No response from ${provider}`)
+      console.log(`❌ [NOTES API] No content in Moonshot response`)
+      throw new Error(`No response from Moonshot`)
     }
 
-    console.log(`📝 [NOTES API] Processing ${provider} response...`)
+    console.log(`📝 [NOTES API] Processing Moonshot response...`)
     console.log(`  - Content length: ${content.length} characters`)
     console.log(`  - Content preview: ${content.substring(0, 200)}...`)
 

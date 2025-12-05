@@ -39,11 +39,14 @@ function SignupForm() {
         setError(null)
       } else {
         setError(decodedError)
+        // Reset loading state when error is detected from URL
+        setIsPending(false)
       }
       setSuccessMessage(null)
     } else if (messageParam) {
       setSuccessMessage(decodeURIComponent(messageParam))
       setError(null)
+      setIsPending(false)
     }
   }, [searchParams])
 
@@ -108,9 +111,13 @@ function SignupForm() {
           router.push('/pricing?newUser=true')
         }, 1500)
       } catch (err: any) {
+        // Always reset loading state, even for redirects
+        setIsPending(false)
+        
         // Ignore Next.js redirect errors (they're expected behavior)
         if (err?.digest?.startsWith('NEXT_REDIRECT')) {
           // Redirect is happening, don't show error
+          // Loading state will be reset when page reloads with error in URL
           return
         }
         
@@ -126,7 +133,6 @@ function SignupForm() {
         }
         
         setError(errorMessage)
-        setIsPending(false)
       }
     }, 0)
   }

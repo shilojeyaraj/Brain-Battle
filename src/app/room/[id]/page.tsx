@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
+import { requireAuthOrRedirect } from '@/lib/utils/require-auth-redirect'
 import { Brain, Users, Upload, Settings, ArrowLeft, Copy, Check, Crown, Lock, RefreshCw, FileText, X, AlertCircle, Loader2, Zap, BookOpen, Lightbulb, MessageSquare, Clock } from 'lucide-react'
 import Link from 'next/link'
 import { useAntiCheat, CheatEvent } from '@/hooks/use-anti-cheat'
@@ -10,6 +11,7 @@ import { CheatAlertContainer, CheatAlertData } from '@/components/multiplayer/ch
 import { QuizProgressBar } from '@/components/ui/quiz-progress-bar'
 import { Button } from '@/components/ui/button'
 import { BrainBattleLoading } from '@/components/ui/brain-battle-loading'
+import { StudyNotesViewer } from '@/components/study-notes/study-notes-viewer'
 
 interface Room {
   id: string
@@ -27,6 +29,7 @@ interface Room {
   created_at: string
   started_at?: string
   ended_at?: string
+  study_notes?: any // AI-generated study notes for the room
 }
 
 interface Member {
@@ -66,7 +69,7 @@ export default function RoomPage() {
   const [isHost, setIsHost] = useState(false)
   const [loadingButton, setLoadingButton] = useState<string | null>(null)
   const [isRefreshingMembers, setIsRefreshingMembers] = useState(false)
-  const [memberNotification, setMemberNotification] = useState<{ type: 'join' | 'leave', username: string } | null>(null)
+  const [memberNotification, setMemberNotification] = useState<{ type: 'join' | 'leave' | 'info', username: string, message?: string } | null>(null)
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([])
   const [isUploading, setIsUploading] = useState(false)
   const [uploadErrors, setUploadErrors] = useState<string[]>([])
@@ -111,15 +114,15 @@ export default function RoomPage() {
   const [isEditingTime, setIsEditingTime] = useState(false)
   const [editingTime, setEditingTime] = useState(5) // Default 5 minutes
   const [studySessionDuration, setStudySessionDuration] = useState(5) // Default 5 minutes
-  const [includeStudySession, setIncludeStudySession] = useState(true) // Include study session by default
   
   // Notes functionality
   const [studyInstructions, setStudyInstructions] = useState('')
   const [generatedNotes, setGeneratedNotes] = useState<any>(null)
   const [isGeneratingNotes, setIsGeneratingNotes] = useState(false)
-  const [activeTab, setActiveTab] = useState<'materials' | 'notes'>('materials')
+  const [activeTab, setActiveTab] = useState<'quiz-settings' | 'study-session'>('quiz-settings')
   const supabase = createClient()
   const channelRef = useRef<any>(null)
+  const studyTimerRef = useRef<NodeJS.Timeout | null>(null)
 
   // Anti-cheat functionality
   const handleCheatDetected = async (event: CheatEvent) => {
@@ -189,12 +192,14 @@ export default function RoomPage() {
           return
         }
       }
-      // No valid session found
+      // No valid session found - redirect to login with current page as redirect
       console.log('❌ [ROOM] No user session found, redirecting to login')
-      router.push('/login')
+      const currentPath = `/room/${roomId}`
+      const redirectUrl = `/login?redirect=${encodeURIComponent(currentPath)}`
+      router.push(redirectUrl)
     }
     checkUser()
-  }, [router])
+  }, [router, roomId])
 
   // Function to fetch room members (can be called from real-time updates)
   const fetchRoomMembers = async (showLoading = false) => {
@@ -209,8 +214,7 @@ export default function RoomPage() {
         .select(`
           user_id,
           joined_at,
-          is_ready,
-          users!inner(username, email)
+          is_ready
         `)
         .eq('room_id', roomId)
 
@@ -218,11 +222,38 @@ export default function RoomPage() {
         console.error('❌ [ROOM] Error fetching members:', membersError)
       } else {
         console.log('✅ [ROOM] Members fetched:', membersData?.length || 0)
-        // Transform the data to match the Member interface
-        const transformedMembers = membersData?.map((member: any) => ({
-          ...member,
-          users: member.users?.[0] || { username: 'Unknown', email: '' }
-        })) || []
+        // Fetch usernames separately for each member
+        const transformedMembers = await Promise.all(
+          (membersData || []).map(async (member: any) => {
+            let userData = { username: 'Unknown', email: '' };
+            
+            // Fetch user info directly from users table
+            try {
+              const { data: userInfo, error: userError } = await supabase
+                .from('users')
+                .select('username, email')
+                .eq('id', member.user_id)
+                .single();
+              
+              if (!userError && userInfo) {
+                userData = {
+                  username: userInfo.username || 'Unknown',
+                  email: userInfo.email || ''
+                };
+              } else {
+                console.warn(`⚠️ [ROOM] Could not fetch user info for ${member.user_id}:`, userError);
+              }
+            } catch (err) {
+              console.error('❌ [ROOM] Error fetching user info:', err);
+            }
+            
+            return {
+              ...member,
+              users: userData
+            };
+          })
+        );
+        
         setMembers(transformedMembers)
       }
     } catch (err) {
@@ -250,6 +281,12 @@ export default function RoomPage() {
 
       setRoom(roomData)
       
+      // Load study notes from database if they exist
+      if (roomData.study_notes) {
+        setGeneratedNotes(roomData.study_notes)
+        console.log('✅ [ROOM] Loaded study notes from database')
+      }
+      
       // Check if current user is the host
       const userIsHost = roomData.host_id === currentUserId
       setIsHost(userIsHost)
@@ -266,8 +303,34 @@ export default function RoomPage() {
         .eq('status', 'active')
         .single()
 
-      if (sessionError && sessionError.code !== 'PGRST116') {
-        console.error('❌ [ROOM] Error fetching quiz session:', sessionError)
+      // PGRST116 is "not found" - this is expected when no active session exists
+      if (sessionError) {
+        // Only log actual errors, not "not found" cases or empty error objects
+        // Check if error has meaningful content before logging
+        const errorCode = sessionError.code
+        const errorMessage = sessionError.message
+        const errorDetails = sessionError.details
+        const errorHint = sessionError.hint
+        
+        // Check if error object has any meaningful properties (not empty, null, or undefined)
+        const hasErrorInfo = (
+          (errorCode && errorCode !== 'PGRST116' && errorCode.trim && errorCode.trim() !== '') ||
+          (errorMessage && errorMessage.trim && errorMessage.trim() !== '') ||
+          (errorDetails && typeof errorDetails === 'object' && Object.keys(errorDetails).length > 0) ||
+          (errorHint && errorHint.trim && errorHint.trim() !== '')
+        )
+        
+        // Only log if it's not a "not found" error and has meaningful content
+        if (errorCode !== 'PGRST116' && hasErrorInfo) {
+          console.error('❌ [ROOM] Error fetching quiz session:', {
+            code: errorCode,
+            message: errorMessage,
+            details: errorDetails,
+            hint: errorHint,
+            fullError: sessionError
+          })
+        }
+        // If it's just "not found" (PGRST116) or empty error object, that's fine - no active session
       } else if (sessionData) {
         setQuizSession(sessionData)
         console.log('🎯 [ROOM] Active quiz session found:', sessionData.id)
@@ -411,8 +474,14 @@ export default function RoomPage() {
         filter: `id=eq.${roomId}`
       }, (payload) => {
         console.log('🏠 [ROOM] Room updated:', payload.new)
+        const updatedRoom = payload.new as Room & { study_notes?: any }
         // Update room data
-        setRoom(payload.new as Room)
+        setRoom(updatedRoom)
+        // Update notes if they were changed
+        if (updatedRoom.study_notes) {
+          setGeneratedNotes(updatedRoom.study_notes)
+          console.log('✅ [ROOM] Study notes updated via real-time')
+        }
       })
       .subscribe((status, err) => {
         console.log('📡 [ROOM] Room channel subscription status:', status)
@@ -495,6 +564,26 @@ export default function RoomPage() {
       supabase.removeChannel(sessionChannel)
     }
   }, [quizSession, supabase, currentUserId])
+
+  // Auto-start quiz if redirected from login with action=start-quiz
+  useEffect(() => {
+    const action = searchParams?.get('action')
+    if (action === 'start-quiz' && room && isHost && currentUserId && !isStartingQuiz && !loading) {
+      // Remove the action parameter from URL
+      const newUrl = new URL(window.location.href)
+      newUrl.searchParams.delete('action')
+      window.history.replaceState({}, '', newUrl.pathname + newUrl.search)
+      
+      // Auto-start quiz after a short delay to ensure everything is loaded
+      const timer = setTimeout(() => {
+        console.log('🚀 [ROOM] Auto-starting quiz after login redirect')
+        handleStartQuiz()
+      }, 1000)
+      
+      return () => clearTimeout(timer)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [room, isHost, currentUserId, searchParams, isStartingQuiz, loading])
 
   // Cleanup on unmount
   useEffect(() => {
@@ -607,7 +696,16 @@ export default function RoomPage() {
   }
 
   // Generate study notes based on instructions and uploaded files
+  // Matches singleplayer quality by including all necessary parameters
   const generateStudyNotes = async () => {
+    // Check authentication first
+    if (!currentUserId) {
+      const currentPath = `/room/${roomId}`
+      const redirectUrl = `/login?redirect=${encodeURIComponent(currentPath)}`
+      router.push(redirectUrl)
+      return
+    }
+    
     if (!studyInstructions.trim() && uploadedFiles.length === 0) {
       alert('Please provide study instructions or upload study materials first.')
       return
@@ -622,9 +720,19 @@ export default function RoomPage() {
         formData.append('files', file)
       })
       
-      // Add study instructions
+      // Add study instructions and topic (matching singleplayer format)
+      const battleTopic = studyInstructions || 'General Study Topic'
+      formData.append('topic', battleTopic)
       formData.append('instructions', studyInstructions)
-      formData.append('topic', studyInstructions || 'General Study Topic')
+      
+      // Add difficulty and education level for better note quality (matching singleplayer)
+      formData.append('difficulty', quizSettings.difficulty)
+      formData.append('educationLevel', quizSettings.educationLevel)
+      
+      // Add content focus if specified
+      if (quizSettings.contentFocus) {
+        formData.append('contentFocus', quizSettings.contentFocus)
+      }
 
       const response = await fetch('/api/notes', {
         method: 'POST',
@@ -633,12 +741,31 @@ export default function RoomPage() {
 
       if (response.ok) {
         const result = await response.json()
-        setGeneratedNotes(result.notes)
-        console.log('✅ [ROOM] Study notes generated successfully')
+        if (result.success) {
+          setGeneratedNotes(result.notes)
+          console.log('✅ [ROOM] Study notes generated successfully')
+          
+          // Store notes in database so all room members can see them
+          if (room) {
+            const { error: updateError } = await supabase
+              .from('game_rooms')
+              .update({ study_notes: result.notes })
+              .eq('id', room.id)
+            
+            if (updateError) {
+              console.error('❌ [ROOM] Failed to save notes to database:', updateError)
+            } else {
+              console.log('✅ [ROOM] Notes saved to database for room sharing')
+            }
+          }
+        } else {
+          console.error('❌ [ROOM] Failed to generate notes:', result.error)
+          alert(result.error || 'Failed to generate study notes. Please try again.')
+        }
       } else {
         const error = await response.json()
         console.error('❌ [ROOM] Failed to generate notes:', error)
-        alert('Failed to generate study notes. Please try again.')
+        alert(error.error || 'Failed to generate study notes. Please try again.')
       }
     } catch (error) {
       console.error('❌ [ROOM] Error generating notes:', error)
@@ -656,24 +783,137 @@ export default function RoomPage() {
     console.log('🚀 [ROOM] Starting quiz with settings:', quizSettings)
     
     try {
-      // Create quiz session
+      // Check current session via API to ensure user is authenticated
+      const sessionCheckResponse = await fetch('/api/user/current')
+      let verifiedUserId: string | null = null
+      
+      if (sessionCheckResponse.ok) {
+        const sessionData = await sessionCheckResponse.json()
+        if (sessionData.success && sessionData.userId) {
+          verifiedUserId = sessionData.userId
+          console.log('✅ [ROOM] Session verified, user ID:', verifiedUserId)
+        }
+      }
+      
+      // If no valid session, redirect to login with redirect parameter
+      if (!verifiedUserId) {
+        console.warn('⚠️ [ROOM] No valid session found, redirecting to login')
+        const currentPath = `/room/${roomId}`
+        const redirectUrl = `/login?redirect=${encodeURIComponent(currentPath)}&action=start-quiz`
+        router.push(redirectUrl)
+        setIsStartingQuiz(false)
+        return
+      }
+      
+      // Update currentUserId if it was missing
+      if (!currentUserId && verifiedUserId) {
+        setCurrentUserId(verifiedUserId)
+      }
+      
+      // Use verified user ID
+      const userIdToUse = verifiedUserId || currentUserId
+      
+      if (!userIdToUse) {
+        console.error('❌ [ROOM] No user ID available after session check')
+        alert('You must be logged in to start a quiz.')
+        setIsStartingQuiz(false)
+        return
+      }
+
+      console.log('🔍 [ROOM] Checking room membership for user:', userIdToUse, 'room:', room.id)
+      
+      // Check if user is in room_members
+      const { data: memberCheck, error: memberError } = await supabase
+        .from('room_members')
+        .select('user_id, room_id')
+        .eq('room_id', room.id)
+        .eq('user_id', userIdToUse)
+        .maybeSingle()
+
+      if (memberError) {
+        console.error('❌ [ROOM] Error checking room membership:', {
+          code: memberError.code,
+          message: memberError.message,
+          details: memberError.details
+        })
+      }
+
+      // If user is not a member, add them (host should always be a member)
+      if (!memberCheck) {
+        console.log('⚠️ [ROOM] User not in room_members, adding as host...')
+        const { data: newMember, error: addMemberError } = await supabase
+          .from('room_members')
+          .insert({
+            room_id: room.id,
+            user_id: userIdToUse,
+            is_ready: false
+          })
+          .select()
+          .single()
+
+        if (addMemberError) {
+          console.error('❌ [ROOM] Failed to add user to room_members:', {
+            code: addMemberError.code,
+            message: addMemberError.message,
+            details: addMemberError.details,
+            hint: addMemberError.hint
+          })
+          alert(`Failed to verify room membership: ${addMemberError.message || 'Unknown error'}. Please try refreshing the page.`)
+          setIsStartingQuiz(false)
+          return
+        }
+        console.log('✅ [ROOM] User added to room_members:', newMember)
+      } else {
+        console.log('✅ [ROOM] User is already in room_members')
+      }
+
+      // Create quiz session using the correct schema (is_active, not status)
+      console.log('🚀 [ROOM] Creating quiz session with data:', {
+        room_id: room.id,
+        session_name: room.name ? `${room.name} Quiz` : 'Quiz Session',
+        total_questions: quizSettings.totalQuestions,
+        current_question: 0,
+        time_limit: quizSettings.timeLimit,
+        is_active: true
+      })
+
       const { data: sessionData, error: sessionError } = await supabase
         .from('quiz_sessions')
         .insert({
           room_id: room.id,
-          session_name: `${room.name} Quiz`,
+          session_name: room.name ? `${room.name} Quiz` : 'Quiz Session',
           total_questions: quizSettings.totalQuestions,
           current_question: 0,
           time_limit: quizSettings.timeLimit,
-          status: 'active',
+          is_active: true,
           started_at: new Date().toISOString()
         })
         .select()
         .single()
 
       if (sessionError) {
-        console.error('❌ [ROOM] Error creating quiz session:', sessionError)
-        alert('Failed to start quiz. Please try again.')
+        console.error('❌ [ROOM] Error creating quiz session:', {
+          code: sessionError.code,
+          message: sessionError.message,
+          details: sessionError.details,
+          hint: sessionError.hint,
+          fullError: JSON.stringify(sessionError, null, 2)
+        })
+        
+        // Provide user-friendly error messages based on error code
+        let errorMessage = 'Failed to start quiz. '
+        if (sessionError.code === '42501') {
+          errorMessage += 'Permission denied. You may not have access to create quiz sessions in this room.'
+        } else if (sessionError.code === '23503') {
+          errorMessage += 'Invalid room reference. The room may not exist.'
+        } else if (sessionError.code === '23505') {
+          errorMessage += 'A quiz session already exists for this room.'
+        } else {
+          errorMessage += sessionError.message || 'Unknown error occurred.'
+        }
+        
+        alert(errorMessage)
+        setIsStartingQuiz(false)
         return
       }
 
@@ -708,35 +948,72 @@ export default function RoomPage() {
 
       // Generate quiz questions
       try {
+        const quizRequestBody: any = {
+          topic: room.subject || 'General Knowledge',
+          difficulty: quizSettings.difficulty,
+          totalQuestions: quizSettings.totalQuestions,
+          sessionId: sessionData.id,
+          contentFocus: quizSettings.contentFocus,
+          includeDiagrams: quizSettings.includeDiagrams,
+          educationLevel: quizSettings.educationLevel
+        }
+        
+        // Include study notes if they exist (for better quiz quality)
+        if (generatedNotes) {
+          quizRequestBody.studyNotes = generatedNotes
+        }
+        
+        console.log('📝 [ROOM] Generating quiz with request:', {
+          ...quizRequestBody,
+          studyNotes: generatedNotes ? 'provided' : 'not provided'
+        })
+        
         const questionsResponse = await fetch('/api/generate-quiz', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            topic: room.subject || 'General Knowledge',
-            difficulty: quizSettings.difficulty,
-            totalQuestions: quizSettings.totalQuestions,
-            sessionId: sessionData.id,
-            contentFocus: quizSettings.contentFocus,
-            includeDiagrams: quizSettings.includeDiagrams,
-            educationLevel: quizSettings.educationLevel
-          })
+          body: JSON.stringify(quizRequestBody)
         })
 
         if (questionsResponse.ok) {
           const questionsResult = await questionsResponse.json()
-          console.log('✅ [ROOM] Quiz questions generated successfully')
-          
-          // Redirect all players to the battle page
-          router.push(`/room/${room.id}/battle`)
+          if (questionsResult.success) {
+            console.log('✅ [ROOM] Quiz questions generated successfully')
+            
+            // Redirect all players to the battle page
+            router.push(`/room/${room.id}/battle`)
+          } else {
+            console.error('❌ [ROOM] Quiz generation failed:', questionsResult.error || 'Unknown error')
+            alert(`Failed to generate quiz questions: ${questionsResult.error || 'Unknown error'}. Please try again.`)
+            setIsStartingQuiz(false)
+          }
         } else {
-          console.error('❌ [ROOM] Failed to generate quiz questions')
-          alert('Failed to generate quiz questions. Please try again.')
+          // Try to get error message from response
+          let errorMessage = 'Failed to generate quiz questions'
+          try {
+            const errorData = await questionsResponse.json()
+            errorMessage = errorData.error || errorMessage
+          } catch {
+            // If response isn't JSON, use status text
+            errorMessage = `${errorMessage} (${questionsResponse.status}: ${questionsResponse.statusText})`
+          }
+          
+          console.error('❌ [ROOM] Failed to generate quiz questions:', {
+            status: questionsResponse.status,
+            statusText: questionsResponse.statusText,
+            error: errorMessage
+          })
+          alert(`${errorMessage}. Please try again.`)
+          setIsStartingQuiz(false)
         }
-      } catch (error) {
-        console.error('❌ [ROOM] Error generating quiz questions:', error)
-        alert('Failed to generate quiz questions. Please try again.')
+      } catch (error: any) {
+        console.error('❌ [ROOM] Error generating quiz questions:', {
+          error: error.message || error,
+          stack: error.stack
+        })
+        alert(`Failed to generate quiz questions: ${error.message || 'Network error'}. Please check your connection and try again.`)
+        setIsStartingQuiz(false)
       }
       
     } catch (error) {
@@ -757,18 +1034,45 @@ export default function RoomPage() {
 
   // Study session functionality
   const startStudySession = async () => {
-    if (!isHost || !room || uploadedFiles.length === 0) return
-    
-    setIsStartingStudySession(true)
-    console.log('📚 [ROOM] Starting study session...')
-    
-    // If study session is not included, skip directly to quiz
-    if (!includeStudySession) {
-      console.log('📚 [ROOM] Skipping study session, starting quiz directly...')
-      setIsStartingStudySession(false)
-      // TODO: Implement direct quiz start
+    // Check authentication first
+    if (!currentUserId) {
+      const currentPath = `/room/${roomId}`
+      const redirectUrl = `/login?redirect=${encodeURIComponent(currentPath)}`
+      router.push(redirectUrl)
       return
     }
+    
+    if (!isHost || !room) return
+    
+    // If notes are already generated, just start the timer
+    if (generatedNotes) {
+      console.log('📚 [ROOM] Starting study session with existing notes...')
+      
+      // Generate additional resources if not already generated
+      const resources = studySession.resources.notes.length > 0 
+        ? studySession.resources 
+        : await generateStudyResources(room.subject || 'Study Session', generatedNotes)
+      
+      setStudySession({
+        isActive: true,
+        timeRemaining: studySessionDuration * 60, // Convert minutes to seconds
+        studyMaterials: generatedNotes,
+        resources: resources
+      })
+      
+      // Start countdown timer
+      startStudyTimer()
+      return
+    }
+    
+    // Require either uploaded files or study instructions if notes don't exist
+    if (uploadedFiles.length === 0 && !studyInstructions.trim()) {
+      alert('Please generate study notes first, or upload study materials and provide study instructions.')
+      return
+    }
+    
+    setIsStartingStudySession(true)
+    console.log('📚 [ROOM] Starting study session and generating notes...')
     
     try {
       // Generate study materials from uploaded files
@@ -777,7 +1081,12 @@ export default function RoomPage() {
         formData.append('files', file)
       })
       formData.append('topic', room.subject || 'Study Session')
+      formData.append('instructions', studyInstructions)
       formData.append('difficulty', quizSettings.difficulty)
+      formData.append('educationLevel', quizSettings.educationLevel)
+      if (quizSettings.contentFocus) {
+        formData.append('contentFocus', quizSettings.contentFocus)
+      }
       
       const response = await fetch('/api/notes', {
         method: 'POST',
@@ -787,6 +1096,22 @@ export default function RoomPage() {
       const result = await response.json()
       
       if (result.success) {
+        // Store notes in database so all room members can see them
+        if (room) {
+          const { error: updateError } = await supabase
+            .from('game_rooms')
+            .update({ study_notes: result.notes })
+            .eq('id', room.id)
+          
+          if (updateError) {
+            console.error('❌ [ROOM] Failed to save notes to database:', updateError)
+          } else {
+            console.log('✅ [ROOM] Notes saved to database for room sharing')
+            // Also update local state
+            setGeneratedNotes(result.notes)
+          }
+        }
+        
         // Generate additional resources
         const resources = await generateStudyResources(room.subject || 'Study Session', result.notes)
         
@@ -833,16 +1158,45 @@ export default function RoomPage() {
   }
 
   const startStudyTimer = () => {
-    const timer = setInterval(() => {
+    // Clear any existing timer
+    if (studyTimerRef.current) {
+      clearInterval(studyTimerRef.current)
+      studyTimerRef.current = null
+    }
+    
+    // Start new timer
+    studyTimerRef.current = setInterval(() => {
       setStudySession(prev => {
         if (prev.timeRemaining <= 1) {
-          clearInterval(timer)
+          // Clear timer when it reaches 0
+          if (studyTimerRef.current) {
+            clearInterval(studyTimerRef.current)
+            studyTimerRef.current = null
+          }
+          // Notify all users that study session has ended
+          setMemberNotification({
+            type: 'info',
+            username: 'System',
+            message: 'Study session has ended! The host can now start the quiz.'
+          })
+          // Auto-dismiss notification after 10 seconds
+          setTimeout(() => setMemberNotification(null), 10000)
           return { ...prev, isActive: false, timeRemaining: 0 }
         }
         return { ...prev, timeRemaining: prev.timeRemaining - 1 }
       })
     }, 1000)
   }
+  
+  // Cleanup timer on unmount
+  useEffect(() => {
+    return () => {
+      if (studyTimerRef.current) {
+        clearInterval(studyTimerRef.current)
+        studyTimerRef.current = null
+      }
+    }
+  }, [])
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
@@ -880,10 +1234,13 @@ export default function RoomPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-        <div className="text-center">
-          <Brain className="h-12 w-12 text-indigo-600 mx-auto mb-4 animate-pulse" />
-          <p className="text-gray-600">Loading room...</p>
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 flex items-center justify-center">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl animate-float" />
+        </div>
+        <div className="relative z-10 text-center">
+          <Brain className="h-12 w-12 text-blue-400 mx-auto mb-4 animate-pulse" strokeWidth={3} />
+          <p className="text-blue-200 font-bold">Loading room...</p>
         </div>
       </div>
     )
@@ -891,13 +1248,16 @@ export default function RoomPage() {
 
   if (error || !room) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
-        <div className="text-center">
-          <Brain className="h-12 w-12 text-red-600 mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Room Not Found</h1>
-          <p className="text-gray-600 mb-6">{error}</p>
-          <Link href="/" className="text-indigo-600 hover:text-indigo-700 font-medium">
-            Return to Home
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 flex items-center justify-center">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl animate-float" />
+        </div>
+        <div className="relative z-10 text-center">
+          <Brain className="h-12 w-12 text-red-400 mx-auto mb-4" strokeWidth={3} />
+          <h1 className="text-2xl font-black text-white mb-2">Room Not Found</h1>
+          <p className="text-blue-100/80 mb-6 font-bold">{error}</p>
+          <Link href="/dashboard" className="text-blue-300 hover:text-blue-200 font-bold transition-colors">
+            Return to Dashboard
           </Link>
         </div>
       </div>
@@ -914,7 +1274,17 @@ export default function RoomPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl animate-float" />
+        <div
+          className="absolute -bottom-40 -left-40 w-80 h-80 bg-orange-500/20 rounded-full blur-3xl animate-float"
+          style={{ animationDelay: "1s" }}
+        />
+      </div>
+      
+      <div className="relative z-10">
       {/* Cheat Alert Container */}
       <CheatAlertContainer 
         alerts={cheatAlerts}
@@ -927,17 +1297,24 @@ export default function RoomPage() {
           <div className={`px-4 py-3 rounded-lg shadow-lg font-bold flex items-center gap-2 ${
             memberNotification.type === 'join' 
               ? 'bg-green-500 text-white' 
-              : 'bg-orange-500 text-white'
+              : memberNotification.type === 'leave'
+              ? 'bg-orange-500 text-white'
+              : 'bg-blue-500 text-white'
           }`}>
             {memberNotification.type === 'join' ? (
               <>
                 <Users className="h-4 w-4" strokeWidth={3} />
                 {memberNotification.username} joined the room!
               </>
-            ) : (
+            ) : memberNotification.type === 'leave' ? (
               <>
                 <Users className="h-4 w-4" strokeWidth={3} />
                 {memberNotification.username} left the room
+              </>
+            ) : (
+              <>
+                <Brain className="h-4 w-4" strokeWidth={3} />
+                {memberNotification.message || memberNotification.username}
               </>
             )}
           </div>
@@ -945,43 +1322,157 @@ export default function RoomPage() {
       )}
       
       <div className="container mx-auto px-4 py-8">
+        {/* Study Session Configuration - At Top for Host */}
+        {isHost && !studySession.isActive && (
+          <div className="mb-6 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 rounded-2xl p-6 shadow-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center border-2 border-orange-400">
+                  <Clock className="h-7 w-7 text-white" strokeWidth={3} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-white mb-1">Study Session Duration</h3>
+                  <p className="text-sm text-blue-100/80 font-bold">Set how long players have to study before the quiz</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
+                  <label htmlFor="studyTimeTop" className="text-base font-bold text-white">
+                    Duration (minutes):
+                  </label>
+                  <input
+                    id="studyTimeTop"
+                    type="number"
+                    min="1"
+                    max="60"
+                    value={studySessionDuration}
+                    onChange={(e) => {
+                      const inputValue = e.target.value
+                      // Allow empty input for editing
+                      if (inputValue === '') {
+                        setStudySessionDuration(0)
+                        return
+                      }
+                      const value = parseInt(inputValue)
+                      if (!isNaN(value)) {
+                        setStudySessionDuration(Math.max(1, Math.min(60, value)))
+                      }
+                    }}
+                    onBlur={(e) => {
+                      // Ensure a valid value when user leaves the field
+                      if (studySessionDuration < 1 || studySessionDuration > 60) {
+                        setStudySessionDuration(5)
+                      }
+                    }}
+                    className="w-24 px-4 py-2 text-center font-black rounded-xl border-4 border-orange-400 bg-slate-900 text-white text-lg focus:border-orange-300 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Study Session Timer - Visible at Top when Active (All Users) */}
+        {studySession.isActive && (
+          <div className="mb-6 bg-gradient-to-br from-orange-500/20 to-blue-500/20 border-4 border-orange-400/50 rounded-2xl p-6 shadow-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center border-2 border-orange-400">
+                  <Clock className="h-7 w-7 text-white" strokeWidth={3} />
+                </div>
+                <div>
+                  <h3 className="text-xl font-black text-white mb-1">Study Session Active</h3>
+                  <p className="text-sm text-blue-100/80 font-bold">Time remaining to review materials</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="text-right">
+                  <div className="text-4xl font-black text-orange-400">{formatTime(studySession.timeRemaining)}</div>
+                  <div className="text-sm text-blue-100/70 font-bold">Time Remaining</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div className="flex items-center">
-            <Link href="/" className="text-primary hover:text-primary/80 mr-4 cartoon-hover">
+            <Link href="/dashboard" className="text-blue-300 hover:text-blue-200 mr-4 transition-colors">
               <ArrowLeft className="h-6 w-6" strokeWidth={3} />
             </Link>
             <div>
               <div className="flex items-center gap-3 mb-1">
-                <h1 className="text-4xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
+                <h1 className="text-4xl font-black text-white" style={{ fontFamily: "var(--font-display)" }}>
                   {room.name}
                 </h1>
                 {isHost && (
-                  <div className="flex items-center gap-1 px-3 py-1 bg-chart-3 text-foreground rounded-full cartoon-border">
+                  <div className="flex items-center gap-1 px-3 py-1 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-full border-2 border-orange-400">
                     <Crown className="h-4 w-4" strokeWidth={3} />
                     <span className="text-xs font-black">HOST</span>
                   </div>
                 )}
               </div>
-              <p className="text-muted-foreground font-bold">Room Code: <span className="font-black text-primary">{room.room_code}</span></p>
+              <div className="flex items-center gap-3">
+                <p className="text-blue-100/80 font-bold">Room Code: <span className="font-black text-blue-300">{room.room_code}</span></p>
+                <button
+                  onClick={copyRoomCode}
+                  className="flex items-center px-3 py-1.5 bg-gradient-to-br from-slate-800 to-slate-900 border-2 border-slate-600/50 rounded-lg shadow-lg hover:border-blue-400/50 transition-colors font-bold text-white"
+                >
+                  {copied ? (
+                    <>
+                      <Check className="h-3 w-3 text-green-400 mr-1.5" strokeWidth={3} />
+                      <span className="text-green-400 text-sm">Copied!</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-3 w-3 text-blue-300 mr-1.5" strokeWidth={3} />
+                      <span className="text-blue-300 text-sm">Copy</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
-          <button
-            onClick={copyRoomCode}
-            className="flex items-center px-4 py-3 bg-card rounded-xl cartoon-border cartoon-shadow cartoon-hover font-bold"
-          >
-            {copied ? (
-              <>
-                <Check className="h-4 w-4 text-chart-3 mr-2" strokeWidth={3} />
-                Copied!
-              </>
-            ) : (
-              <>
-                <Copy className="h-4 w-4 text-primary mr-2" strokeWidth={3} />
-                Copy Code
-              </>
-            )}
-          </button>
+          {isHost && (
+            <div className="flex items-center gap-3">
+              <button
+                onClick={startStudySession}
+                disabled={(!generatedNotes && uploadedFiles.length === 0 && !studyInstructions.trim()) || studySession.isActive || isStartingStudySession}
+                className="flex items-center px-6 py-3 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-xl border-4 border-orange-400 shadow-lg hover:border-orange-300 transition-colors font-black text-lg disabled:bg-slate-700/50 disabled:text-blue-100/70 disabled:border-slate-600/50 disabled:cursor-not-allowed"
+              >
+                {isStartingStudySession ? (
+                  <>
+                    <Loader2 className="h-5 w-5 mr-2 animate-spin" strokeWidth={3} />
+                    Starting...
+                  </>
+                ) : (
+                  <>
+                    <Brain className="h-5 w-5 mr-2" strokeWidth={3} />
+                    Start Study Session
+                  </>
+                )}
+              </button>
+              
+              <button
+                onClick={handleStartQuiz}
+                disabled={isStartingQuiz}
+                className="flex items-center px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl border-4 border-blue-400 shadow-lg hover:border-blue-300 transition-colors font-black text-lg disabled:bg-slate-700/50 disabled:text-blue-100/70 disabled:border-slate-600/50 disabled:cursor-not-allowed"
+              >
+                {isStartingQuiz ? (
+                  <>
+                    <Loader2 className="h-5 w-5 mr-2 animate-spin" strokeWidth={3} />
+                    Starting...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="h-5 w-5 mr-2" strokeWidth={3} />
+                    Start Quiz
+                  </>
+                )}
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Quiz Progress Bar - Show when quiz is active */}
@@ -1000,9 +1491,9 @@ export default function RoomPage() {
         {/* Player Progress Indicators */}
         {room.status === 'active' && members.length > 0 && (
           <div className="mb-8">
-            <div className="bg-card rounded-2xl cartoon-border cartoon-shadow p-6">
-              <h3 className="text-2xl font-black text-foreground mb-4 flex items-center gap-2" style={{ fontFamily: "var(--font-display)" }}>
-                <Users className="h-6 w-6 text-primary" strokeWidth={3} />
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 rounded-2xl shadow-lg p-6">
+              <h3 className="text-2xl font-black text-white mb-4 flex items-center gap-2" style={{ fontFamily: "var(--font-display)" }}>
+                <Users className="h-6 w-6 text-blue-400" strokeWidth={3} />
                 Live Progress
               </h3>
               <div className="flex flex-wrap gap-4">
@@ -1012,9 +1503,9 @@ export default function RoomPage() {
                   const progressPercent = room.total_questions > 0 ? (progress.currentQuestion / room.total_questions) * 100 : 0
                   
                   return (
-                    <div key={member.user_id} className="flex items-center gap-4 p-4 bg-secondary/30 rounded-xl cartoon-border min-w-[220px] cartoon-hover">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center cartoon-border ${
-                        isMemberHost ? 'bg-chart-3 text-foreground' : 'bg-primary text-primary-foreground'
+                    <div key={member.user_id} className="flex items-center gap-4 p-4 bg-slate-700/30 rounded-xl border-2 border-slate-600/50 min-w-[220px] cartoon-hover">
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center border-2 border-slate-600/50 ${
+                        isMemberHost ? 'bg-gradient-to-r from-orange-500 to-orange-600 text-white' : 'bg-gradient-to-r from-blue-500 to-blue-600 text-blue-400-foreground'
                       }`}>
                         {isMemberHost ? (
                           <Crown className="h-6 w-6" strokeWidth={3} />
@@ -1026,28 +1517,28 @@ export default function RoomPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-2">
-                          <p className="font-black text-foreground text-sm truncate">{member.users.username}</p>
+                          <p className="font-black text-white text-sm truncate">{member.users.username}</p>
                           {isMemberHost && (
-                            <span className="text-xs font-black text-foreground bg-chart-3 px-2 py-1 rounded-full cartoon-border">
+                            <span className="text-xs font-black text-white bg-gradient-to-r from-orange-500 to-orange-600 px-2 py-1 rounded-full border-2 border-slate-600/50">
                               HOST
                             </span>
                           )}
                         </div>
                         <div className="space-y-2">
-                          <div className="flex justify-between text-xs font-bold text-muted-foreground">
+                          <div className="flex justify-between text-xs font-bold text-blue-100/70">
                             <span>Q: {progress.currentQuestion}/{room.total_questions}</span>
                             <span>Score: {progress.score}</span>
                           </div>
-                          <div className="w-full bg-muted rounded-full h-2 cartoon-border">
+                          <div className="w-full bg-slate-700/50 rounded-full h-2 border-2 border-slate-600/50">
                             <div 
-                              className="bg-primary h-2 rounded-full transition-all duration-300"
+                              className="bg-gradient-to-r from-blue-500 to-blue-600 h-2 rounded-full transition-all duration-300"
                               style={{ width: `${progressPercent}%` }}
                             ></div>
                           </div>
                         </div>
                       </div>
-                      <div className={`w-3 h-3 rounded-full cartoon-border ${
-                        progress.isActive ? 'bg-chart-3 animate-pulse' : 'bg-muted-foreground'
+                      <div className={`w-3 h-3 rounded-full border-2 border-slate-600/50 ${
+                        progress.isActive ? 'bg-gradient-to-r from-orange-500 to-orange-600 animate-pulse' : 'bg-slate-700/50-foreground'
                       }`} title={progress.isActive ? 'Active' : 'Inactive'}></div>
                     </div>
                   )
@@ -1057,120 +1548,18 @@ export default function RoomPage() {
           </div>
         )}
 
-        {/* Study Session */}
-        {studySession.isActive && (
-          <div className="mb-8">
-            <div className="bg-gradient-to-r from-chart-3/10 to-primary/10 rounded-2xl cartoon-border cartoon-shadow p-6 border-2 border-chart-3">
-              <div className="flex items-center justify-between mb-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 bg-chart-3 rounded-full flex items-center justify-center cartoon-border cartoon-shadow">
-                    <Brain className="h-7 w-7 text-foreground" strokeWidth={3} />
-                  </div>
-                  <div>
-                    <h3 className="text-2xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
-                      Study Session Active
-                    </h3>
-                    <p className="text-sm text-muted-foreground font-bold">Use this time to review materials and prepare for the quiz</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-4xl font-black text-chart-3">{formatTime(studySession.timeRemaining)}</div>
-                  <div className="text-sm text-muted-foreground font-bold">Time Remaining</div>
-                  {isHost && (
-                    <button
-                      onClick={handleEditTime}
-                      className="mt-2 text-xs text-primary hover:text-primary/80 font-bold transition-colors"
-                    >
-                      Edit Time
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid md:grid-cols-3 gap-6">
-                {/* Study Notes */}
-                <div className="bg-card rounded-xl p-4 cartoon-border cartoon-shadow">
-                  <h4 className="font-black text-foreground mb-3 flex items-center gap-2">
-                    <FileText className="h-5 w-5 text-secondary" strokeWidth={3} />
-                    Study Notes
-                  </h4>
-                  <div className="space-y-2 max-h-40 overflow-y-auto">
-                    {studySession.resources.notes.map((note, index) => (
-                      <div key={index} className="text-sm text-foreground bg-secondary/30 p-3 rounded-lg cartoon-border font-bold">
-                        {note}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Study Links */}
-                <div className="bg-card rounded-xl p-4 cartoon-border cartoon-shadow">
-                  <h4 className="font-black text-foreground mb-3 flex items-center gap-2">
-                    <Settings className="h-5 w-5 text-accent" strokeWidth={3} />
-                    Study Links
-                  </h4>
-                  <div className="space-y-2">
-                    {studySession.resources.links.map((link, index) => (
-                      <a
-                        key={index}
-                        href={link.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block text-sm text-primary hover:text-primary/80 bg-primary/10 p-3 rounded-lg cartoon-border cartoon-hover font-bold transition-all"
-                      >
-                        {link.title}
-                      </a>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Video Resources */}
-                <div className="bg-card rounded-xl p-4 cartoon-border cartoon-shadow">
-                  <h4 className="font-black text-foreground mb-3 flex items-center gap-2">
-                    <Upload className="h-5 w-5 text-chart-3" strokeWidth={3} />
-                    Video Resources
-                  </h4>
-                  <div className="space-y-2">
-                    {studySession.resources.videos.map((video, index) => (
-                      <a
-                        key={index}
-                        href={video.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block text-sm text-chart-3 hover:text-chart-3/80 bg-chart-3/10 p-3 rounded-lg cartoon-border cartoon-hover font-bold transition-all"
-                      >
-                        {video.title}
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {isHost && (
-                <div className="mt-6 flex justify-center">
-                  <button
-                    onClick={() => setStudySession(prev => ({ ...prev, isActive: false }))}
-                    className="bg-chart-3 text-foreground px-6 py-3 rounded-xl cartoon-border cartoon-shadow cartoon-hover font-black text-lg"
-                  >
-                    End Study Session & Start Quiz
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Time Editing Modal */}
         {isEditingTime && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-            <div className="bg-card rounded-xl p-6 cartoon-border cartoon-shadow max-w-md w-full mx-4">
-              <h3 className="text-xl font-black text-foreground mb-4 flex items-center gap-2">
-                <Clock className="h-5 w-5 text-primary" strokeWidth={3} />
+            <div className="bg-card rounded-xl p-6 border-2 border-slate-600/50 cartoon-shadow max-w-md w-full mx-4">
+              <h3 className="text-xl font-black text-white mb-4 flex items-center gap-2">
+                <Clock className="h-5 w-5 text-blue-400" strokeWidth={3} />
                 Edit Study Session Time
               </h3>
               <div className="space-y-4">
                 <div>
-                  <label htmlFor="editTime" className="text-sm font-bold text-foreground mb-2 block">
+                  <label htmlFor="editTime" className="text-sm font-bold text-white mb-2 block">
                     New Duration (minutes):
                   </label>
                   <input
@@ -1182,20 +1571,20 @@ export default function RoomPage() {
                       const value = parseInt(e.target.value) || 1
                       setEditingTime(Math.max(1, value))
                     }}
-                    className="w-full px-4 py-3 text-center font-bold rounded-lg cartoon-border bg-card text-foreground"
+                    className="w-full px-4 py-3 text-center font-bold rounded-lg border-2 border-slate-600/50 bg-card text-white"
                     autoFocus
                   />
                 </div>
                 <div className="flex gap-3">
                   <button
                     onClick={handleSaveTime}
-                    className="flex-1 bg-primary text-primary-foreground py-2 px-4 rounded-lg font-black cartoon-border cartoon-shadow cartoon-hover"
+                    className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 text-blue-400-foreground py-2 px-4 rounded-lg font-black border-2 border-slate-600/50 cartoon-shadow cartoon-hover"
                   >
                     Save
                   </button>
                   <button
                     onClick={handleCancelEditTime}
-                    className="flex-1 bg-muted text-muted-foreground py-2 px-4 rounded-lg font-black cartoon-border cartoon-shadow cartoon-hover"
+                    className="flex-1 bg-slate-700/50 text-blue-100/70 py-2 px-4 rounded-lg font-black border-2 border-slate-600/50 cartoon-shadow cartoon-hover"
                   >
                     Cancel
                   </button>
@@ -1209,18 +1598,18 @@ export default function RoomPage() {
           {/* Main Content */}
           <div className="lg:col-span-2 space-y-6">
             {/* Members */}
-            <div className="bg-card rounded-2xl cartoon-border cartoon-shadow p-6">
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 rounded-2xl shadow-lg p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center">
-                  <Users className="h-6 w-6 text-primary mr-2" strokeWidth={3} />
-                  <h2 className="text-2xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
+                  <Users className="h-6 w-6 text-blue-400 mr-2" strokeWidth={3} />
+                  <h2 className="text-2xl font-black text-white" style={{ fontFamily: "var(--font-display)" }}>
                     Members ({members.length})
                   </h2>
                 </div>
                 <button
                   onClick={() => fetchRoomMembers(true)}
                   disabled={isRefreshingMembers}
-                  className="p-3 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded-xl cartoon-border cartoon-hover transition-all disabled:opacity-50"
+                  className="p-3 text-blue-100/70 hover:text-blue-300 hover:bg-blue-500/20 rounded-xl border-2 border-slate-600/50 transition-all disabled:opacity-50"
                   title="Refresh members list"
                 >
                   <RefreshCw className={`h-5 w-5 ${isRefreshingMembers ? 'animate-spin' : ''}`} strokeWidth={3} />
@@ -1230,10 +1619,10 @@ export default function RoomPage() {
                 {members.map((member) => {
                   const isMemberHost = member.user_id === room.host_id
                   return (
-                    <div key={member.user_id} className="flex items-center justify-between p-4 bg-secondary/30 rounded-xl cartoon-border cartoon-hover">
+                    <div key={member.user_id} className="flex items-center justify-between p-4 bg-slate-700/30 rounded-xl border-2 border-slate-600/50 hover:border-blue-400/50 transition-colors">
                       <div className="flex items-center gap-4">
-                        <div className={`w-12 h-12 rounded-full flex items-center justify-center cartoon-border ${
-                          isMemberHost ? 'bg-chart-3 text-foreground' : 'bg-primary text-primary-foreground'
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center border-2 ${
+                          isMemberHost ? 'bg-gradient-to-br from-orange-500 to-orange-600 text-white border-orange-400' : 'bg-gradient-to-br from-blue-500 to-blue-600 text-white border-blue-400'
                         }`}>
                           {isMemberHost ? (
                             <Crown className="h-6 w-6" strokeWidth={3} />
@@ -1245,17 +1634,17 @@ export default function RoomPage() {
                         </div>
                         <div>
                           <div className="flex items-center gap-3">
-                            <p className="font-black text-foreground text-lg">{member.users.username}</p>
+                            <p className="font-black text-white text-lg">{member.users.username}</p>
                             {isMemberHost && (
-                              <span className="text-xs font-black text-foreground bg-chart-3 px-3 py-1 rounded-full cartoon-border">
+                              <span className="text-xs font-black text-white bg-gradient-to-r from-orange-500 to-orange-600 px-3 py-1 rounded-full border-2 border-orange-400">
                                 HOST
                               </span>
                             )}
-                            <div className={`w-3 h-3 rounded-full cartoon-border ${
-                              member.is_ready ? 'bg-chart-3 animate-pulse' : 'bg-muted-foreground'
+                            <div className={`w-3 h-3 rounded-full border-2 ${
+                              member.is_ready ? 'bg-green-400 border-green-300 animate-pulse' : 'bg-slate-500 border-slate-400'
                             }`} title={member.is_ready ? 'Ready' : 'Not Ready'}></div>
                           </div>
-                          <p className="text-sm text-muted-foreground font-bold">
+                          <p className="text-sm text-blue-100/70 font-bold">
                             {member.is_ready ? 'Ready' : 'Not Ready'} • Joined {new Date(member.joined_at).toLocaleDateString()}
                           </p>
                         </div>
@@ -1266,546 +1655,399 @@ export default function RoomPage() {
               </div>
             </div>
 
-            {/* Study Materials & Notes Section */}
-            <div className="bg-card rounded-2xl cartoon-border cartoon-shadow p-6">
+            {/* Quiz Settings & Study Session Tabs */}
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 rounded-2xl shadow-lg p-6">
               {/* Tab Navigation */}
               <div className="flex items-center justify-between mb-6">
                 <div className="flex items-center gap-2">
-                  <Upload className="h-6 w-6 text-primary mr-2" strokeWidth={3} />
-                  <h2 className="text-2xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
-                    Study Materials
+                  <Settings className="h-6 w-6 text-blue-400 mr-2" strokeWidth={3} />
+                  <h2 className="text-2xl font-black text-white" style={{ fontFamily: "var(--font-display)" }}>
+                    {activeTab === 'quiz-settings' ? 'Quiz Settings' : 'Study Session'}
                   </h2>
-                  {!isHost && (
-                    <Lock className="h-5 w-5 text-muted-foreground ml-2" strokeWidth={3} />
+                  {activeTab === 'quiz-settings' && !isHost && (
+                    <Lock className="h-5 w-5 text-blue-100/70 ml-2" strokeWidth={3} />
                   )}
                 </div>
                 
                 {/* Tab Buttons */}
                 <div className="flex gap-2">
                   <button
-                    onClick={() => setActiveTab('materials')}
-                    className={`px-4 py-2 rounded-lg font-bold text-sm transition-all cartoon-border ${
-                      activeTab === 'materials'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                    onClick={() => setActiveTab('quiz-settings')}
+                    className={`px-4 py-2 rounded-lg font-bold text-sm transition-all border-2 ${
+                      activeTab === 'quiz-settings'
+                        ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white border-blue-400'
+                        : 'bg-slate-700/50 text-blue-100/70 border-slate-600/50 hover:border-blue-400/50'
                     }`}
                   >
-                    <Upload className="h-4 w-4 mr-2 inline" strokeWidth={3} />
-                    Materials
+                    <Settings className="h-4 w-4 mr-2 inline" strokeWidth={3} />
+                    Quiz Settings
                   </button>
                   <button
-                    onClick={() => setActiveTab('notes')}
-                    className={`px-4 py-2 rounded-lg font-bold text-sm transition-all cartoon-border ${
-                      activeTab === 'notes'
-                        ? 'bg-primary text-primary-foreground'
-                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
-                    }`}
+                    onClick={() => {
+                      // Non-hosts can only access Study Session tab if notes are generated
+                      if (!isHost && !generatedNotes) {
+                        alert('Study notes must be generated by the host first.')
+                        return
+                      }
+                      setActiveTab('study-session')
+                    }}
+                    className={`px-4 py-2 rounded-lg font-bold text-sm transition-all border-2 ${
+                      activeTab === 'study-session'
+                        ? 'bg-gradient-to-r from-blue-500 to-blue-600 text-white border-blue-400'
+                        : 'bg-slate-700/50 text-blue-100/70 border-slate-600/50 hover:border-blue-400/50'
+                    } ${!isHost && !generatedNotes ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     <BookOpen className="h-4 w-4 mr-2 inline" strokeWidth={3} />
-                    Notes
+                    Study Session
                   </button>
                 </div>
               </div>
               
-              {/* Materials Tab */}
-              {activeTab === 'materials' && (
-                isHost ? (
-                  <div className="space-y-4">
-                    {/* Success message */}
-                  {showUploadSuccess && (
-                    <div className="p-4 rounded-xl bg-chart-3/10 border-2 border-chart-3 text-center cartoon-border">
-                      <p className="text-chart-3 font-black text-sm">✅ Files uploaded successfully!</p>
+              {/* Study Session Duration Card - Visible in both tabs */}
+              {!studySession.isActive && isHost && (
+                <div className="mb-6 bg-gradient-to-br from-slate-700/50 to-slate-800/50 border-2 border-slate-600/50 rounded-xl p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Clock className="h-5 w-5 text-orange-400" strokeWidth={3} />
+                      <label htmlFor="studyTimeTab" className="text-sm font-bold text-white">
+                        Study Session Duration (minutes):
+                      </label>
                     </div>
-                  )}
-
-                  {/* Error messages */}
-                  {uploadErrors.length > 0 && (
-                    <div className="p-4 rounded-xl bg-destructive/10 border-2 border-destructive cartoon-border">
-                      <div className="flex items-center gap-2 mb-2">
-                        <AlertCircle className="h-5 w-5 text-destructive" strokeWidth={3} />
-                        <p className="text-destructive font-black text-sm">Upload Errors:</p>
-                      </div>
-                      <ul className="space-y-1">
-                        {uploadErrors.map((error, index) => (
-                          <li key={index} className="text-destructive text-xs font-bold">• {error}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {/* Upload progress */}
-                  {isUploading && (
-                    <div className="p-4 rounded-xl bg-primary/10 border-2 border-primary text-center cartoon-border">
-                      <div className="flex items-center justify-center gap-2">
-                        <Loader2 className="h-5 w-5 text-primary animate-spin" strokeWidth={3} />
-                        <p className="text-primary font-black text-sm">Processing files...</p>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* File input */}
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".pdf,.doc,.docx,.txt,.pptx,.ppt"
-                    onChange={handleFileUpload}
-                    multiple
-                    className="hidden"
-                  />
-
-                  {/* Upload area */}
-                  <div 
-                    onClick={triggerFileInput}
-                    className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition-colors"
-                  >
-                    <Upload className="h-10 w-10 text-gray-400 mx-auto mb-3" />
-                    <p className="text-gray-600 mb-3 font-medium">Upload PDFs, documents, or study materials</p>
-                    <button 
-                      type="button"
-                      className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors text-sm font-medium"
-                    >
-                      Choose Files
-                    </button>
-                    <p className="text-xs text-gray-500 mt-2">Max 5MB per file • PDF, DOC, TXT, PPT supported</p>
-                  </div>
-
-                  {/* Uploaded files */}
-                  {uploadedFiles.length > 0 && (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-semibold text-gray-900 text-sm">Uploaded Files ({uploadedFiles.length})</h4>
-                        <button
-                          onClick={() => setUploadedFiles([])}
-                          className="text-red-600 hover:text-red-700 text-xs font-medium"
-                        >
-                          Clear All
-                        </button>
-                      </div>
-                      <div className="space-y-2">
-                        {uploadedFiles.map((file, index) => (
-                          <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-                            <span className="text-lg">{getFileIcon(file)}</span>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-medium text-gray-900 text-sm truncate">{file.name}</p>
-                              <p className="text-xs text-gray-500">{formatFileSize(file.size)}</p>
-                            </div>
-                            <button
-                              onClick={() => removeFile(index)}
-                              className="text-red-500 hover:text-red-700 p-1"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  </div>
-                ) : (
-                  <div className="border-2 border-dashed border-muted rounded-xl p-8 text-center bg-secondary/30 cartoon-border">
-                    <Lock className="h-12 w-12 text-muted-foreground mx-auto mb-4" strokeWidth={3} />
-                    <p className="text-muted-foreground mb-2 font-bold">Study materials upload</p>
-                    <p className="text-sm text-muted-foreground">Only the host can upload study materials</p>
-                  </div>
-                )
-              )}
-
-              {/* Notes Tab */}
-              {activeTab === 'notes' && (
-                <div className="space-y-6">
-                  {/* Study Instructions Card */}
-                  <div className="bg-secondary/30 rounded-xl p-6 cartoon-border">
-                    <div className="flex items-center gap-2 mb-4">
-                      <MessageSquare className="h-5 w-5 text-primary" strokeWidth={3} />
-                      <h3 className="text-lg font-black text-foreground">Study Instructions</h3>
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-4 font-bold">
-                      Tell the AI what you want to study and be quizzed on. Be specific about topics, difficulty, and focus areas.
-                    </p>
-                    <textarea
-                      value={studyInstructions}
-                      onChange={(e) => setStudyInstructions(e.target.value)}
-                      placeholder="Example: Study Chapter 6 on Photosynthesis, focus on the light-dependent reactions, Calvin cycle, and factors affecting photosynthesis. Create questions about the process, equations, and environmental factors."
-                      className="w-full p-4 rounded-xl cartoon-border bg-card text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none resize-none"
-                      rows={4}
-                      disabled={!isHost}
+                    <input
+                      id="studyTimeTab"
+                      type="number"
+                      min="1"
+                      max="60"
+                      value={studySessionDuration}
+                      onChange={(e) => {
+                        const inputValue = e.target.value
+                        if (inputValue === '') {
+                          setStudySessionDuration(0)
+                          return
+                        }
+                        const value = parseInt(inputValue)
+                        if (!isNaN(value)) {
+                          setStudySessionDuration(Math.max(1, Math.min(60, value)))
+                        }
+                      }}
+                      onBlur={(e) => {
+                        if (studySessionDuration < 1 || studySessionDuration > 60) {
+                          setStudySessionDuration(5)
+                        }
+                      }}
+                      className="w-20 px-3 py-2 text-center font-black rounded-lg border-2 border-orange-400 bg-slate-900 text-white text-base focus:border-orange-300 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                     />
-                    {!isHost && (
-                      <p className="text-xs text-muted-foreground mt-2 font-bold">Only the host can set study instructions</p>
-                    )}
                   </div>
-
-                  {/* Generate Notes Button */}
-                  {isHost && (
-                    <div className="flex justify-center">
-                      <button
-                        onClick={generateStudyNotes}
-                        disabled={isGeneratingNotes || (!studyInstructions.trim() && uploadedFiles.length === 0)}
-                        className="bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg px-8 py-3 rounded-xl cartoon-border cartoon-shadow cartoon-hover disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isGeneratingNotes ? (
-                          <>
-                            <Loader2 className="w-5 h-5 mr-2 animate-spin inline" strokeWidth={3} />
-                            Generating Notes...
-                          </>
-                        ) : (
-                          <>
-                            <Lightbulb className="w-5 h-5 mr-2 inline" strokeWidth={3} />
-                            Generate Study Notes
-                          </>
-                        )}
-                      </button>
+                </div>
+              )}
+              
+              {/* Study Session Timer - Visible in both tabs when active */}
+              {studySession.isActive && (
+                <div className="mb-6 bg-gradient-to-br from-orange-500/20 to-blue-500/20 border-2 border-orange-400/50 rounded-xl p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Clock className="h-5 w-5 text-orange-400" strokeWidth={3} />
+                      <span className="text-sm font-bold text-white">Study Session Active</span>
                     </div>
-                  )}
-
-                  {/* Generated Notes Display */}
-                  {generatedNotes && (
-                    <div className="bg-card rounded-xl p-6 cartoon-border cartoon-shadow">
-                      <div className="flex items-center gap-2 mb-4">
-                        <BookOpen className="h-5 w-5 text-chart-3" strokeWidth={3} />
-                        <h3 className="text-lg font-black text-foreground">Generated Study Notes</h3>
+                    <div className="text-right">
+                      <div className="text-2xl font-black text-orange-400">{formatTime(studySession.timeRemaining)}</div>
+                      <div className="text-xs text-blue-100/70 font-bold">Time Remaining</div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              {/* Quiz Settings Tab */}
+              {activeTab === 'quiz-settings' && (
+                <div className="space-y-6">
+                  {isHost ? (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-bold text-white mb-2">
+                          Quiz Difficulty
+                        </label>
+                        <select 
+                          className="w-full px-4 py-3 border-4 border-slate-600/50 rounded-xl bg-slate-900 text-white font-bold focus:border-blue-400 focus:outline-none"
+                          value={quizSettings.difficulty}
+                          onChange={(e) => updateQuizSettings('difficulty', e.target.value)}
+                        >
+                          <option value="easy" className="bg-slate-900 text-white">Easy</option>
+                          <option value="medium" className="bg-slate-900 text-white">Medium</option>
+                          <option value="hard" className="bg-slate-900 text-white">Hard</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-bold text-white mb-2">
+                          Number of Questions
+                        </label>
+                        <input
+                          type="number"
+                          min="5"
+                          max="50"
+                          value={quizSettings.totalQuestions}
+                          onChange={(e) => updateQuizSettings('totalQuestions', parseInt(e.target.value))}
+                          className="w-full px-4 py-3 border-4 border-slate-600/50 rounded-xl bg-slate-900 text-white font-bold focus:border-blue-400 focus:outline-none"
+                        />
                       </div>
                       
-                      <div className="space-y-6">
-                        {/* Title and Complexity Analysis */}
+                      {/* Content Focus */}
+                      <div>
+                        <label className="block text-sm font-bold text-white mb-2">
+                          Content Focus
+                        </label>
+                        <select 
+                          className="w-full px-4 py-3 border-4 border-slate-600/50 rounded-xl bg-slate-900 text-white font-bold focus:border-blue-400 focus:outline-none"
+                          value={quizSettings.contentFocus}
+                          onChange={(e) => updateQuizSettings('contentFocus', e.target.value as 'application' | 'concept' | 'both')}
+                        >
+                          <option value="application" className="bg-slate-900 text-white">Application (Use cases, formulas, problem-solving)</option>
+                          <option value="concept" className="bg-slate-900 text-white">Concept (Definitions, explanations, understanding)</option>
+                          <option value="both" className="bg-slate-900 text-white">Both (Mix of applications and concepts)</option>
+                        </select>
+                      </div>
+
+                      {/* Education Level */}
+                      <div>
+                        <label className="block text-sm font-bold text-white mb-2">
+                          Education Level
+                        </label>
+                        <select 
+                          className="w-full px-4 py-3 border-4 border-slate-600/50 rounded-xl bg-slate-900 text-white font-bold focus:border-blue-400 focus:outline-none"
+                          value={quizSettings.educationLevel}
+                          onChange={(e) => updateQuizSettings('educationLevel', e.target.value as 'elementary' | 'high_school' | 'university' | 'graduate')}
+                        >
+                          <option value="elementary" className="bg-slate-900 text-white">Elementary School</option>
+                          <option value="high_school" className="bg-slate-900 text-white">High School</option>
+                          <option value="university" className="bg-slate-900 text-white">University</option>
+                          <option value="graduate" className="bg-slate-900 text-white">Graduate School</option>
+                        </select>
+                        <p className="text-xs text-blue-100/70 font-bold mt-1">
+                          Adjusts question difficulty to match your level
+                        </p>
+                      </div>
+
+                      {/* Include Diagrams */}
+                      <div className="p-4 rounded-lg bg-slate-700/30 border-2 border-slate-600/50">
+                        <label className="flex items-center gap-3 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={quizSettings.includeDiagrams}
+                            onChange={(e) => updateQuizSettings('includeDiagrams', e.target.checked)}
+                            className="w-5 h-5 accent-primary cursor-pointer"
+                          />
+                          <div>
+                            <span className="text-sm text-white font-bold block">Include Image-Generated Diagrams</span>
+                            <span className="text-xs text-blue-100/70 font-bold">Generate diagrams for questions that need visual aids</span>
+                          </div>
+                        </label>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="p-4 bg-slate-700/30 rounded-xl border-2 border-slate-600/50">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Lock className="h-5 w-5 text-blue-100/70" strokeWidth={3} />
+                          <span className="text-sm font-bold text-blue-100/70">Host Only</span>
+                        </div>
+                        <p className="text-sm text-blue-100/70 font-bold">
+                          Only the room host can change quiz settings.
+                        </p>
+                      </div>
+                      
+                      <div className="space-y-4">
                         <div>
-                          <h4 className="text-xl font-black text-foreground mb-2">{generatedNotes.title}</h4>
-                          <div className="flex flex-wrap gap-2 mb-4">
-                            <span className="px-3 py-1 bg-primary/20 text-primary rounded-full text-sm font-bold cartoon-border">
-                              {generatedNotes.subject}
-                            </span>
-                            <span className="px-3 py-1 bg-secondary/20 text-secondary rounded-full text-sm font-bold cartoon-border">
-                              {generatedNotes.education_level?.replace('_', ' ').toUpperCase()}
-                            </span>
-                            <span className={`px-3 py-1 rounded-full text-sm font-bold cartoon-border ${
-                              generatedNotes.difficulty_level === 'beginner' ? 'bg-chart-3/20 text-chart-3' :
-                              generatedNotes.difficulty_level === 'intermediate' ? 'bg-primary/20 text-primary' :
-                              'bg-destructive/20 text-destructive'
-                            }`}>
-                              {generatedNotes.difficulty_level?.toUpperCase()}
-                            </span>
+                          <label className="block text-sm font-bold text-white mb-2">
+                            Quiz Difficulty
+                          </label>
+                          <div className="px-4 py-3 bg-slate-700/50 rounded-xl border-2 border-slate-600/50 text-white font-bold capitalize">
+                            {room.difficulty}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-bold text-white mb-2">
+                            Number of Questions
+                          </label>
+                          <div className="px-4 py-3 bg-slate-700/50 rounded-xl border-2 border-slate-600/50 text-white font-bold">
+                            {room.total_questions}
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-bold text-white mb-2">
+                            Time per Question
+                          </label>
+                          <div className="px-4 py-3 bg-slate-700/50 rounded-xl border-2 border-slate-600/50 text-white font-bold">
+                            {room.time_limit} seconds
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Study Session Tab */}
+              {activeTab === 'study-session' && (
+                <div className="space-y-6">
+                  {!generatedNotes ? (
+                    // Step 1-3: Upload, Topic, Generate (Host only)
+                    isHost ? (
+                      <div className="space-y-6">
+                        {/* Step 1: File Upload */}
+                        <div className="space-y-4">
+                          <div className="flex items-center gap-2 mb-4">
+                            <Upload className="h-5 w-5 text-blue-400" strokeWidth={3} />
+                            <h3 className="text-lg font-black text-white">1. Upload Study Materials</h3>
                           </div>
                           
-                          {/* Complexity Analysis */}
-                          {generatedNotes.complexity_analysis && (
-                            <div className="p-4 bg-muted/30 rounded-xl cartoon-border mb-4">
-                              <h5 className="font-black text-foreground mb-3">📊 Content Analysis</h5>
-                              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                                <div>
-                                  <span className="text-muted-foreground font-bold">Vocabulary:</span>
-                                  <p className="font-black text-foreground">{generatedNotes.complexity_analysis.vocabulary_level}</p>
-                                </div>
-                                <div>
-                                  <span className="text-muted-foreground font-bold">Concepts:</span>
-                                  <p className="font-black text-foreground">{generatedNotes.complexity_analysis.concept_sophistication}</p>
-                                </div>
-                                <div>
-                                  <span className="text-muted-foreground font-bold">Reasoning:</span>
-                                  <p className="font-black text-foreground">{generatedNotes.complexity_analysis.reasoning_level}</p>
-                                </div>
-                                <div>
-                                  <span className="text-muted-foreground font-bold">Prerequisites:</span>
-                                  <p className="font-black text-foreground">{generatedNotes.complexity_analysis.prerequisite_knowledge?.length || 0} topics</p>
-                                </div>
+                          {/* Success message */}
+                          {showUploadSuccess && (
+                            <div className="p-4 rounded-xl bg-gradient-to-r from-orange-500 to-orange-600/10 border-2 border-chart-3 text-center border-2 border-slate-600/50">
+                              <p className="text-chart-3 font-black text-sm">✅ Files uploaded successfully!</p>
+                            </div>
+                          )}
+
+                          {/* Error messages */}
+                          {uploadErrors.length > 0 && (
+                            <div className="p-4 rounded-xl bg-destructive/10 border-2 border-destructive border-2 border-slate-600/50">
+                              <div className="flex items-center gap-2 mb-2">
+                                <AlertCircle className="h-5 w-5 text-destructive" strokeWidth={3} />
+                                <p className="text-destructive font-black text-sm">Upload Errors:</p>
                               </div>
-                              {generatedNotes.complexity_analysis.prerequisite_knowledge && generatedNotes.complexity_analysis.prerequisite_knowledge.length > 0 && (
-                                <div className="mt-3">
-                                  <span className="text-muted-foreground font-bold text-sm">Prerequisite Knowledge:</span>
-                                  <div className="flex flex-wrap gap-1 mt-1">
-                                    {generatedNotes.complexity_analysis.prerequisite_knowledge.map((prereq: string, index: number) => (
-                                      <span key={index} className="px-2 py-1 bg-primary/10 text-primary rounded-full text-xs font-bold">
-                                        {prereq}
-                                      </span>
-                                    ))}
+                              <ul className="space-y-1">
+                                {uploadErrors.map((error, index) => (
+                                  <li key={index} className="text-destructive text-xs font-bold">• {error}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {/* Upload progress */}
+                          {isUploading && (
+                            <div className="p-4 rounded-xl bg-gradient-to-r from-blue-500 to-blue-600/10 border-2 border-primary text-center border-2 border-slate-600/50">
+                              <div className="flex items-center justify-center gap-2">
+                                <Loader2 className="h-5 w-5 text-blue-400 animate-spin" strokeWidth={3} />
+                                <p className="text-blue-400 font-black text-sm">Processing files...</p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* File input */}
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".pdf,.doc,.docx,.txt,.pptx,.ppt"
+                            onChange={handleFileUpload}
+                            multiple
+                            className="hidden"
+                          />
+
+                          {/* Upload area */}
+                          <div 
+                            onClick={triggerFileInput}
+                            className="border-2 border-dashed border-slate-600/50 rounded-lg p-6 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-500/10 transition-colors"
+                          >
+                            <Upload className="h-10 w-10 text-blue-300/70 mx-auto mb-3" strokeWidth={3} />
+                            <p className="text-blue-100/80 mb-3 font-bold">Upload PDFs, documents, or study materials</p>
+                            <button 
+                              type="button"
+                              className="bg-gradient-to-r from-blue-500 to-blue-600 text-white px-4 py-2 rounded-lg hover:from-blue-600 hover:to-blue-700 transition-colors text-sm font-bold border-2 border-blue-400"
+                            >
+                              Choose Files
+                            </button>
+                            <p className="text-xs text-blue-100/60 mt-2 font-bold">Max 5MB per file • PDF, DOC, TXT, PPT supported</p>
+                          </div>
+
+                          {/* Uploaded files */}
+                          {uploadedFiles.length > 0 && (
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <h4 className="font-black text-white text-sm">Uploaded Files ({uploadedFiles.length})</h4>
+                                <button
+                                  onClick={() => setUploadedFiles([])}
+                                  className="text-red-400 hover:text-red-300 text-xs font-bold transition-colors"
+                                >
+                                  Clear All
+                                </button>
+                              </div>
+                              <div className="space-y-2">
+                                {uploadedFiles.map((file, index) => (
+                                  <div key={index} className="flex items-center gap-3 p-3 bg-slate-700/30 rounded-lg border-2 border-slate-600/50">
+                                    <span className="text-lg">{getFileIcon(file)}</span>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-bold text-white text-sm truncate">{file.name}</p>
+                                      <p className="text-xs text-blue-100/70">{formatFileSize(file.size)}</p>
+                                    </div>
+                                    <button
+                                      onClick={() => removeFile(index)}
+                                      className="text-red-400 hover:text-red-300 p-1 transition-colors"
+                                    >
+                                      <X className="h-4 w-4" strokeWidth={3} />
+                                    </button>
                                   </div>
-                                </div>
-                              )}
+                                ))}
+                              </div>
                             </div>
                           )}
                         </div>
 
-                        {/* Outline */}
-                        {generatedNotes.outline && generatedNotes.outline.length > 0 && (
-                          <div>
-                            <h5 className="font-black text-foreground mb-3">📋 Outline</h5>
-                            <ul className="space-y-1">
-                              {generatedNotes.outline.map((item: string, index: number) => (
-                                <li key={index} className="text-sm text-muted-foreground font-bold flex items-start gap-2">
-                                  <span className="text-primary">•</span>
-                                  {item}
-                                </li>
-                              ))}
-                            </ul>
+                        {/* Step 2: Study Instructions */}
+                        <div className="bg-slate-700/30 rounded-xl p-6 border-2 border-slate-600/50">
+                          <div className="flex items-center gap-2 mb-4">
+                            <MessageSquare className="h-5 w-5 text-blue-400" strokeWidth={3} />
+                            <h3 className="text-lg font-black text-white">2. Study Instructions (Optional)</h3>
                           </div>
-                        )}
+                          <p className="text-sm text-blue-100/70 mb-4 font-bold">
+                            Tell the AI what you want to study and be quizzed on. Be specific about topics, difficulty, and focus areas.
+                          </p>
+                          <textarea
+                            value={studyInstructions}
+                            onChange={(e) => setStudyInstructions(e.target.value)}
+                            placeholder="Example: Study Chapter 6 on Photosynthesis, focus on the light-dependent reactions, Calvin cycle, and factors affecting photosynthesis. Create questions about the process, equations, and environmental factors."
+                            className="w-full p-4 rounded-xl border-2 border-slate-600/50 bg-slate-900/50 text-white placeholder:text-blue-100/50 focus:border-blue-400 focus:outline-none resize-none"
+                            rows={4}
+                          />
+                        </div>
 
-                        {/* Key Terms */}
-                        {generatedNotes.key_terms && generatedNotes.key_terms.length > 0 && (
-                          <div>
-                            <h5 className="font-black text-foreground mb-3">🔑 Key Terms</h5>
-                            <div className="space-y-3">
-                              {generatedNotes.key_terms.map((term: any, index: number) => (
-                                <div key={index} className="p-3 bg-secondary/30 rounded-xl cartoon-border">
-                                  <div className="flex items-center justify-between mb-1">
-                                    <span className="font-black text-foreground">{term.term}</span>
-                                    <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                      term.importance === 'high' ? 'bg-chart-3/20 text-chart-3' :
-                                      term.importance === 'medium' ? 'bg-primary/20 text-primary' :
-                                      'bg-muted text-muted-foreground'
-                                    }`}>
-                                      {term.importance}
-                                    </span>
-                                  </div>
-                                  <p className="text-sm text-muted-foreground font-bold">{term.definition}</p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Concepts */}
-                        {generatedNotes.concepts && generatedNotes.concepts.length > 0 && (
-                          <div>
-                            <h5 className="font-black text-foreground mb-3">💡 Key Concepts</h5>
-                            <div className="space-y-4">
-                              {generatedNotes.concepts.map((concept: any, index: number) => (
-                                <div key={index} className="p-4 bg-secondary/30 rounded-xl cartoon-border">
-                                  <h6 className="font-black text-foreground mb-2">{concept.heading}</h6>
-                                  <ul className="space-y-1 mb-3">
-                                    {concept.bullets.map((bullet: string, bulletIndex: number) => (
-                                      <li key={bulletIndex} className="text-sm text-muted-foreground font-bold flex items-start gap-2">
-                                        <span className="text-chart-3">•</span>
-                                        {bullet}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                  
-                                  {concept.examples && concept.examples.length > 0 && (
-                                    <div className="mb-3">
-                                      <h6 className="font-bold text-foreground text-sm mb-1">Examples:</h6>
-                                      <ul className="space-y-1">
-                                        {concept.examples.map((example: string, exampleIndex: number) => (
-                                          <li key={exampleIndex} className="text-sm text-primary font-bold flex items-start gap-2">
-                                            <span className="text-primary">→</span>
-                                            {example}
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
-                                  
-                                  {concept.connections && concept.connections.length > 0 && (
-                                    <div>
-                                      <h6 className="font-bold text-foreground text-sm mb-1">Connections:</h6>
-                                      <ul className="space-y-1">
-                                        {concept.connections.map((connection: string, connectionIndex: number) => (
-                                          <li key={connectionIndex} className="text-sm text-chart-3 font-bold flex items-start gap-2">
-                                            <span className="text-chart-3">↔</span>
-                                            {connection}
-                                          </li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Diagrams */}
-                        {generatedNotes.diagrams && generatedNotes.diagrams.length > 0 && (
-                          <div>
-                            <h5 className="font-black text-foreground mb-3">📊 Diagrams & Visuals</h5>
-                            <div className="space-y-3">
-                              {generatedNotes.diagrams.map((diagram: any, index: number) => (
-                                <div key={index} className="p-4 bg-chart-3/10 rounded-xl cartoon-border">
-                                  <h6 className="font-black text-chart-3 mb-2">{diagram.title}</h6>
-                                  <p className="text-sm text-muted-foreground font-bold">{diagram.caption}</p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Practice Questions */}
-                        {generatedNotes.practice_questions && generatedNotes.practice_questions.length > 0 && (
-                          <div>
-                            <h5 className="font-black text-foreground mb-3">❓ Practice Questions</h5>
-                            <div className="space-y-3">
-                              {generatedNotes.practice_questions.slice(0, 5).map((qa: any, index: number) => (
-                                <div key={index} className="p-4 bg-primary/10 rounded-xl cartoon-border">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <p className="font-bold text-foreground">Q: {qa.question}</p>
-                                    <div className="flex gap-2">
-                                      <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                        qa.difficulty === 'easy' ? 'bg-chart-3/20 text-chart-3' :
-                                        qa.difficulty === 'medium' ? 'bg-primary/20 text-primary' :
-                                        'bg-destructive/20 text-destructive'
-                                      }`}>
-                                        {qa.difficulty}
-                                      </span>
-                                      <span className="px-2 py-1 rounded-full text-xs font-bold bg-muted text-muted-foreground">
-                                        {qa.type.replace('_', ' ')}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <p className="text-sm text-muted-foreground font-bold mb-2">A: {qa.answer}</p>
-                                  <p className="text-xs text-muted-foreground font-bold">Topic: {qa.topic}</p>
-                                </div>
-                              ))}
-                              {generatedNotes.practice_questions.length > 5 && (
-                                <p className="text-sm text-muted-foreground font-bold text-center">
-                                  ... and {generatedNotes.practice_questions.length - 5} more questions
-                                </p>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Resources */}
-                        {generatedNotes.resources && (
-                          <div>
-                            <h5 className="font-black text-foreground mb-3">📚 Study Resources</h5>
-                            
-                            {/* Links */}
-                            {generatedNotes.resources.links && generatedNotes.resources.links.length > 0 && (
-                              <div className="mb-4">
-                                <h6 className="font-bold text-foreground mb-2">Articles & References</h6>
-                                <div className="space-y-2">
-                                  {generatedNotes.resources.links.map((link: any, index: number) => (
-                                    <a
-                                      key={index}
-                                      href={link.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="block p-3 bg-secondary/30 rounded-xl cartoon-border cartoon-hover transition-all"
-                                    >
-                                      <div className="flex items-center justify-between mb-1">
-                                        <span className="font-bold text-foreground">{link.title}</span>
-                                        <span className={`px-2 py-1 rounded-full text-xs font-bold ${
-                                          link.relevance === 'high' ? 'bg-chart-3/20 text-chart-3' :
-                                          link.relevance === 'medium' ? 'bg-primary/20 text-primary' :
-                                          'bg-muted text-muted-foreground'
-                                        }`}>
-                                          {link.relevance}
-                                        </span>
-                                      </div>
-                                      <p className="text-sm text-muted-foreground font-bold">{link.description}</p>
-                                      <p className="text-xs text-primary font-bold">{link.type}</p>
-                                    </a>
-                                  ))}
-                                </div>
-                              </div>
+                        {/* Step 3: Generate Notes */}
+                        <div className="flex justify-center">
+                          <button
+                            onClick={generateStudyNotes}
+                            disabled={isGeneratingNotes || (!studyInstructions.trim() && uploadedFiles.length === 0)}
+                            className="bg-gradient-to-r from-blue-500 to-blue-600 hover:bg-gradient-to-r from-blue-500 to-blue-600/90 text-white font-black text-lg px-8 py-3 rounded-xl border-2 border-slate-600/50 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {isGeneratingNotes ? (
+                              <>
+                                <Loader2 className="w-5 h-5 mr-2 animate-spin inline" strokeWidth={3} />
+                                Generating Notes...
+                              </>
+                            ) : (
+                              <>
+                                <Brain className="w-5 h-5 mr-2 inline" strokeWidth={3} />
+                                Generate Study Notes
+                              </>
                             )}
-
-                            {/* Videos */}
-                            {generatedNotes.resources.videos && generatedNotes.resources.videos.length > 0 && (
-                              <div className="mb-4">
-                                <h6 className="font-bold text-foreground mb-2">Educational Videos</h6>
-                                <div className="space-y-2">
-                                  {generatedNotes.resources.videos.map((video: any, index: number) => (
-                                    <a
-                                      key={index}
-                                      href={video.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="block p-3 bg-chart-3/10 rounded-xl cartoon-border cartoon-hover transition-all"
-                                    >
-                                      <div className="flex items-center justify-between mb-1">
-                                        <span className="font-bold text-foreground">{video.title}</span>
-                                        <span className="text-xs text-muted-foreground font-bold">{video.duration}</span>
-                                      </div>
-                                      <p className="text-sm text-muted-foreground font-bold">{video.description}</p>
-                                      <p className="text-xs text-chart-3 font-bold">{video.platform}</p>
-                                    </a>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-
-                            {/* Simulations */}
-                            {generatedNotes.resources.simulations && generatedNotes.resources.simulations.length > 0 && (
-                              <div>
-                                <h6 className="font-bold text-foreground mb-2">Interactive Tools</h6>
-                                <div className="space-y-2">
-                                  {generatedNotes.resources.simulations.map((sim: any, index: number) => (
-                                    <a
-                                      key={index}
-                                      href={sim.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="block p-3 bg-primary/10 rounded-xl cartoon-border cartoon-hover transition-all"
-                                    >
-                                      <div className="flex items-center justify-between mb-1">
-                                        <span className="font-bold text-foreground">{sim.title}</span>
-                                        <span className="text-xs text-primary font-bold">{sim.type}</span>
-                                      </div>
-                                      <p className="text-sm text-muted-foreground font-bold">{sim.description}</p>
-                                    </a>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {/* Study Tips */}
-                        {generatedNotes.study_tips && generatedNotes.study_tips.length > 0 && (
-                          <div>
-                            <h5 className="font-black text-foreground mb-3">💡 Study Tips</h5>
-                            <div className="space-y-2">
-                              {generatedNotes.study_tips.map((tip: string, index: number) => (
-                                <div key={index} className="p-3 bg-chart-3/10 rounded-xl cartoon-border">
-                                  <p className="text-sm text-foreground font-bold flex items-start gap-2">
-                                    <span className="text-chart-3">💡</span>
-                                    {tip}
-                                  </p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Common Misconceptions */}
-                        {generatedNotes.common_misconceptions && generatedNotes.common_misconceptions.length > 0 && (
-                          <div>
-                            <h5 className="font-black text-foreground mb-3">⚠️ Common Misconceptions</h5>
-                            <div className="space-y-3">
-                              {generatedNotes.common_misconceptions.map((misconception: any, index: number) => (
-                                <div key={index} className="p-4 bg-destructive/10 rounded-xl cartoon-border">
-                                  <div className="mb-2">
-                                    <p className="font-bold text-destructive text-sm mb-1">❌ Misconception:</p>
-                                    <p className="text-sm text-foreground font-bold">{misconception.misconception}</p>
-                                  </div>
-                                  <div className="mb-2">
-                                    <p className="font-bold text-chart-3 text-sm mb-1">✅ Correction:</p>
-                                    <p className="text-sm text-foreground font-bold">{misconception.correction}</p>
-                                  </div>
-                                  <div>
-                                    <p className="font-bold text-muted-foreground text-sm mb-1">Why this is common:</p>
-                                    <p className="text-sm text-muted-foreground font-bold">{misconception.why_common}</p>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  )}
-
-                  {/* No Notes Generated Yet */}
-                  {!generatedNotes && (
-                    <div className="text-center py-12">
-                      <BookOpen className="h-16 w-16 text-muted-foreground mx-auto mb-4" strokeWidth={1} />
-                      <h3 className="text-lg font-black text-foreground mb-2">No Study Notes Yet</h3>
-                      <p className="text-muted-foreground font-bold">
-                        {isHost 
-                          ? "Provide study instructions and click 'Generate Study Notes' to create AI-powered study materials."
-                          : "The host will generate study notes based on the uploaded materials and instructions."
-                        }
-                      </p>
+                    ) : (
+                      // Non-host: Waiting for notes
+                      <div className="border-2 border-dashed border-slate-600/50 rounded-xl p-8 text-center bg-slate-700/30">
+                        <BookOpen className="h-12 w-12 text-blue-100/70 mx-auto mb-4" strokeWidth={3} />
+                        <h3 className="text-lg font-black text-white mb-2">Waiting for Study Notes</h3>
+                        <p className="text-blue-100/70 font-bold">
+                          The host will generate study notes based on the uploaded materials and instructions.
+                        </p>
+                      </div>
+                    )
+                  ) : (
+                    // Step 4: Display Notes (Everyone can see once generated)
+                    <div>
+                      <StudyNotesViewer 
+                        notes={generatedNotes}
+                        fileNames={uploadedFiles.map(f => f.name)}
+                        onStartBattle={() => {}} // Not used in multiplayer
+                        hideActions={true} // Hide "Ready to Test?" section in multiplayer
+                      />
                     </div>
                   )}
                 </div>
@@ -1816,19 +2058,19 @@ export default function RoomPage() {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Room Settings */}
-            <div className="bg-card rounded-2xl cartoon-border cartoon-shadow p-6">
+            <div className="bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 rounded-2xl shadow-lg p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center">
-                  <Settings className="h-6 w-6 text-primary mr-2" strokeWidth={3} />
-                  <h3 className="text-xl font-black text-foreground" style={{ fontFamily: "var(--font-display)" }}>
+                  <Settings className="h-6 w-6 text-blue-400 mr-2" strokeWidth={3} />
+                  <h3 className="text-xl font-black text-white" style={{ fontFamily: "var(--font-display)" }}>
                     Room Settings
                   </h3>
                   {!isHost && (
-                    <Lock className="h-5 w-5 text-muted-foreground ml-2" strokeWidth={3} />
+                    <Lock className="h-5 w-5 text-blue-100/70 ml-2" strokeWidth={3} />
                   )}
                 </div>
                 {quizSession?.status === 'active' && (
-                  <div className="flex items-center gap-2 px-3 py-2 bg-destructive/10 border-2 border-destructive rounded-full cartoon-border">
+                  <div className="flex items-center gap-2 px-3 py-2 bg-destructive/10 border-2 border-destructive rounded-full border-2 border-slate-600/50">
                     <div className="w-2 h-2 bg-destructive rounded-full animate-pulse"></div>
                     <span className="text-xs font-black text-destructive">Anti-Cheat Active</span>
                     {isAway && (
@@ -1841,21 +2083,21 @@ export default function RoomPage() {
               {isHost ? (
                 <div className="space-y-4">
                   <div>
-                    <label className="block text-sm font-bold text-foreground mb-2">
+                    <label className="block text-sm font-bold text-white mb-2">
                       Quiz Difficulty
                     </label>
                     <select 
-                      className="w-full px-4 py-3 border-2 border-border rounded-xl cartoon-border bg-background text-foreground font-bold focus:border-primary focus:outline-none"
+                      className="w-full px-4 py-3 border-4 border-slate-600/50 rounded-xl bg-slate-900 text-white font-bold focus:border-blue-400 focus:outline-none"
                       value={quizSettings.difficulty}
                       onChange={(e) => updateQuizSettings('difficulty', e.target.value)}
                     >
-                      <option value="easy">Easy</option>
-                      <option value="medium">Medium</option>
-                      <option value="hard">Hard</option>
+                      <option value="easy" className="bg-slate-900 text-white">Easy</option>
+                      <option value="medium" className="bg-slate-900 text-white">Medium</option>
+                      <option value="hard" className="bg-slate-900 text-white">Hard</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-bold text-foreground mb-2">
+                    <label className="block text-sm font-bold text-white mb-2">
                       Number of Questions
                     </label>
                     <input
@@ -1864,61 +2106,48 @@ export default function RoomPage() {
                       max="50"
                       value={quizSettings.totalQuestions}
                       onChange={(e) => updateQuizSettings('totalQuestions', parseInt(e.target.value))}
-                      className="w-full px-4 py-3 border-2 border-border rounded-xl cartoon-border bg-background text-foreground font-bold focus:border-primary focus:outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-foreground mb-2">
-                      Time per Question (seconds)
-                    </label>
-                    <input
-                      type="number"
-                      min="10"
-                      max="120"
-                      value={quizSettings.timeLimit}
-                      onChange={(e) => updateQuizSettings('timeLimit', parseInt(e.target.value))}
-                      className="w-full px-4 py-3 border-2 border-border rounded-xl cartoon-border bg-background text-foreground font-bold focus:border-primary focus:outline-none"
+                      className="w-full px-4 py-3 border-4 border-slate-600/50 rounded-xl bg-slate-900 text-white font-bold focus:border-blue-400 focus:outline-none"
                     />
                   </div>
                   
                   {/* Content Focus */}
                   <div>
-                    <label className="block text-sm font-bold text-foreground mb-2">
+                    <label className="block text-sm font-bold text-white mb-2">
                       Content Focus
                     </label>
                     <select 
-                      className="w-full px-4 py-3 border-2 border-border rounded-xl cartoon-border bg-background text-foreground font-bold focus:border-primary focus:outline-none"
+                      className="w-full px-4 py-3 border-4 border-slate-600/50 rounded-xl bg-slate-900 text-white font-bold focus:border-blue-400 focus:outline-none"
                       value={quizSettings.contentFocus}
                       onChange={(e) => updateQuizSettings('contentFocus', e.target.value as 'application' | 'concept' | 'both')}
                     >
-                      <option value="application">Application (Use cases, formulas, problem-solving)</option>
-                      <option value="concept">Concept (Definitions, explanations, understanding)</option>
-                      <option value="both">Both (Mix of applications and concepts)</option>
+                      <option value="application" className="bg-slate-900 text-white">Application (Use cases, formulas, problem-solving)</option>
+                      <option value="concept" className="bg-slate-900 text-white">Concept (Definitions, explanations, understanding)</option>
+                      <option value="both" className="bg-slate-900 text-white">Both (Mix of applications and concepts)</option>
                     </select>
                   </div>
 
                   {/* Education Level */}
                   <div>
-                    <label className="block text-sm font-bold text-foreground mb-2">
+                    <label className="block text-sm font-bold text-white mb-2">
                       Education Level
                     </label>
                     <select 
-                      className="w-full px-4 py-3 border-2 border-border rounded-xl cartoon-border bg-background text-foreground font-bold focus:border-primary focus:outline-none"
+                      className="w-full px-4 py-3 border-4 border-slate-600/50 rounded-xl bg-slate-900 text-white font-bold focus:border-blue-400 focus:outline-none"
                       value={quizSettings.educationLevel}
                       onChange={(e) => updateQuizSettings('educationLevel', e.target.value as 'elementary' | 'high_school' | 'university' | 'graduate')}
                     >
-                      <option value="elementary">Elementary School</option>
-                      <option value="high_school">High School</option>
-                      <option value="university">University</option>
-                      <option value="graduate">Graduate School</option>
+                      <option value="elementary" className="bg-slate-900 text-white">Elementary School</option>
+                      <option value="high_school" className="bg-slate-900 text-white">High School</option>
+                      <option value="university" className="bg-slate-900 text-white">University</option>
+                      <option value="graduate" className="bg-slate-900 text-white">Graduate School</option>
                     </select>
-                    <p className="text-xs text-muted-foreground font-bold mt-1">
+                    <p className="text-xs text-blue-100/70 font-bold mt-1">
                       Adjusts question difficulty to match your level
                     </p>
                   </div>
 
                   {/* Include Diagrams */}
-                  <div className="p-4 rounded-lg bg-muted/30 cartoon-border">
+                  <div className="p-4 rounded-lg bg-slate-700/30 border-2 border-slate-600/50">
                     <label className="flex items-center gap-3 cursor-pointer">
                       <input
                         type="checkbox"
@@ -1927,148 +2156,62 @@ export default function RoomPage() {
                         className="w-5 h-5 accent-primary cursor-pointer"
                       />
                       <div>
-                        <span className="text-sm text-foreground font-bold block">Include Image-Generated Diagrams</span>
-                        <span className="text-xs text-muted-foreground font-bold">Generate diagrams for questions that need visual aids</span>
+                        <span className="text-sm text-white font-bold block">Include Image-Generated Diagrams</span>
+                        <span className="text-xs text-blue-100/70 font-bold">Generate diagrams for questions that need visual aids</span>
                       </div>
                     </label>
                   </div>
 
-                  <div className="space-y-4">
-                    {/* Study Session Time Configuration */}
-                    {isHost && (
-                      <div className="bg-card rounded-xl p-6 cartoon-border cartoon-shadow mb-6">
-                        <h4 className="font-black text-foreground mb-4 flex items-center gap-2">
-                          <Clock className="h-6 w-6 text-primary" strokeWidth={3} />
-                          Study Session Configuration
-                        </h4>
-                        
-                        {/* Include Study Session Checkbox */}
-                        <div className="flex items-center gap-3 mb-4">
-                          <input
-                            id="includeStudySession"
-                            type="checkbox"
-                            checked={includeStudySession}
-                            onChange={(e) => setIncludeStudySession(e.target.checked)}
-                            className="w-5 h-5 text-primary bg-card border-2 border-primary rounded focus:ring-primary focus:ring-2"
-                            disabled={studySession.isActive}
-                          />
-                          <label htmlFor="includeStudySession" className="text-base font-bold text-foreground cursor-pointer">
-                            Include Study Session
-                          </label>
-                        </div>
 
-                        {/* Duration Input - Only show if study session is included */}
-                        {includeStudySession && (
-                          <div className="flex items-center gap-4">
-                            <label htmlFor="studyTime" className="text-base font-bold text-foreground">
-                              Duration (minutes):
-                            </label>
-                            <input
-                              id="studyTime"
-                              type="number"
-                              min="1"
-                              value={studySessionDuration}
-                              onChange={(e) => {
-                                const value = parseInt(e.target.value) || 1
-                                setStudySessionDuration(Math.max(1, value))
-                              }}
-                              className="w-24 px-4 py-2 text-center font-bold rounded-lg cartoon-border bg-card text-foreground text-lg"
-                              disabled={studySession.isActive}
-                            />
-                            <span className="text-sm text-muted-foreground font-bold">
-                              {studySession.isActive ? '(Cannot change during active session)' : '(No maximum limit)'}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <Button 
-                      onClick={startStudySession}
-                      loading={isStartingStudySession}
-                      loadingText={includeStudySession ? `Starting Study Session...` : 'Starting Quiz...'}
-                      disabled={uploadedFiles.length === 0 || studySession.isActive}
-                      className="w-full bg-chart-3 text-foreground py-3 px-4 rounded-xl cartoon-border cartoon-shadow cartoon-hover font-black text-lg disabled:bg-muted disabled:text-muted-foreground"
-                    >
-                      <Brain className="h-5 w-5" strokeWidth={3} />
-                      {includeStudySession 
-                        ? `Start Study Session (${studySessionDuration} min)` 
-                        : 'Start Quiz Directly'
-                      }
-                    </Button>
-                    
-                    <Button 
-                      onClick={handleStartQuiz}
-                      loading={isStartingQuiz}
-                      loadingText="Starting Quiz..."
-                      disabled={uploadedFiles.length === 0}
-                      className="w-full bg-primary text-primary-foreground py-3 px-4 rounded-xl cartoon-border cartoon-shadow cartoon-hover font-black text-lg disabled:bg-muted disabled:text-muted-foreground"
-                    >
-                      <Zap className="h-5 w-5" strokeWidth={3} />
-                      Start Quiz Directly
-                    </Button>
-                  </div>
-                  
-                  {uploadedFiles.length === 0 && (
-                    <p className="text-sm text-destructive text-center font-bold">
-                      Please upload study materials before starting
-                    </p>
-                  )}
-                  
-                  {studySession.isActive && (
-                    <p className="text-sm text-chart-3 text-center font-bold">
-                      Study session is active! Use the time to review materials.
-                    </p>
-                  )}
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="p-4 bg-secondary/30 rounded-xl cartoon-border">
+                  <div className="p-4 bg-slate-700/30 rounded-xl border-2 border-slate-600/50">
                     <div className="flex items-center gap-2 mb-2">
-                      <Lock className="h-5 w-5 text-muted-foreground" strokeWidth={3} />
-                      <span className="text-sm font-bold text-muted-foreground">Host Only</span>
+                      <Lock className="h-5 w-5 text-blue-100/70" strokeWidth={3} />
+                      <span className="text-sm font-bold text-blue-100/70">Host Only</span>
                     </div>
-                    <p className="text-sm text-muted-foreground font-bold">
+                    <p className="text-sm text-blue-100/70 font-bold">
                       Only the room host can change quiz settings and start the game.
                     </p>
                   </div>
                   
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-sm font-bold text-foreground mb-2">
+                      <label className="block text-sm font-bold text-white mb-2">
                         Quiz Difficulty
                       </label>
-                      <div className="px-4 py-3 bg-muted rounded-xl cartoon-border text-foreground font-bold capitalize">
+                      <div className="px-4 py-3 bg-slate-700/50 rounded-xl border-2 border-slate-600/50 text-white font-bold capitalize">
                         {room.difficulty}
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-bold text-foreground mb-2">
+                      <label className="block text-sm font-bold text-white mb-2">
                         Number of Questions
                       </label>
-                      <div className="px-4 py-3 bg-muted rounded-xl cartoon-border text-foreground font-bold">
+                      <div className="px-4 py-3 bg-slate-700/50 rounded-xl border-2 border-slate-600/50 text-white font-bold">
                         {room.total_questions}
                       </div>
                     </div>
                     <div>
-                      <label className="block text-sm font-bold text-foreground mb-2">
+                      <label className="block text-sm font-bold text-white mb-2">
                         Time per Question
                       </label>
-                      <div className="px-4 py-3 bg-muted rounded-xl cartoon-border text-foreground font-bold">
+                      <div className="px-4 py-3 bg-slate-700/50 rounded-xl border-2 border-slate-600/50 text-white font-bold">
                         {room.time_limit} seconds
                       </div>
                     </div>
                   </div>
                   
-                  <div className="p-4 bg-primary/10 rounded-xl cartoon-border">
-                    <p className="text-sm text-primary font-black">
+                  <div className="p-4 bg-gradient-to-r from-blue-500 to-blue-600/10 rounded-xl border-2 border-slate-600/50">
+                    <p className="text-sm text-blue-400 font-black">
                       Waiting for host to start the quiz...
                     </p>
                   </div>
                   
                   {/* Active Quiz Session */}
                   {quizSession?.status === 'active' && (
-                    <div className="p-4 bg-chart-3/10 border-2 border-chart-3 rounded-xl cartoon-border">
+                    <div className="p-4 bg-gradient-to-r from-orange-500 to-orange-600/10 border-2 border-chart-3 rounded-xl border-2 border-slate-600/50">
                       <div className="flex items-center gap-2 mb-3">
                         <Zap className="h-5 w-5 text-chart-3" strokeWidth={3} />
                         <span className="font-black text-chart-3">Quiz Active!</span>
@@ -2077,7 +2220,7 @@ export default function RoomPage() {
                         The quiz has started! Join the battle to compete with other players.
                       </p>
                       <Button
-                        className="w-full bg-chart-3 hover:bg-chart-3/90 text-foreground font-black cartoon-border cartoon-shadow cartoon-hover"
+                        className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:bg-gradient-to-r from-orange-500 to-orange-600/90 text-white font-black border-2 border-slate-600/50 cartoon-shadow cartoon-hover"
                         loading={loadingButton === 'battle'}
                         loadingText="Joining Battle..."
                         onClick={async () => {
@@ -2100,26 +2243,9 @@ export default function RoomPage() {
               )}
             </div>
 
-            {/* Quick Actions */}
-            <div className="bg-white rounded-2xl shadow-lg p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Quick Actions</h3>
-              <div className="space-y-3">
-                <button className="w-full text-left p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                  <p className="font-medium text-gray-900">Invite Friends</p>
-                  <p className="text-sm text-gray-500">Share the room code</p>
-                </button>
-                <button className="w-full text-left p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                  <p className="font-medium text-gray-900">View Progress</p>
-                  <p className="text-sm text-gray-500">See everyone's stats</p>
-                </button>
-                <button className="w-full text-left p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                  <p className="font-medium text-gray-900">Room History</p>
-                  <p className="text-sm text-gray-500">Previous sessions</p>
-                </button>
-              </div>
-            </div>
           </div>
         </div>
+      </div>
       </div>
     </div>
   )

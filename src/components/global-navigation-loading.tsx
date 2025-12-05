@@ -96,14 +96,8 @@ export function GlobalNavigationLoading() {
     }
   }, [])
 
-  // Don't render anything if not loading
-  if (!showLoading) return null
-  
-  // Render as fixed overlay to prevent it from appearing in document flow
-  return (
-    <div className="fixed inset-0 z-[9999]">
-      <BrainBattleLoading message="Loading page..." />
-    </div>
-  )
+  // Disabled - was causing annoying random popups
+  // Users can see page content loading naturally without full-screen overlay
+  return null
 }
 

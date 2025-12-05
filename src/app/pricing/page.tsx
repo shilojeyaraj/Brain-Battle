@@ -49,10 +49,7 @@ export default function PricingPage() {
 
   // Get Stripe Price IDs from environment variables
   const PRO_MONTHLY_PRICE_ID = process.env.NEXT_PUBLIC_STRIPE_PRO_MONTHLY_PRICE_ID || 'price_xxxxx';
-  const PRO_YEARLY_PRICE_ID = process.env.NEXT_PUBLIC_STRIPE_PRO_YEARLY_PRICE_ID;
-  
-  // Only show yearly option if it's configured
-  const hasYearlyPlan = PRO_YEARLY_PRICE_ID && PRO_YEARLY_PRICE_ID !== 'price_xxxxx';
+  const PRO_YEARLY_PRICE_ID = process.env.NEXT_PUBLIC_STRIPE_PRO_YEARLY_PRICE_ID || 'price_1SaMTgLypanQyHquzwzqdjZo';
 
   const isPro = subscriptionStatus?.isActive && subscriptionStatus?.tier === 'pro';
 
@@ -162,28 +159,26 @@ export default function PricingPage() {
           />
 
           {/* Pro Plan - Yearly */}
-          {hasYearlyPlan ? (
-            <PricingCard
-              name="Pro (Yearly)"
-              price="49.99"
-              period="year"
-              priceId={PRO_YEARLY_PRICE_ID}
-              features={[
-                'Everything in Pro Monthly',
-                '50 documents per month',
-                '50 quizzes per month',
-                'Up to 20 questions per quiz',
-                'Large multiplayer rooms (up to 15 players)',
-                'Create and join clans',
-                'Save 17% with annual billing',
-                'Priority support',
-                'Early access to new features',
-              ]}
-              currentPlan={isPro && subscriptionStatus?.interval === 'year'}
-            />
-          ) : (
-            <div className="hidden md:block" /> // Placeholder to maintain grid layout
-          )}
+          <PricingCard
+            name="Pro (Yearly)"
+            price="49.99"
+            period="year"
+            priceId={PRO_YEARLY_PRICE_ID}
+            features={[
+              '50 documents per month',
+              '50 quizzes per month',
+              'Up to 20 questions per quiz',
+              'Large multiplayer rooms (up to 15 players)',
+              'Create and join clans',
+              'Advanced XP system with bonuses',
+              'Detailed analytics & insights',
+              'Priority AI processing',
+              'Custom study room themes',
+              'Export study materials',
+              'Advanced anti-cheat features',
+            ]}
+            currentPlan={isPro && subscriptionStatus?.interval === 'year'}
+          />
         </div>
 
 

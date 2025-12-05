@@ -158,11 +158,63 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
           htmlEl.style.backgroundColor = 'transparent'
           // Ensure font is visible
           htmlEl.style.opacity = '1'
+          // Allow wrapping for long formulas
+          if (el.classList.contains('katex-display')) {
+            htmlEl.style.overflowX = 'auto'
+            htmlEl.style.overflowY = 'hidden'
+            htmlEl.style.maxWidth = '100%'
+          }
         })
         
-        // Also set color on the container itself
+        // Set container styles for overflow handling
         containerRef.current.style.color = '#93c5fd' // blue-300
         containerRef.current.style.opacity = '1'
+        containerRef.current.style.maxWidth = '100%'
+        containerRef.current.style.overflowX = 'hidden' // Changed from 'auto' to 'hidden' - we'll scale instead
+        containerRef.current.style.overflowY = 'hidden'
+        
+        // Make KaTeX elements responsive and scale down if needed
+        const katexDisplay = containerRef.current.querySelector('.katex-display')
+        const katexInline = containerRef.current.querySelector('.katex:not(.katex-display)')
+        const katexElement = (katexDisplay || katexInline) as HTMLElement
+        
+        if (katexElement) {
+          // Reset any previous transforms
+          katexElement.style.transform = 'scale(1)'
+          katexElement.style.transformOrigin = 'center center'
+          
+          // Use requestAnimationFrame to ensure DOM is fully rendered
+          requestAnimationFrame(() => {
+            if (!containerRef.current || !katexElement) return
+            
+            // Get the container's available width (accounting for padding)
+            const container = containerRef.current.parentElement
+            if (!container) return
+            
+            const containerWidth = container.clientWidth
+            const containerPadding = 48 // 24px padding on each side (p-6 = 1.5rem = 24px)
+            const availableWidth = containerWidth - containerPadding
+            
+            // Get the formula's actual width
+            const formulaWidth = katexElement.scrollWidth
+            
+            // If formula is wider than available space, scale it down
+            if (formulaWidth > availableWidth && availableWidth > 0) {
+              const scaleFactor = availableWidth / formulaWidth
+              // Ensure minimum scale of 0.5 to keep it readable
+              const finalScale = Math.max(scaleFactor, 0.5)
+              
+              katexElement.style.transform = `scale(${finalScale})`
+              katexElement.style.transformOrigin = 'center center'
+              katexElement.style.width = `${formulaWidth}px` // Keep original width for proper centering
+              katexElement.style.maxWidth = 'none' // Allow it to be wider, we'll scale it
+            } else {
+              // Formula fits, ensure no scaling
+              katexElement.style.transform = 'scale(1)'
+              katexElement.style.maxWidth = '100%'
+            }
+          })
+        }
         
         // If no KaTeX elements were created, show the formula as formatted plain text
         if (katexElements.length === 0) {
@@ -190,6 +242,30 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
           containerRef.current.style.fontFamily = 'system-ui, -apple-system, sans-serif'
           containerRef.current.style.color = '#93c5fd' // blue-300
           containerRef.current.style.lineHeight = '1.6'
+          
+          // Scale down plain text formulas if they overflow
+          requestAnimationFrame(() => {
+            if (!containerRef.current) return
+            
+            const container = containerRef.current.parentElement
+            if (!container) return
+            
+            const containerWidth = container.clientWidth
+            const containerPadding = 48
+            const availableWidth = containerWidth - containerPadding
+            const formulaWidth = containerRef.current.scrollWidth
+            
+            if (formulaWidth > availableWidth && availableWidth > 0) {
+              const scaleFactor = availableWidth / formulaWidth
+              const finalScale = Math.max(scaleFactor, 0.5)
+              
+              containerRef.current.style.transform = `scale(${finalScale})`
+              containerRef.current.style.transformOrigin = 'center center'
+              containerRef.current.style.width = `${formulaWidth}px`
+            } else {
+              containerRef.current.style.transform = 'scale(1)'
+            }
+          })
         }
       }
     } catch (error) {
@@ -208,6 +284,30 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
           containerRef.current.textContent = sanitized
           containerRef.current.style.fontSize = '1.2em'
           containerRef.current.style.fontFamily = 'monospace'
+          
+          // Scale down if it overflows
+          requestAnimationFrame(() => {
+            if (!containerRef.current) return
+            
+            const container = containerRef.current.parentElement
+            if (!container) return
+            
+            const containerWidth = container.clientWidth
+            const containerPadding = 48
+            const availableWidth = containerWidth - containerPadding
+            const formulaWidth = containerRef.current.scrollWidth
+            
+            if (formulaWidth > availableWidth && availableWidth > 0) {
+              const scaleFactor = availableWidth / formulaWidth
+              const finalScale = Math.max(scaleFactor, 0.5)
+              
+              containerRef.current.style.transform = `scale(${finalScale})`
+              containerRef.current.style.transformOrigin = 'center center'
+              containerRef.current.style.width = `${formulaWidth}px`
+            } else {
+              containerRef.current.style.transform = 'scale(1)'
+            }
+          })
         } else {
           // SECURITY: Use textContent instead of innerHTML
           containerRef.current.textContent = 'Formula not available'
@@ -226,6 +326,11 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
         color: '#93c5fd', // blue-300 - ensure visibility
         display: 'inline-block',
         minHeight: '1em',
+        maxWidth: '100%',
+        overflowX: 'hidden', // Changed to hidden - we scale instead of scroll
+        overflowY: 'hidden',
+        wordBreak: 'break-word',
+        wordWrap: 'break-word',
       }}
     />
   )

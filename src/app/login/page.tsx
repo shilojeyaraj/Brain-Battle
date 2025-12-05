@@ -21,6 +21,8 @@ function LoginForm() {
     const errorParam = searchParams.get('error')
     if (errorParam) {
       setError(decodeURIComponent(errorParam))
+      // Reset loading state when error is detected from URL
+      setIsPending(false)
     }
   }, [searchParams])
 
