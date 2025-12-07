@@ -145,17 +145,43 @@ export function TutorialOverlay({
     onStepChange?.(currentStep)
   }, []) // Only on mount
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
+    // Mark tutorial as complete in localStorage (for backwards compatibility)
     if (storageKey) {
       localStorage.setItem(storageKey, 'true')
     }
+    
+    // Mark tutorial as complete in database
+    try {
+      await fetch('/api/tutorial/complete', {
+        method: 'POST',
+        credentials: 'include',
+      })
+    } catch (error) {
+      console.error('Error marking tutorial as complete:', error)
+      // Continue even if API call fails
+    }
+    
     onComplete()
   }
 
-  const handleSkip = () => {
+  const handleSkip = async () => {
+    // Mark tutorial as complete in localStorage (for backwards compatibility)
     if (storageKey) {
       localStorage.setItem(storageKey, 'true')
     }
+    
+    // Mark tutorial as complete in database (even if skipped)
+    try {
+      await fetch('/api/tutorial/complete', {
+        method: 'POST',
+        credentials: 'include',
+      })
+    } catch (error) {
+      console.error('Error marking tutorial as complete:', error)
+      // Continue even if API call fails
+    }
+    
     onSkip()
   }
 

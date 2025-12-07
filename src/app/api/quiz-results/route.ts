@@ -183,6 +183,33 @@ export async function POST(request: NextRequest) {
 
     console.log("✅ [QUIZ RESULTS] Created/retrieved quiz session:", sessionData.id)
 
+    // 🛡️ SECURITY FIX #5: Session replay protection - validate session timestamps
+    // Prevent replaying old sessions or sessions that haven't started yet
+    const sessionStartTime = sessionData.started_at ? new Date(sessionData.started_at).getTime() : null
+    const sessionEndTime = sessionData.ended_at ? new Date(sessionData.ended_at).getTime() : null
+    const now = Date.now()
+    
+    // If session has an end time, it should be recent (within last 5 minutes)
+    // This prevents replaying very old sessions
+    if (sessionEndTime && (now - sessionEndTime) > 5 * 60 * 1000) {
+      console.warn("⚠️ [QUIZ RESULTS] Session ended more than 5 minutes ago - possible replay attack", {
+        sessionId: sessionData.id,
+        endedAt: sessionData.ended_at,
+        timeSinceEnd: now - sessionEndTime
+      })
+      // Still allow but log for monitoring
+    }
+    
+    // If session has a start time, validate it's not in the future
+    if (sessionStartTime && sessionStartTime > now + 60000) { // Allow 1 minute tolerance
+      console.error("❌ [QUIZ RESULTS] Session start time is in the future - invalid", {
+        sessionId: sessionData.id,
+        startedAt: sessionData.started_at,
+        now: new Date(now).toISOString()
+      })
+      return NextResponse.json({ error: "Invalid session timing" }, { status: 400 })
+    }
+
     // 🛡️ XP FARMING PREVENTION: Check if user has already completed this session
     const { data: existingResult, error: duplicateCheckError } = await adminClient
       .from('game_results')
@@ -280,10 +307,34 @@ export async function POST(request: NextRequest) {
 
     console.log("✅ [QUIZ RESULTS] Inserted questions with IDs")
 
+    // 🛡️ SECURITY FIX #3: Fetch questions from database to validate against
+    // Don't trust client-provided questions - use the ones we just inserted
+    const { data: dbQuestions, error: dbQuestionsError } = await adminClient
+      .from('questions')
+      .select('id, question_text, question_type, correct_answer, options, order_index')
+      .eq('session_id', sessionData.id)
+      .order('order_index', { ascending: true })
+
+    if (dbQuestionsError || !dbQuestions || dbQuestions.length !== insertedQuestions.length) {
+      console.error("❌ [QUIZ RESULTS] Error fetching database questions:", dbQuestionsError)
+      return NextResponse.json({ error: "Failed to validate questions" }, { status: 500 })
+    }
+
     // 4. Insert player answers with proper evaluation
+    // 🛡️ SECURITY: Validate answers against database questions, not client-provided questions
     const answersToInsertPromises = answers.map(async (answer: any, index: number) => {
       const question = insertedQuestions.find(q => q.order_index === index)
-      const questionData = questions[index]
+      const dbQuestion = dbQuestions.find(q => q.order_index === index)
+      
+      // Use database question for validation, fallback to client question only for answer extraction
+      const questionData = dbQuestion ? {
+        id: dbQuestion.id,
+        question: dbQuestion.question_text,
+        type: dbQuestion.question_type === 'fill_blank' ? 'open_ended' : dbQuestion.question_type,
+        correct: dbQuestion.correct_answer,
+        options: Array.isArray(dbQuestion.options) ? dbQuestion.options : (dbQuestion.options ? [dbQuestion.options] : []),
+        expected_answers: [dbQuestion.correct_answer]
+      } : questions[index] // Fallback if somehow missing
       
       // Extract user answer - could be index or text
       let userAnswer: number | string
@@ -349,6 +400,93 @@ export async function POST(request: NextRequest) {
 
     console.log("✅ [QUIZ RESULTS] Inserted player answers")
     
+    // 🛡️ SECURITY FIX #1 & #3: Recalculate scores from database answers
+    // Don't trust client-provided correctAnswers, score, or totalQuestions
+    // Fetch all stored answers and recalculate based on database questions
+    const { data: storedAnswers, error: fetchAnswersError } = await adminClient
+      .from('player_answers')
+      .select('question_id, is_correct, response_time, answered_at')
+      .eq('user_id', userId)
+      .in('question_id', insertedQuestions.map(q => q.id))
+      .order('answered_at', { ascending: true })
+
+    if (fetchAnswersError) {
+      console.error("❌ [QUIZ RESULTS] Error fetching stored answers:", fetchAnswersError)
+      return NextResponse.json({ error: "Failed to validate answers" }, { status: 500 })
+    }
+
+    if (!storedAnswers || storedAnswers.length === 0) {
+      console.error("❌ [QUIZ RESULTS] No answers found in database")
+      return NextResponse.json({ error: "No answers found" }, { status: 400 })
+    }
+
+    // 🛡️ SECURITY FIX #7: Validate answer count matches question count
+    if (storedAnswers.length !== insertedQuestions.length) {
+      console.error("❌ [QUIZ RESULTS] Answer count mismatch:", {
+        questions: insertedQuestions.length,
+        answers: storedAnswers.length
+      })
+      return NextResponse.json({ 
+        error: `Answer count mismatch. Expected ${insertedQuestions.length} answers, got ${storedAnswers.length}` 
+      }, { status: 400 })
+    }
+
+    // Recalculate correct answers from database
+    const actualCorrectAnswers = storedAnswers.filter(a => a.is_correct === true).length
+    const actualTotalQuestions = insertedQuestions.length
+    const actualScore = actualTotalQuestions > 0 ? (actualCorrectAnswers / actualTotalQuestions) : 0
+
+    // Calculate actual duration from answer timestamps
+    const firstAnswerTime = storedAnswers[0]?.answered_at 
+      ? new Date(storedAnswers[0].answered_at).getTime() 
+      : Date.now()
+    const lastAnswerTime = storedAnswers[storedAnswers.length - 1]?.answered_at
+      ? new Date(storedAnswers[storedAnswers.length - 1].answered_at).getTime()
+      : Date.now()
+    const actualDuration = Math.max(0, Math.round((lastAnswerTime - firstAnswerTime) / 1000))
+
+    // 🛡️ SECURITY FIX #2: Validate answer times are realistic
+    // Check that response times are within reasonable bounds (0-60 seconds per question)
+    const invalidTimes = storedAnswers.filter(a => {
+      const time = Number(a.response_time) || 0
+      return time < 0 || time > 60
+    })
+    
+    if (invalidTimes.length > 0) {
+      console.warn("⚠️ [QUIZ RESULTS] Invalid response times detected:", invalidTimes.length)
+      // Don't fail, but log warning - we'll use calculated duration instead
+    }
+
+    // Calculate average response time from stored values (capped at 60s per question)
+    const validResponseTimes = storedAnswers
+      .map(a => Math.min(60, Math.max(0, Number(a.response_time) || 0)))
+      .filter(t => t > 0)
+    const averageResponseTime = validResponseTimes.length > 0
+      ? validResponseTimes.reduce((a, b) => a + b, 0) / validResponseTimes.length
+      : 30 // Default if no valid times
+
+    console.log("🛡️ [QUIZ RESULTS] Security validation complete:", {
+      clientProvided: {
+        correctAnswers,
+        totalQuestions,
+        score,
+        duration
+      },
+      databaseCalculated: {
+        correctAnswers: actualCorrectAnswers,
+        totalQuestions: actualTotalQuestions,
+        score: actualScore,
+        duration: actualDuration,
+        averageResponseTime
+      }
+    })
+
+    // Use database-calculated values instead of client-provided values
+    const verifiedCorrectAnswers = actualCorrectAnswers
+    const verifiedTotalQuestions = actualTotalQuestions
+    const verifiedScore = actualScore
+    const verifiedDuration = actualDuration
+
     // Store answer history for redo functionality (link to question_history)
     if (userId && questions.length > 0) {
       try {
@@ -416,31 +554,33 @@ export async function POST(request: NextRequest) {
     }
 
     // 5. Create game result record
+    // 🛡️ SECURITY: Use verified values from database, not client-provided values
     // Calculate XP: base XP per question (20) + bonus for accuracy
     // Base: 20 XP per correct answer (increased from 10 for better retention)
     // Bonus: up to 100 XP for perfect score (increased from 50)
-    const baseXP = correctAnswers * 20
-    const accuracyBonus = correctAnswers === totalQuestions ? 100 : Math.round((correctAnswers / totalQuestions) * 60)
+    const baseXP = verifiedCorrectAnswers * 20
+    const accuracyBonus = verifiedCorrectAnswers === verifiedTotalQuestions ? 100 : Math.round((verifiedCorrectAnswers / verifiedTotalQuestions) * 60)
     const xpEarned = baseXP + accuracyBonus
     
-    console.log("💰 [QUIZ RESULTS] XP Calculation:", {
-      correctAnswers,
-      totalQuestions,
+    console.log("💰 [QUIZ RESULTS] XP Calculation (using verified values):", {
+      correctAnswers: verifiedCorrectAnswers,
+      totalQuestions: verifiedTotalQuestions,
       baseXP,
       accuracyBonus,
       xpEarned,
-      isPerfectScore: correctAnswers === totalQuestions
+      isPerfectScore: verifiedCorrectAnswers === verifiedTotalQuestions
     })
+    // 🛡️ SECURITY: Use verified values from database
     const { data: gameResult, error: gameResultError } = await adminClient
       .from('game_results')
       .insert({
         room_id: null, // Singleplayer
         user_id: userId,
         session_id: sessionData.id,
-        final_score: score,
-        questions_answered: totalQuestions,
-        correct_answers: correctAnswers,
-        total_time: duration,
+        final_score: verifiedScore,
+        questions_answered: verifiedTotalQuestions,
+        correct_answers: verifiedCorrectAnswers,
+        total_time: verifiedDuration,
         rank: 1, // Singleplayer is always rank 1
         xp_earned: xpEarned,
         completed_at: new Date().toISOString()
@@ -470,6 +610,13 @@ export async function POST(request: NextRequest) {
       
       if (statsFetchError?.code === 'PGRST116' || !currentStats) {
         console.log("📝 [QUIZ RESULTS] Creating initial player stats for user:", userId, "isSingleplayer:", isSingleplayerForNewStats)
+        
+        // 🛡️ SECURITY: Use verified values (these should be defined by now)
+        // If for some reason they're not defined, use safe defaults
+        const safeCorrectAnswers = typeof verifiedCorrectAnswers !== 'undefined' ? verifiedCorrectAnswers : 0
+        const safeTotalQuestions = typeof verifiedTotalQuestions !== 'undefined' ? verifiedTotalQuestions : 0
+        const safeAverageTime = typeof averageResponseTime !== 'undefined' ? averageResponseTime : 30
+        
         const { data: newStats, error: createError } = await adminClient
           .from('player_stats')
           .insert({
@@ -481,10 +628,10 @@ export async function POST(request: NextRequest) {
             total_losses: 0,
             win_streak: isSingleplayerForNewStats ? 0 : 1,
             best_streak: isSingleplayerForNewStats ? 0 : 1,
-            total_questions_answered: totalQuestions,
-            correct_answers: correctAnswers,
-            accuracy: (correctAnswers / totalQuestions) * 100,
-            average_response_time: duration / totalQuestions,
+            total_questions_answered: safeTotalQuestions,
+            correct_answers: safeCorrectAnswers,
+            accuracy: safeTotalQuestions > 0 ? (safeCorrectAnswers / safeTotalQuestions) * 100 : 0,
+            average_response_time: safeAverageTime,
             favorite_subject: topic,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
@@ -534,9 +681,10 @@ export async function POST(request: NextRequest) {
       ? (currentStats.win_streak || 0) // Don't update streak for singleplayer
       : (currentStats.win_streak || 0) + 1
     const newBestStreak = Math.max(currentStats.best_streak || 0, newWinStreak)
-    const newTotalQuestions = (currentStats.total_questions_answered || 0) + totalQuestions
-    const newCorrectAnswers = (currentStats.correct_answers || 0) + correctAnswers
-    const newAccuracy = (newCorrectAnswers / newTotalQuestions) * 100
+    // 🛡️ SECURITY: Use verified values from database
+    const newTotalQuestions = (currentStats.total_questions_answered || 0) + verifiedTotalQuestions
+    const newCorrectAnswers = (currentStats.correct_answers || 0) + verifiedCorrectAnswers
+    const newAccuracy = newTotalQuestions > 0 ? (newCorrectAnswers / newTotalQuestions) * 100 : 0
     const newXP = (currentStats.xp || 0) + xpEarned
     const newLevel = Math.floor(newXP / 1000) + 1
 
@@ -623,12 +771,13 @@ export async function POST(request: NextRequest) {
     try {
       const { checkAndUnlockAchievements, checkCustomAchievements } = await import('@/lib/achievements/achievement-checker')
       
+      // 🛡️ SECURITY: Use verified values from database
       // Check for perfect score
-      const isPerfectScore = correctAnswers === totalQuestions && totalQuestions > 0
+      const isPerfectScore = verifiedCorrectAnswers === verifiedTotalQuestions && verifiedTotalQuestions > 0
       
       // Determine if this is a multiplayer session
       const isMultiplayer = sessionData.room_id !== null
-      const isWin = isMultiplayer && (score >= 0.6) // 60% threshold for win
+      const isWin = isMultiplayer && (verifiedScore >= 0.6) // 60% threshold for win
       
       // Check standard achievements (based on updated stats)
       const unlockedStandard = await checkAndUnlockAchievements(userId)

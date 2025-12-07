@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useCallback, useMemo, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -18,9 +19,72 @@ import { BrainBattleLoading } from "@/components/ui/brain-battle-loading"
 import { useToast } from "@/components/ui/toast"
 
 export default function SingleplayerPage() {
+  const router = useRouter()
   const { success: toastSuccess, error: toastError, info: toastInfo } = useToast()
   const [step, setStep] = useState(1)
   const [isAdminMode, setIsAdminMode] = useState(false)
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  
+  const [authError, setAuthError] = useState<string | null>(null)
+
+  // Check authentication on page load
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await fetch('/api/user/current', {
+          credentials: 'include', // Important: include cookies
+          cache: 'no-store', // Don't cache auth checks
+        })
+        
+        const data = await response.json()
+        
+        if (response.ok && data.success && data.userId) {
+          setIsAuthenticated(true)
+          setAuthError(null)
+          setIsCheckingAuth(false)
+          
+          if (process.env.NODE_ENV === 'development') {
+            console.log('✅ [SINGLEPLAYER] User authenticated:', data.userId)
+          }
+          return
+        }
+        
+        // Not authenticated - get error message
+        const errorMessage = data.error || 'Please log in to continue'
+        const errorCode = data.errorCode
+        
+        // Special handling for "logged in elsewhere" - show message before redirect
+        if (errorCode === 'LOGGED_IN_ELSEWHERE') {
+          setAuthError('You have been logged out because you logged in on another device. Redirecting to login...')
+          setTimeout(() => {
+            router.push(`/login?redirect=${encodeURIComponent('/singleplayer')}&error=${encodeURIComponent(errorMessage)}`)
+          }, 3000)
+          setIsCheckingAuth(false)
+          return
+        }
+        
+        // For other errors, redirect immediately with error message
+        if (process.env.NODE_ENV === 'development') {
+          console.log('❌ [SINGLEPLAYER] Not authenticated, redirecting to login')
+          console.log('   Response status:', response.status)
+          console.log('   Error code:', errorCode)
+          console.log('   Error message:', errorMessage)
+        }
+        
+        const currentUrl = '/singleplayer'
+        router.push(`/login?redirect=${encodeURIComponent(currentUrl)}&error=${encodeURIComponent(errorMessage)}`)
+      } catch (error) {
+        console.error('❌ [SINGLEPLAYER] Error checking authentication:', error)
+        // On error, redirect to login
+        router.push('/login?redirect=' + encodeURIComponent('/singleplayer') + '&error=' + encodeURIComponent('An error occurred. Please log in again.'))
+      } finally {
+        setIsCheckingAuth(false)
+      }
+    }
+    
+    checkAuth()
+  }, [router])
   
   // Check for admin mode from URL (client-side only)
   useEffect(() => {
@@ -45,11 +109,15 @@ export default function SingleplayerPage() {
   const [quizConfig, setQuizConfig] = useState<QuizConfig | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Fetch subscription limits
+  // Fetch subscription limits (only if authenticated)
   useEffect(() => {
+    if (!isAuthenticated || isCheckingAuth) return
+    
     const fetchLimits = async () => {
       try {
-        const response = await fetch('/api/subscription/limits')
+        const response = await fetch('/api/subscription/limits', {
+          credentials: 'include',
+        })
         if (response.ok) {
           const data = await response.json()
           if (data.success) {
@@ -61,7 +129,7 @@ export default function SingleplayerPage() {
       }
     }
     fetchLimits()
-  }, [])
+  }, [isAuthenticated, isCheckingAuth])
 
   // Check for quiz config from dashboard
   useEffect(() => {
@@ -386,6 +454,38 @@ export default function SingleplayerPage() {
   const defaultQuestions = Math.min(maxQuestions, 5)
 
   // Show loading screen when generating notes or quiz
+  // Show loading while checking authentication
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-950 flex items-center justify-center">
+        <div className="text-center">
+          <BrainBattleLoading />
+          {authError && (
+            <div className="max-w-md mx-auto mt-4 p-4 rounded-xl bg-orange-500/10 border-2 border-orange-500/50">
+              <p className="text-orange-400 font-bold text-sm">{authError}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 text-blue-400 animate-spin mx-auto mb-4" />
+          <p className="text-blue-200 font-bold">Checking authentication...</p>
+        </div>
+      </div>
+    )
+  }
+  
+  // Don't render page if not authenticated (will redirect)
+  if (!isAuthenticated) {
+    return null
+  }
+
   if (isGenerating) {
     return <BrainBattleLoading message="Generating your Brain Battle experience..." />
   }
@@ -455,15 +555,6 @@ export default function SingleplayerPage() {
               }`}>
                 <BookOpen className="h-5 w-5" strokeWidth={3} />
                 <span className="font-black">2. Topic</span>
-              </div>
-              <div className="w-8 h-1 bg-slate-700/50 rounded"></div>
-              <div className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${
-                step >= 3 
-                  ? "bg-gradient-to-r from-blue-500 to-blue-600 text-white border-blue-400" 
-                  : "bg-gradient-to-br from-slate-800 to-slate-900 text-blue-100/70 border-slate-600/50"
-              }`}>
-                <Brain className="h-5 w-5" strokeWidth={3} />
-                <span className="font-black">3. Notes</span>
               </div>
               <div className="w-8 h-1 bg-slate-700/50 rounded"></div>
               <div className={`flex items-center gap-2 px-4 py-2 rounded-full border-2 ${
@@ -649,7 +740,7 @@ export default function SingleplayerPage() {
           />
         )}
 
-        {/* Step 2: Topic Selection */}
+        {/* Step 2: Topic Selection & Notes Generation */}
         {step === 2 && (
           <Card className="p-8 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg">
             <div className="text-center mb-8">
@@ -718,85 +809,23 @@ export default function SingleplayerPage() {
                   variant="outline"
                   className="flex-1 h-12 font-black border-2 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70"
                 >
-                  Back
-                </Button>
-                <Button
-                  onClick={() => setStep(3)}
-                  disabled={uploadedFiles.length === 0}
-                  className="flex-1 h-12 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-black text-lg border-2 border-blue-400 disabled:opacity-50"
-                >
-                  Next: Generate Notes
-                </Button>
-              </div>
-            </div>
-          </Card>
-        )}
-
-        {/* Step 3: Study Notes Generation */}
-        {step === 3 && (
-          <Card className="p-8 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg">
-            <div className="text-center mb-8">
-              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-orange-500 to-orange-600 flex items-center justify-center mx-auto mb-4 border-2 border-orange-400">
-                <Brain className="w-8 h-8 text-white" strokeWidth={3} />
-              </div>
-              <h2 className="text-3xl font-black text-white mb-2">Generate Study Notes!</h2>
-              <p className="text-blue-100/70 font-bold">AI will create comprehensive study notes with diagrams from your document</p>
-            </div>
-
-            <div className="max-w-md mx-auto space-y-6">
-              <div className="p-6 rounded-xl bg-slate-700/50 border-2 border-slate-600/50">
-                <h3 className="font-black text-white mb-3">Study Notes Settings</h3>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-blue-100/70 font-bold">Topic:</span>
-                    <span className="font-black text-white">{topic}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-blue-100/70 font-bold">Difficulty:</span>
-                    <Badge className={`border-2 font-black ${
-                      difficulty === "hard"
-                        ? "bg-red-500/20 text-red-300 border-red-500/50"
-                        : difficulty === "medium"
-                        ? "bg-blue-500/20 text-blue-300 border-blue-500/50"
-                        : "bg-green-500/20 text-green-300 border-green-500/50"
-                    }`}>
-                      {difficulty.charAt(0).toUpperCase() + difficulty.slice(1)}
-                    </Badge>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-blue-100/70 font-bold">Sources:</span>
-                    <span className="font-black text-white">
-                      {uploadedFiles.length > 0 
-                        ? `${uploadedFiles.length} document${uploadedFiles.length > 1 ? 's' : ''}`
-                        : 'No documents uploaded'
-                      }
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <Button
-                  onClick={() => setStep(2)}
-                  variant="outline"
-                  className="flex-1 h-12 font-black border-2 border-slate-600/50 bg-slate-700/50 text-blue-100/70 hover:bg-slate-700/70"
-                >
+                  <ArrowLeft className="h-4 w-4 mr-2" strokeWidth={3} />
                   Back
                 </Button>
                 <Button
                   onClick={handleGenerateNotes}
-                  disabled={isGenerating}
-                  className="flex-1 h-12 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-black text-lg border-2 border-blue-400 disabled:opacity-50"
+                  disabled={isGenerating || uploadedFiles.length === 0}
+                  className="flex-1 h-12 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-black text-lg border-2 border-blue-400 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isGenerating ? (
                     <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                      <Loader2 className="h-5 w-5 mr-2 animate-spin" strokeWidth={3} />
                       Generating Notes...
                     </>
                   ) : (
                     <>
                       <Brain className="h-5 w-5 mr-2" strokeWidth={3} />
-                      Generate Notes!
+                      Generate Notes
                     </>
                   )}
                 </Button>
@@ -804,6 +833,8 @@ export default function SingleplayerPage() {
             </div>
           </Card>
         )}
+
+        {/* Step 3 removed - notes generation now happens directly from Step 2 */}
 
         {/* Step 4: Study Notes Viewer */}
         {step === 4 && studyNotes && (

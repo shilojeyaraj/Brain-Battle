@@ -40,42 +40,93 @@ function LoginForm() {
       const emailValue = formData.get('email') as string
       const passwordValue = formData.get('password') as string
 
-      // Sign in with custom auth
-      const result = await authenticateUser(
-        emailValue.trim().toLowerCase(),
-        passwordValue
-      )
-
-      if (result.error) {
-        setError(result.error || "Login failed")
+      if (!emailValue || !passwordValue) {
+        setError('Please enter both email and password')
         setIsPending(false)
         return
       }
 
-      if (result.success && result.user?.id) {
-        // Store user ID in localStorage for session management
-        localStorage.setItem('userId', result.user.id)
-        
-        // Dispatch event to notify streak component of login
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('userLoggedIn'))
+      // Try API login first (better error handling)
+      try {
+        const loginFormData = new FormData()
+        loginFormData.append('email', emailValue.trim().toLowerCase())
+        loginFormData.append('password', passwordValue)
+
+        const response = await fetch('/api/auth/login', {
+          method: 'POST',
+          body: loginFormData,
+          credentials: 'include'
+        })
+
+        const result = await response.json()
+
+        if (response.ok && result.success) {
+          // Store user ID in localStorage for session management
+          if (result.userId) {
+            localStorage.setItem('userId', result.userId)
+          }
+          
+          // Dispatch event to notify streak component of login
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('userLoggedIn'))
+          }
+          
+          // Check for redirect parameter
+          const redirectParam = searchParams.get('redirect')
+          const redirectUrl = redirectParam 
+            ? decodeURIComponent(redirectParam)
+            : '/dashboard'
+          
+          // Successfully signed in, redirect to original destination or dashboard
+          router.push(redirectUrl)
+          return
+        } else {
+          // Show user-friendly error message
+          const errorMsg = result.error || 'Login failed. Please check your credentials and try again.'
+          setError(errorMsg)
+          setIsPending(false)
+          return
         }
+      } catch (apiError: any) {
+        // Fallback to server action if API fails
+        console.warn('API login failed, trying server action:', apiError)
         
-        // Check for redirect parameter
-        const redirectParam = searchParams.get('redirect')
-        const redirectUrl = redirectParam 
-          ? decodeURIComponent(redirectParam)
-          : '/dashboard'
-        
-        // Successfully signed in, redirect to original destination or dashboard
-        router.push(redirectUrl)
-      } else {
-        setError('Login failed')
-        setIsPending(false)
+        const result = await authenticateUser(
+          emailValue.trim().toLowerCase(),
+          passwordValue
+        )
+
+        if (result.error) {
+          setError(result.error || "Login failed. Please check your credentials and try again.")
+          setIsPending(false)
+          return
+        }
+
+        if (result.success && result.user?.id) {
+          // Store user ID in localStorage for session management
+          localStorage.setItem('userId', result.user.id)
+          
+          // Dispatch event to notify streak component of login
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('userLoggedIn'))
+          }
+          
+          // Check for redirect parameter
+          const redirectParam = searchParams.get('redirect')
+          const redirectUrl = redirectParam 
+            ? decodeURIComponent(redirectParam)
+            : '/dashboard'
+          
+          // Successfully signed in, redirect to original destination or dashboard
+          router.push(redirectUrl)
+        } else {
+          setError('Login failed. Please check your credentials and try again.')
+          setIsPending(false)
+        }
       }
     } catch (err: any) {
-      setError(err.message || 'Login failed')
-    } finally {
+      const errorMessage = err.message || 'An unexpected error occurred. Please try again.'
+      setError(errorMessage)
       setIsPending(false)
     }
   }
@@ -124,9 +175,21 @@ function LoginForm() {
         >
           <Card className="p-8 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg">
             {error && (
-              <div className="mb-6 p-4 rounded-xl bg-red-500/10 border-2 border-red-500/50 flex items-center gap-3">
-                <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" strokeWidth={3} />
-                <p className="text-red-400 font-bold text-sm">{error}</p>
+              <div className={`mb-6 p-4 rounded-xl border-2 flex items-center gap-3 ${
+                error.includes('another device') || error.includes('logged in elsewhere')
+                  ? 'bg-orange-500/10 border-orange-500/50'
+                  : 'bg-red-500/10 border-red-500/50'
+              }`}>
+                <AlertCircle className={`h-5 w-5 flex-shrink-0 ${
+                  error.includes('another device') || error.includes('logged in elsewhere')
+                    ? 'text-orange-400'
+                    : 'text-red-400'
+                }`} strokeWidth={3} />
+                <p className={`font-bold text-sm ${
+                  error.includes('another device') || error.includes('logged in elsewhere')
+                    ? 'text-orange-400'
+                    : 'text-red-400'
+                }`}>{error}</p>
               </div>
             )}
 

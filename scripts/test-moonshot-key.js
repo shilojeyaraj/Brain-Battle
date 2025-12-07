@@ -73,11 +73,31 @@ async function testMoonshotKey() {
         kimiModels.forEach(m => {
           console.log(`   - ${m.id}`)
         })
+        console.log('')
+        
+        // Check for specific K2 models
+        const officialK2Models = [
+          'kimi-k2-0905-preview',
+          'kimi-k2-turbo-preview',
+          'kimi-k2-thinking',
+          'kimi-k2-thinking-turbo'
+        ]
+        
+        console.log('📋 Checking for official K2 models:')
+        officialK2Models.forEach(modelName => {
+          const found = models.data.find(m => m.id === modelName)
+          if (found) {
+            console.log(`   ✅ ${modelName} - Available`)
+          } else {
+            console.log(`   ❌ ${modelName} - Not available`)
+          }
+        })
         
         // Check for thinking model specifically
         const thinkingModel = models.data.find(m => m.id.includes('thinking'))
         if (thinkingModel) {
-          console.log(`   ✅ Found thinking model: ${thinkingModel.id}`)
+          console.log(`\n   ✅ Found thinking model: ${thinkingModel.id}`)
+          console.log('   💡 Thinking models support multi-step tool calls and reasoning')
         }
       } else {
         console.log('⚠️  No Kimi K2 models found in available models')

@@ -61,7 +61,32 @@ export async function getUserStatsClient(userId: string): Promise<{ success: boo
     let finalProfileData = profileData
     
     // If profile doesn't exist, create it via API route (uses admin client to bypass RLS)
+    // BUT: Only if user is authenticated (401 means not authenticated, don't try to create)
     if (profileNotFound) {
+      // Check if user is authenticated first
+      try {
+        const authCheck = await fetch('/api/user/current', {
+          credentials: 'include',
+          cache: 'no-store'
+        })
+        
+        if (!authCheck.ok || authCheck.status === 401) {
+          // User is not authenticated - don't try to create profile
+          console.log('⚠️ [USER STATS] User not authenticated, skipping profile creation')
+          return { 
+            success: false, 
+            error: 'User not authenticated' 
+          }
+        }
+      } catch (authError) {
+        // Can't verify auth - don't create profile
+        console.warn('⚠️ [USER STATS] Could not verify authentication, skipping profile creation')
+        return { 
+          success: false, 
+          error: 'Authentication check failed' 
+        }
+      }
+      
       console.log('📝 [USER STATS] Profile not found, creating one for user:', userId)
       
       // First, try to get the username from the users table
@@ -92,12 +117,21 @@ export async function getUserStatsClient(userId: string): Promise<{ success: boo
         const response = await fetch('/api/user-profile', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
             user_id: userId,
             username: username
             // Note: profiles table doesn't have email column
           })
         })
+        
+        if (response.status === 401) {
+          // User is not authenticated
+          return { 
+            success: false, 
+            error: 'User not authenticated' 
+          }
+        }
         
         if (response.ok) {
           const result = await response.json()
@@ -111,34 +145,17 @@ export async function getUserStatsClient(userId: string): Promise<{ success: boo
             }
           }
         } else {
-          let errorText = ''
-          let errorData: any = {}
-          try {
-            errorText = await response.text()
-            if (errorText) {
-              try {
-                errorData = JSON.parse(errorText)
-              } catch (parseError) {
-                // Response is not JSON, use the text as error message
-                errorData = { error: errorText, rawResponse: errorText }
-              }
-            } else {
-              // Empty response body
-              errorData = { error: `HTTP ${response.status}: ${response.statusText || 'No error message'}` }
-            }
-          } catch (e) {
-            errorData = { 
-              error: errorText || `HTTP ${response.status}: ${response.statusText || 'Unknown error'}`,
-              parseError: e instanceof Error ? e.message : String(e)
-            }
-          }
-          console.error('❌ [USER STATS] Failed to create profile via API:', errorData)
-          console.error('❌ [USER STATS] Response status:', response.status)
-          console.error('❌ [USER STATS] Response headers:', Object.fromEntries(response.headers.entries()))
-          
-          // Log the raw response for debugging
+          // Don't log empty error objects - only log meaningful errors
+          const errorText = await response.text().catch(() => '')
           if (errorText) {
-            console.error('❌ [USER STATS] Raw response text:', errorText)
+            try {
+              const errorData = JSON.parse(errorText)
+              if (errorData.error) {
+                console.error('❌ [USER STATS] Failed to create profile:', errorData.error)
+              }
+            } catch {
+              // Not JSON, ignore
+            }
           }
         }
       } catch (apiError) {
@@ -177,11 +194,34 @@ export async function getUserStatsClient(userId: string): Promise<{ success: boo
       .single()
     
     if (statsError || !statsData) {
+      // Check authentication before trying to create stats
+      try {
+        const authCheck = await fetch('/api/user/current', {
+          credentials: 'include',
+          cache: 'no-store'
+        })
+        
+        if (!authCheck.ok || authCheck.status === 401) {
+          // User is not authenticated - don't try to create stats
+          return { 
+            success: false, 
+            error: 'User not authenticated' 
+          }
+        }
+      } catch (authError) {
+        // Can't verify auth - don't create stats
+        return { 
+          success: false, 
+          error: 'Authentication check failed' 
+        }
+      }
+      
       // Create default stats if none exist via API route (bypasses RLS)
       try {
         const response = await fetch('/api/player-stats', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
           body: JSON.stringify({
             user_id: userId,
             stats: {
@@ -201,6 +241,14 @@ export async function getUserStatsClient(userId: string): Promise<{ success: boo
           })
         })
         
+        if (response.status === 401) {
+          // User is not authenticated
+          return { 
+            success: false, 
+            error: 'User not authenticated' 
+          }
+        }
+        
         if (response.ok) {
           const result = await response.json()
           if (result.success && result.data) {
@@ -219,7 +267,10 @@ export async function getUserStatsClient(userId: string): Promise<{ success: boo
           }
         } else {
           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-          console.error('❌ [USER STATS] Failed to create stats via API - HTTP error:', response.status, errorData)
+          // Don't log empty error objects
+          if (errorData.error) {
+            console.error('❌ [USER STATS] Failed to create stats:', errorData.error)
+          }
           return { success: false, error: `Failed to create user stats: ${errorData.error || 'HTTP ' + response.status}` }
         }
       } catch (apiError) {

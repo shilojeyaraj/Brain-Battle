@@ -532,12 +532,13 @@ export async function login(formData: FormData) {
       redirect(`/login?error=${encodeURIComponent(result.error || "Login failed")}`)
     }
 
-    // Store user in secure session cookie
+    // Store user in secure session cookie (invalidates previous sessions)
     if (result.user) {
       const { setSessionCookie } = await import('@/lib/auth/session-cookies')
+      // Note: setSessionCookie now automatically invalidates previous sessions
       await setSessionCookie(result.user.id)
       
-      console.log("✅ [LOGIN] Authentication successful, session cookie set")
+      console.log("✅ [LOGIN] Authentication successful, session cookie set (previous sessions invalidated)")
       revalidatePath("/")
       
       // Check for redirect parameter in formData (passed from client)
@@ -560,9 +561,37 @@ export async function login(formData: FormData) {
 }
 
 export async function logout() {
+  // Get current user ID and session before clearing cookie
+  const { getUserIdFromSession, clearSessionCookie, verifySessionToken } = await import('@/lib/auth/session-cookies')
+  const { cookies } = await import('next/headers')
+  const { createAdminClient } = await import('@/lib/supabase/server-admin')
+  
+  const userId = await getUserIdFromSession()
+  
+  // Get session token before clearing
+  const cookieStore = await cookies()
+  const token = cookieStore.get('brain-brawl-session')?.value
+  
   // Clear session cookie
-  const { clearSessionCookie } = await import('@/lib/auth/session-cookies')
   await clearSessionCookie()
+  
+  // Mark session as inactive in database
+  if (userId && token) {
+    try {
+      const sessionData = await verifySessionToken(token)
+      if (sessionData) {
+        const supabase = createAdminClient()
+        await supabase
+          .from('user_sessions')
+          .update({ is_active: false })
+          .eq('user_id', userId)
+          .eq('session_token', sessionData.sessionId)
+      }
+    } catch (error) {
+      console.error('❌ [LOGOUT] Error marking session as inactive:', error)
+      // Continue anyway - cookie is cleared
+    }
+  }
   
   revalidatePath("/")
   redirect("/")

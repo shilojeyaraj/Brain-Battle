@@ -1,6 +1,7 @@
 "use client"
 
 import { Suspense, useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { StatsGrid } from "@/components/dashboard/stats-grid"
 import { LobbySection } from "@/components/dashboard/lobby-section"
@@ -42,20 +43,76 @@ const LazyRecentBattles = dynamicImport(() => import("@/components/dashboard/rec
 })
 
 export default function DashboardPage() {
+  const router = useRouter()
   const [showStats, setShowStats] = useState(true)
   const [isTutorialActive, setIsTutorialActive] = useState(false)
   const [tutorialStep, setTutorialStep] = useState<number | undefined>(undefined)
+  const [checkingAuth, setCheckingAuth] = useState(true)
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
 
-  // Dispatch login event on mount to trigger streak check
+  const [authError, setAuthError] = useState<string | null>(null)
+
+  // Check authentication on mount
   useEffect(() => {
-    // Check if user just logged in (dashboard loaded after login)
-    if (typeof window !== 'undefined') {
+    const checkAuth = async () => {
+      try {
+        const response = await fetch('/api/user/current', {
+          credentials: 'include',
+          cache: 'no-store'
+        })
+        
+        const data = await response.json()
+        
+        if (!response.ok || response.status === 401) {
+          // User is not authenticated - get error message and redirect to login with error
+          const errorMessage = data.error || 'Please log in to continue'
+          const errorCode = data.errorCode
+          
+          // Special handling for "logged in elsewhere" - show message before redirect
+          if (errorCode === 'LOGGED_IN_ELSEWHERE') {
+            setAuthError('You have been logged out because you logged in on another device. Please log in again.')
+            // Wait a moment to show the message, then redirect
+            setTimeout(() => {
+              router.push(`/login?error=${encodeURIComponent(errorMessage)}`)
+            }, 3000)
+            return
+          }
+          
+          // For other errors, redirect immediately with error message
+          router.push(`/login?error=${encodeURIComponent(errorMessage)}`)
+          return
+        }
+        
+        if (data.success && data.userId) {
+          setIsAuthenticated(true)
+          setAuthError(null)
+        } else {
+          // No user ID - redirect to login
+          router.push('/login?error=' + encodeURIComponent('Please log in to continue'))
+          return
+        }
+      } catch (error) {
+        // Error checking auth - redirect to login
+        console.error('Error checking authentication:', error)
+        router.push('/login?error=' + encodeURIComponent('An error occurred. Please log in again.'))
+        return
+      } finally {
+        setCheckingAuth(false)
+      }
+    }
+
+    checkAuth()
+  }, [router])
+
+  // Dispatch login event on mount to trigger streak check (only if authenticated)
+  useEffect(() => {
+    if (isAuthenticated && typeof window !== 'undefined') {
       // Small delay to ensure components are mounted
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent('userLoggedIn'))
       }, 100)
     }
-  }, [])
+  }, [isAuthenticated])
 
   // Check if tutorial is active
   useEffect(() => {
@@ -94,6 +151,20 @@ export default function DashboardPage() {
     const newState = !showStats
     setShowStats(newState)
     localStorage.setItem('dashboard_stats_collapsed', (!newState).toString())
+  }
+
+  // Show loading state while checking authentication
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 flex items-center justify-center">
+        <p className="text-slate-400 font-bold">Loading...</p>
+      </div>
+    )
+  }
+
+  // Don't render dashboard if not authenticated (will redirect)
+  if (!isAuthenticated) {
+    return null
   }
 
   return (

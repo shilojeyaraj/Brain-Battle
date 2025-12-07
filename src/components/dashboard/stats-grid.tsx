@@ -21,12 +21,19 @@ export const StatsGrid = memo(function StatsGrid() {
       // Try to get userId from session cookie first (more reliable)
       let userId: string | null = null
       try {
-        const response = await fetch('/api/user/current')
+        const response = await fetch('/api/user/current', {
+          credentials: 'include',
+          cache: 'no-store'
+        })
         if (response.ok) {
           const data = await response.json()
           if (data.success && data.userId) {
             userId = data.userId
           }
+        } else if (response.status === 401) {
+          // User is not authenticated - redirect to login
+          window.location.href = '/login'
+          return
         }
       } catch (e) {
         console.warn('Failed to get userId from API, falling back to localStorage')
@@ -38,8 +45,8 @@ export const StatsGrid = memo(function StatsGrid() {
       }
       
       if (!userId) {
-        setError("User not authenticated")
-        setLoading(false)
+        // User is not authenticated - redirect to login
+        window.location.href = '/login'
         return
       }
 
@@ -47,10 +54,16 @@ export const StatsGrid = memo(function StatsGrid() {
       if (result.success && result.data) {
         setUserProfile(result.data)
       } else {
+        // If error is due to authentication, redirect to login
+        if (result.error?.includes('Unauthorized') || result.error?.includes('not authenticated')) {
+          window.location.href = '/login'
+          return
+        }
         setError(result.error || "Failed to fetch stats")
       }
     } catch (err) {
       console.error("Error fetching user stats:", err)
+      // Don't show error if user is not authenticated, just redirect
       setError("Failed to load stats")
     } finally {
       setLoading(false)

@@ -35,17 +35,21 @@ export async function POST(request: NextRequest) {
         )
       }
 
-      // Set secure HTTP-only session cookie
-      await setSessionCookie(result.user.id)
-      
-      console.log("✅ [API LOGIN] Authentication successful, session cookie set")
-      
-      // Return success without exposing user ID in response
-      return NextResponse.json({
+      // Create response first
+      const response = NextResponse.json({
         success: true,
         // Don't expose full user object - client can fetch profile if needed
         userId: result.user.id
       })
+      
+      // Set secure HTTP-only session cookie (invalidates previous sessions)
+      // Pass response so cookie is set on the response object
+      await setSessionCookie(result.user.id, request, response)
+      
+      console.log("✅ [API LOGIN] Authentication successful, session cookie set (previous sessions invalidated)")
+      
+      // Return response with cookie set
+      return response
     } catch (error) {
       console.error("❌ [API LOGIN] Server error during authentication:", error)
       return NextResponse.json(

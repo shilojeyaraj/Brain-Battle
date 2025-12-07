@@ -17,8 +17,13 @@ MOONSHOT_API_KEY=your_moonshot_api_key_here
 AI_PROVIDER=both
 
 # Optional: Override default Kimi K2 model name
-# Default: kimi-k2-0711-preview
-MOONSHOT_MODEL=kimi-k2-0711-preview
+# Official K2 models (all support 256K context):
+# - kimi-k2-0905-preview: Latest version
+# - kimi-k2-turbo-preview: High-speed version (60-100 tokens/s)
+# - kimi-k2-thinking: Long-thinking model with multi-step tool calls (default)
+# - kimi-k2-thinking-turbo: High-speed thinking version
+# Default: kimi-k2-thinking
+MOONSHOT_MODEL=kimi-k2-thinking
 ```
 
 ## Configuration Modes

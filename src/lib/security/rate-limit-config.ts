@@ -30,6 +30,11 @@ export function getRateLimitConfig(path: string): RateLimitConfig {
     return { interval: 60000, limit: 30 } // 30 file uploads per minute
   }
   
+  // 🛡️ SECURITY: Stricter rate limiting for quiz results to prevent spam/exploitation
+  if (path.includes('/quiz-results') || path.includes('/multiplayer-results')) {
+    return { interval: 60000, limit: 10 } // 10 quiz result submissions per minute
+  }
+  
   // Default rate limit
   return { interval: 60000, limit: 100 } // 100 requests per minute
 }

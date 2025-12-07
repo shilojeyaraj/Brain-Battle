@@ -43,21 +43,32 @@ export class MoonshotClient implements AIClient {
     options: AIChatCompletionOptions = {}
   ): Promise<AIChatCompletionResponse> {
     // Kimi K2 model name - can be overridden via environment variable or options
-    // Default: kimi-k2-thinking (Kimi K2 thinking model)
-    // Alternative: kimi-k2-0711-preview, moonshot-v1-128k (if available)
+    // Official K2 models (all support 256K context):
+    // - kimi-k2-0905-preview: Latest version, 256K context
+    // - kimi-k2-turbo-preview: High-speed version (60-100 tokens/s)
+    // - kimi-k2-thinking: Long-thinking model with multi-step tool calls (default)
+    // - kimi-k2-thinking-turbo: High-speed thinking version
     const model = options.model || process.env.MOONSHOT_MODEL || 'kimi-k2-thinking'
 
     try {
-      const response = await this.client.chat.completions.create({
+      // Kimi K2 models support up to 32,000 max_tokens for output
+      // If maxTokens is not specified, we'll let the API use its default
+      const requestOptions: any = {
         model,
         messages: messages.map(msg => ({
           role: msg.role,
           content: msg.content,
         })),
         temperature: options.temperature ?? 0.2,
-        max_tokens: options.maxTokens,
         response_format: options.responseFormat ? { type: options.responseFormat } : undefined,
-      })
+      }
+      
+      // Only set max_tokens if explicitly provided (K2 models support up to 32K)
+      if (options.maxTokens) {
+        requestOptions.max_tokens = Math.min(options.maxTokens, 32000) // Cap at 32K as per K2 docs
+      }
+      
+      const response = await this.client.chat.completions.create(requestOptions)
 
       const content = response.choices[0]?.message?.content
       if (!content) {
@@ -110,7 +121,19 @@ export class MoonshotClient implements AIClient {
         // Check if it's a model-specific issue
         if (model && !model.includes('kimi')) {
           console.error('   ⚠️ WARNING: Model name does not contain "kimi" - this might be the issue!')
-          console.error('   Expected model format: kimi-k2-thinking, kimi-k2-0711-preview, or similar')
+          console.error('   Expected model format: kimi-k2-thinking, kimi-k2-0905-preview, kimi-k2-turbo-preview, or kimi-k2-thinking-turbo')
+        }
+        
+        // Validate model name format
+        const validK2Models = [
+          'kimi-k2-0905-preview',
+          'kimi-k2-turbo-preview',
+          'kimi-k2-thinking',
+          'kimi-k2-thinking-turbo'
+        ]
+        if (model && model.includes('kimi-k2') && !validK2Models.includes(model)) {
+          console.error(`   ⚠️ WARNING: Model "${model}" may not be a valid K2 model name`)
+          console.error('   Valid K2 models:', validK2Models.join(', '))
         }
         
         console.error('   Please check:')

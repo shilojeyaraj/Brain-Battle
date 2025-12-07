@@ -73,44 +73,65 @@ const DASHBOARD_TUTORIAL_STEPS: TutorialStep[] = [
 
 export function DashboardTutorial({ onStepChange }: { onStepChange?: (step: number) => void }) {
   const [showTutorial, setShowTutorial] = useState(false)
+  const [isChecking, setIsChecking] = useState(true)
   const searchParams = useSearchParams()
 
   useEffect(() => {
-    // Check if tutorial should be shown
-    const tutorialCompleted = localStorage.getItem('dashboard_tutorial_completed')
-    const isNewUser = searchParams.get('newUser') === 'true' || searchParams.get('userId')
-    
-    // Show tutorial if:
-    // 1. User just signed up (has newUser param) - ALWAYS show for new users
-    // 2. OR if tutorial hasn't been completed before (for returning users who skipped)
-    if (isNewUser) {
-      // For new users, always show tutorial (even if they somehow have the flag set)
-      // Clear the flag to ensure fresh start
-      if (tutorialCompleted) {
-        localStorage.removeItem('dashboard_tutorial_completed')
-      }
+    const checkTutorialStatus = async () => {
+      setIsChecking(true)
       
-      // Small delay to ensure page is fully rendered
-      setTimeout(() => {
-        setShowTutorial(true)
-      }, 800)
+      // Check if user just signed up (has newUser param)
+      const isNewUser = searchParams.get('newUser') === 'true' || searchParams.get('userId')
       
-      // Clean up URL params after starting tutorial
-      if (typeof window !== 'undefined') {
-        const url = new URL(window.location.href)
-        if (url.searchParams.has('newUser') || url.searchParams.has('userId')) {
-          url.searchParams.delete('newUser')
-          url.searchParams.delete('userId')
-          window.history.replaceState({}, '', url.toString())
+      if (isNewUser) {
+        // For new users, always show tutorial (first signup only)
+        // Clean up URL params after starting tutorial
+        if (typeof window !== 'undefined') {
+          const url = new URL(window.location.href)
+          if (url.searchParams.has('newUser') || url.searchParams.has('userId')) {
+            url.searchParams.delete('newUser')
+            url.searchParams.delete('userId')
+            window.history.replaceState({}, '', url.toString())
+          }
         }
+        
+        // Small delay to ensure page is fully rendered
+        setTimeout(() => {
+          setShowTutorial(true)
+          setIsChecking(false)
+        }, 800)
+        return
       }
-    } else if (!tutorialCompleted) {
-      // For returning users who haven't completed tutorial, also show it
-      // (in case they skipped it before)
-      setTimeout(() => {
-        setShowTutorial(true)
-      }, 1000)
+      
+      // For existing users (login), check database to see if tutorial was completed
+      try {
+        const response = await fetch('/api/tutorial/check')
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success && !data.tutorialCompleted) {
+            // User hasn't completed tutorial in database, but don't show on login
+            // Only show on first signup (handled above)
+            setShowTutorial(false)
+          } else {
+            // User has completed tutorial, don't show
+            setShowTutorial(false)
+          }
+        } else {
+          // If API fails, fall back to localStorage check (for backwards compatibility)
+          const tutorialCompleted = localStorage.getItem('dashboard_tutorial_completed')
+          setShowTutorial(!tutorialCompleted)
+        }
+      } catch (error) {
+        console.error('Error checking tutorial status:', error)
+        // Fall back to localStorage check
+        const tutorialCompleted = localStorage.getItem('dashboard_tutorial_completed')
+        setShowTutorial(!tutorialCompleted)
+      } finally {
+        setIsChecking(false)
+      }
     }
+    
+    checkTutorialStatus()
   }, [searchParams])
 
   const handleComplete = () => {
