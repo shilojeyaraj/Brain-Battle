@@ -31,6 +31,7 @@ export interface DiagramUsageStats {
 
 /**
  * Get user's diagram usage statistics
+ * Also ensures trial is initialized if missing
  */
 async function getUserDiagramStats(userId: string): Promise<DiagramUsageStats> {
   const adminClient = createAdminClient()
@@ -48,6 +49,40 @@ async function getUserDiagramStats(userId: string): Promise<DiagramUsageStats> {
       quiz_diagrams_this_month: 0,
       has_used_trial_quiz_diagrams: false,
       last_quiz_diagram_reset_date: null
+    }
+  }
+
+  // If trial fields are null/undefined, initialize them
+  const trialRemaining = data.trial_quiz_diagrams_remaining
+  const hasUsedTrial = data.has_used_trial_quiz_diagrams
+  const monthlyCount = data.quiz_diagrams_this_month ?? 0
+  
+  if (trialRemaining === null || 
+      trialRemaining === undefined ||
+      hasUsedTrial === null ||
+      hasUsedTrial === undefined) {
+    
+    // Initialize trial for existing users
+    const { error: initError } = await adminClient
+      .from('player_stats')
+      .update({
+        trial_quiz_diagrams_remaining: 3,
+        quiz_diagrams_this_month: monthlyCount,
+        has_used_trial_quiz_diagrams: false,
+        updated_at: new Date().toISOString()
+      })
+      .eq('user_id', userId)
+
+    if (!initError) {
+      console.log('✅ [DIAGRAM LIMITS] Trial initialized for user:', userId)
+      return {
+        trial_quiz_diagrams_remaining: 3,
+        quiz_diagrams_this_month: data.quiz_diagrams_this_month ?? 0,
+        has_used_trial_quiz_diagrams: false,
+        last_quiz_diagram_reset_date: data.last_quiz_diagram_reset_date 
+          ? new Date(data.last_quiz_diagram_reset_date) 
+          : null
+      }
     }
   }
 

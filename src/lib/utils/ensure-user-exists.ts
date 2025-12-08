@@ -96,6 +96,10 @@ export async function ensureUserExists(userId: string): Promise<boolean> {
             xp: 0,
             total_wins: 0,
             total_losses: 0,
+            // Initialize free trial: 3 trial quiz diagrams
+            trial_quiz_diagrams_remaining: 3,
+            quiz_diagrams_this_month: 0,
+            has_used_trial_quiz_diagrams: false,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           })

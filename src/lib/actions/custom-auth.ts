@@ -245,7 +245,7 @@ export async function registerUser(
             continue
           }
           
-          // Attempt to create player stats
+          // Attempt to create player stats with trial initialized
           const { error: statsError } = await adminClient
             .from('player_stats')
             .insert({
@@ -262,6 +262,10 @@ export async function registerUser(
               accuracy: 0.00,
               average_response_time: 0.00,
               favorite_subject: null,
+              // Initialize free trial: 3 trial quiz diagrams
+              trial_quiz_diagrams_remaining: 3,
+              quiz_diagrams_this_month: 0,
+              has_used_trial_quiz_diagrams: false,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString()
             })

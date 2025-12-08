@@ -633,6 +633,10 @@ export async function POST(request: NextRequest) {
             accuracy: safeTotalQuestions > 0 ? (safeCorrectAnswers / safeTotalQuestions) * 100 : 0,
             average_response_time: safeAverageTime,
             favorite_subject: topic,
+            // Initialize free trial: 3 trial quiz diagrams
+            trial_quiz_diagrams_remaining: 3,
+            quiz_diagrams_this_month: 0,
+            has_used_trial_quiz_diagrams: false,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
           })

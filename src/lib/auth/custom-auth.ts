@@ -97,7 +97,7 @@ export async function registerUser(
     
     console.log('✅ [AUTH] User created successfully:', userData.id)
     
-    // Create initial player stats
+    // Create initial player stats with trial initialized
     const { error: statsError } = await supabase
       .from('player_stats')
       .insert({
@@ -106,6 +106,10 @@ export async function registerUser(
         xp: 0,
         total_wins: 0,
         total_losses: 0,
+        // Initialize free trial: 3 trial quiz diagrams
+        trial_quiz_diagrams_remaining: 3,
+        quiz_diagrams_this_month: 0,
+        has_used_trial_quiz_diagrams: false,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
