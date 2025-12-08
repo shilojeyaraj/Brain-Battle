@@ -33,10 +33,7 @@ const nextConfig: NextConfig = {
     // Ignore TypeScript errors in test files during build
     ignoreBuildErrors: false,
   },
-  eslint: {
-    // Ignore ESLint errors during build (we run lint separately)
-    ignoreDuringBuilds: true,
-  },
+  // Note: eslint config removed in Next.js 16 - ESLint is handled separately
   // Set output file tracing root to prevent workspace detection issues
   outputFileTracingRoot: path.resolve(__dirname),
   // Prevent Next.js from looking outside this directory
