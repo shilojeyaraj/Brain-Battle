@@ -18,16 +18,14 @@ export async function testPDFTextExtraction(buffer: Buffer): Promise<{
   error?: string
 }> {
   try {
-    // Use dynamic import for ESM module (required by Next.js)
-    const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
-    const pdfjsLib = pdfjsModule.default || pdfjsModule
+    // Use serverless-compatible pdfjs configuration
+    const { getPdfjsLib, SERVERLESS_PDF_OPTIONS } = await import('@/lib/pdfjs-config')
+    const pdfjsLib = await getPdfjsLib()
     
     // Load the PDF document
     const loadingTask = pdfjsLib.getDocument({
       data: new Uint8Array(buffer),
-      useSystemFonts: true,
-      verbosity: 0,
-      isEvalSupported: false,
+      ...SERVERLESS_PDF_OPTIONS,
     })
     
     const pdfDocument = await loadingTask.promise

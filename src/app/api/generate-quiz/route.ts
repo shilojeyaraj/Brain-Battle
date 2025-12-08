@@ -258,16 +258,14 @@ export async function POST(request: NextRequest) {
             if (file.type === "text/plain") {
               return `=== ${file.name} ===\n${buffer.toString('utf-8')}\n`
             } else if (file.type === "application/pdf") {
-              // Use dynamic import for ESM module (required by Next.js)
-              const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
-              const pdfjsLib = pdfjsModule.default || pdfjsModule
+              // Use serverless-compatible pdfjs configuration
+              const { getPdfjsLib, SERVERLESS_PDF_OPTIONS } = await import('@/lib/pdfjs-config')
+              const pdfjsLib = await getPdfjsLib()
               
               // Load the PDF document with server-side optimized settings
               const loadingTask = pdfjsLib.getDocument({
                 data: new Uint8Array(buffer),
-                useSystemFonts: true,
-                verbosity: 0,
-                isEvalSupported: false, // Disable eval for server-side
+                ...SERVERLESS_PDF_OPTIONS,
               })
               
               const pdfDocument = await loadingTask.promise

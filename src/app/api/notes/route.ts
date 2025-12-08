@@ -208,14 +208,13 @@ export async function POST(req: NextRequest) {
         }
         
         try {
-          const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
-          const pdfjsLib = pdfjsModule.default || pdfjsModule
+          // Use serverless-compatible pdfjs configuration
+          const { getPdfjsLib, SERVERLESS_PDF_OPTIONS } = await import('@/lib/pdfjs-config')
+          const pdfjsLib = await getPdfjsLib()
           
           const loadingTask = pdfjsLib.getDocument({
             data: new Uint8Array(buffer),
-            useSystemFonts: true,
-            verbosity: 0,
-            isEvalSupported: false,
+            ...SERVERLESS_PDF_OPTIONS,
           })
           
           const pdfDocument = await loadingTask.promise
