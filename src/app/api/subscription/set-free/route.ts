@@ -12,11 +12,22 @@ export async function POST(request: NextRequest) {
     const userId = await getUserIdFromRequest(request)
     
     if (!userId) {
+      console.error('❌ [SET FREE] Authentication failed - no userId from session cookie')
+      console.error('   Request URL:', request.url)
+      console.error('   Cookies present:', request.cookies.getAll().length)
+      console.error('   Session cookie exists:', !!request.cookies.get('brain-brawl-session'))
+      
       return NextResponse.json(
-        { error: 'Unauthorized. Please log in.' },
+        { 
+          error: 'Unauthorized. Please log in to continue.',
+          errorCode: 'AUTH_REQUIRED',
+          message: 'You must be logged in to set your subscription plan. Please try logging in again.'
+        },
         { status: 401 }
       )
     }
+    
+    console.log('✅ [SET FREE] User authenticated:', userId)
 
     const adminClient = createAdminClient()
 

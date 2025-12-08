@@ -37,11 +37,37 @@ export function PricingCard({
 
     setLoading(true);
     try {
+      // First, verify we're authenticated
+      let userId: string | null = null;
+      try {
+        const authResponse = await fetch('/api/user/current', {
+          method: 'GET',
+          credentials: 'include',
+        });
+        
+        if (authResponse.ok) {
+          const authData = await authResponse.json();
+          if (authData.success && authData.userId) {
+            userId = authData.userId;
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to verify authentication:', e);
+      }
+
+      if (!userId) {
+        alert('Please log in to continue. Redirecting to login page...');
+        window.location.href = '/login?redirect=/pricing?newUser=true';
+        setLoading(false);
+        return;
+      }
+
       const response = await fetch('/api/subscription/set-free', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include', // CRITICAL: Include cookies for authentication
       });
 
       const data = await response.json();
@@ -51,12 +77,13 @@ export function PricingCard({
         window.location.href = '/dashboard?newUser=true';
       } else {
         console.error('Failed to set free plan:', data.error);
-        alert('Failed to set free plan. Please try again.');
+        const errorMsg = data.error || 'Failed to set free plan. Please try again.';
+        alert(errorMsg);
         setLoading(false);
       }
     } catch (error) {
       console.error('Error setting free plan:', error);
-      alert('An error occurred. Please try again.');
+      alert('An error occurred. Please try again or contact support if the problem persists.');
       setLoading(false);
     }
   };
@@ -67,7 +94,10 @@ export function PricingCard({
       // Get userId from session cookie (more secure than localStorage)
       let userId: string | null = null;
       try {
-        const response = await fetch('/api/user/current');
+        const response = await fetch('/api/user/current', {
+          method: 'GET',
+          credentials: 'include', // CRITICAL: Include cookies for authentication
+        });
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.userId) {
@@ -84,7 +114,8 @@ export function PricingCard({
       }
       
       if (!userId) {
-        alert('Please log in to subscribe');
+        alert('Please log in to subscribe. Redirecting to login page...');
+        window.location.href = '/login?redirect=/pricing';
         setLoading(false);
         return;
       }
@@ -94,6 +125,7 @@ export function PricingCard({
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include', // CRITICAL: Include cookies for authentication
         body: JSON.stringify({
           priceId,
           mode: 'subscription',

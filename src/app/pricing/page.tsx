@@ -16,27 +16,48 @@ export default function PricingPage() {
 
   useEffect(() => {
     // Get userId from session cookie (more secure)
-    const fetchStatus = async () => {
+    const fetchStatus = async (retryCount = 0) => {
       try {
         // Try to get userId from session cookie first
         let userId: string | null = null;
         try {
-          const response = await fetch('/api/user/current');
+          const response = await fetch('/api/user/current', {
+            method: 'GET',
+            credentials: 'include', // CRITICAL: Include cookies for authentication
+          });
           if (response.ok) {
             const data = await response.json();
             if (data.success && data.userId) {
               userId = data.userId;
             }
+          } else if (response.status === 401) {
+            // User not authenticated - this is OK for new users on pricing page
+            // If it's a new user (isNewUser=true), retry a few times as cookie might not be set yet
+            if (isNewUser && retryCount < 3) {
+              console.log(`User not authenticated yet (new user flow), retrying... (${retryCount + 1}/3)`);
+              setTimeout(() => fetchStatus(retryCount + 1), 1000 * (retryCount + 1)); // Exponential backoff
+              return;
+            }
+            console.log('User not authenticated (not a new user or retries exhausted)');
           }
         } catch (e) {
-          // Fallback to localStorage
+          console.warn('Failed to get userId from API:', e);
+          // Fallback to localStorage (for backwards compatibility)
           userId = localStorage.getItem('userId');
         }
 
-        if (!userId) return;
+        if (!userId) {
+          // If new user and still no userId after retries, log for debugging
+          if (isNewUser) {
+            console.warn('⚠️ [PRICING] New user but no userId found after retries. User may need to log in.');
+          }
+          return;
+        }
 
         // Fetch current subscription status
-        const res = await fetch(`/api/stripe/subscription-status?userId=${userId}`);
+        const res = await fetch(`/api/stripe/subscription-status?userId=${userId}`, {
+          credentials: 'include', // Include cookies
+        });
         const data = await res.json();
         setSubscriptionStatus(data);
       } catch (err) {
@@ -45,7 +66,7 @@ export default function PricingPage() {
     };
 
     fetchStatus();
-  }, []);
+  }, [isNewUser]);
 
   // Get Stripe Price IDs from environment variables
   const PRO_MONTHLY_PRICE_ID = process.env.NEXT_PUBLIC_STRIPE_PRO_MONTHLY_PRICE_ID || 'price_xxxxx';

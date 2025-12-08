@@ -505,8 +505,20 @@ export async function signup(formData: FormData) {
   if (result.user && result.user.id) {
     revalidatePath("/")
     // Set secure session cookie instead of query parameter
+    // Note: In server actions, cookies() from next/headers will set the cookie
+    // The cookie will be included in the redirect response
     const { setSessionCookie } = await import('@/lib/auth/session-cookies')
-    await setSessionCookie(result.user.id)
+    try {
+      await setSessionCookie(result.user.id)
+      console.log("✅ [SIGNUP] Session cookie set for user:", result.user.id)
+    } catch (cookieError) {
+      console.error("❌ [SIGNUP] Failed to set session cookie:", cookieError)
+      // Continue anyway - user can still access pricing page
+    }
+    
+    // Small delay to ensure cookie is set before redirect
+    // This is especially important in production
+    await new Promise(resolve => setTimeout(resolve, 100))
     
     // Redirect new users to pricing page to choose their plan
     redirect("/pricing?newUser=true")
