@@ -5,7 +5,7 @@ import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Brain, Trophy, Star, Settings, LogOut, User, RotateCw, Crown, Sparkles, Flame } from "lucide-react"
+import { Brain, Trophy, Star, Settings, LogOut, User, RotateCw, Crown, Sparkles, Flame, FileText } from "lucide-react"
 import { logout } from "@/lib/actions/custom-auth"
 import { getUserStatsClient, UserProfile } from "@/lib/actions/user-stats-client"
 import { UserProfileModal } from "@/components/ui/user-profile-modal"
@@ -29,6 +29,7 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
   const [isLoading, setIsLoading] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [streak, setStreak] = useState<number>(0) // Initialize to 0 so it shows immediately
+  const [usageLimits, setUsageLimits] = useState<{documents: {remaining: number, isUnlimited: boolean}, quizzes: {remaining: number, isUnlimited: boolean}} | null>(null)
   const searchParams = useSearchParams()
 
   useEffect(() => {
@@ -121,6 +122,33 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
     }
   }, [currentUserId])
 
+  // Fetch usage limits when menu opens
+  useEffect(() => {
+    if (isMenuOpen && currentUserId) {
+      fetch('/api/subscription/limits', {
+        credentials: 'include'
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.success && data.usage) {
+            setUsageLimits({
+              documents: {
+                remaining: data.usage.documents.remaining,
+                isUnlimited: data.usage.documents.isUnlimited
+              },
+              quizzes: {
+                remaining: data.usage.quizzes.remaining,
+                isUnlimited: data.usage.quizzes.isUnlimited
+              }
+            })
+          }
+        })
+        .catch(err => {
+          console.error('Error fetching usage limits:', err)
+        })
+    }
+  }, [isMenuOpen, currentUserId])
+
   const handleAvatarClick = useCallback(() => {
     setIsMenuOpen(prev => !prev)
   }, [])
@@ -175,7 +203,7 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
                 <span className="text-slate-400 font-bold">XP:</span>
                 <span className="font-black text-secondary">0</span>
               </div>
-              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/60 border border-slate-700/50 backdrop-blur-sm">
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/60 border border-slate-700/50 backdrop-blur-sm" data-tutorial="streak-header">
                 <Flame className="h-5 w-5 text-orange-500" strokeWidth={3} />
                 <span className="text-slate-400 font-bold">Streak:</span>
                 <span className="font-black text-orange-500">{streak}</span>
@@ -201,12 +229,61 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
                 )}
               </button>
               {isMenuOpen && (
-                <div className="absolute right-0 mt-2 w-56 bg-card cartoon-border rounded-xl cartoon-shadow p-1 z-50">
+                <div className="absolute right-0 mt-2 w-64 bg-card cartoon-border rounded-xl cartoon-shadow p-1 z-50">
                   {userProfile?.username && (
                     <div className="px-3 py-2 border-b border-border mb-1">
                       <span className="font-black text-foreground text-sm">{userProfile.username}</span>
                     </div>
                   )}
+                  
+                  {/* Usage Limits Quick View */}
+                  {usageLimits && (
+                    <div className="px-3 py-2 border-b border-border mb-1 space-y-1.5">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground font-bold flex items-center gap-1">
+                          <FileText className="h-3 w-3" strokeWidth={3} />
+                          Documents:
+                        </span>
+                        <span className={`font-black ${
+                          usageLimits.documents.isUnlimited 
+                            ? 'text-green-500' 
+                            : usageLimits.documents.remaining === 0 
+                            ? 'text-red-500' 
+                            : usageLimits.documents.remaining <= 2 
+                            ? 'text-orange-500' 
+                            : 'text-foreground'
+                        }`}>
+                          {usageLimits.documents.isUnlimited ? 'Unlimited' : `${usageLimits.documents.remaining} left`}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground font-bold flex items-center gap-1">
+                          <Brain className="h-3 w-3" strokeWidth={3} />
+                          Quizzes:
+                        </span>
+                        <span className={`font-black ${
+                          usageLimits.quizzes.isUnlimited 
+                            ? 'text-green-500' 
+                            : usageLimits.quizzes.remaining === 0 
+                            ? 'text-red-500' 
+                            : usageLimits.quizzes.remaining <= 2 
+                            ? 'text-orange-500' 
+                            : 'text-foreground'
+                        }`}>
+                          {usageLimits.quizzes.isUnlimited ? 'Unlimited' : `${usageLimits.quizzes.remaining} left`}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted rounded-lg text-left"
+                    onClick={() => { setIsProfileModalOpen(true); setIsMenuOpen(false) }}
+                    title="View Profile"
+                  >
+                    <User className="h-4 w-4 text-foreground" strokeWidth={3} />
+                    <span className="font-bold text-foreground">Profile</span>
+                  </button>
                   <Link
                     href="/pro"
                     className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted rounded-lg text-left"

@@ -10,7 +10,6 @@ import { Leaderboard } from "@/components/dashboard/leaderboard"
 import { ClansSection } from "@/components/clans/clans-section"
 import { DashboardTutorial } from "@/components/tutorial/dashboard-tutorial"
 import { SubscriptionBanner } from "@/components/dashboard/subscription-banner"
-import { StreakDisplay } from "@/components/dashboard/streak-display"
 import { Button } from "@/components/ui/button"
 import { ChevronDown, ChevronUp, BarChart3 } from "lucide-react"
 import dynamicImport from "next/dynamic"
@@ -214,18 +213,10 @@ export default function DashboardPage() {
           </Button>
         </div>
 
-        {/* Collapsible Stats - Includes StatsGrid and StreakDisplay */}
+        {/* Collapsible Stats */}
         {showStats ? (
           <div className="mb-6">
             <StatsGrid />
-            
-            {/* Daily Streak Display */}
-            <div className="mt-6">
-              <StreakDisplay 
-                tutorialStep={tutorialStep} 
-                totalTutorialSteps={9} // Total number of tutorial steps (0-8)
-              />
-            </div>
           </div>
         ) : null}
 

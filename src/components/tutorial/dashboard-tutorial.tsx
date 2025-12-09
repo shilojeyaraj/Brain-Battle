@@ -59,7 +59,7 @@ const DASHBOARD_TUTORIAL_STEPS: TutorialStep[] = [
     id: 'streak',
     title: 'Daily Streak 🔥',
     description: 'Complete quizzes daily to build your streak! You have a 48-hour grace period, so if you miss a day, you can still keep your streak going. The longer your streak, the more impressive it becomes!',
-    targetSelector: '[data-tutorial="streak-display"]',
+    targetSelector: '[data-tutorial="streak-header"]',
     position: 'bottom',
   },
   {
