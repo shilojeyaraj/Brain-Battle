@@ -219,6 +219,7 @@ export async function POST(request: NextRequest) {
         .insert({
           user_id: userId,
           username: finalUsername,
+          tutorial_completed: false, // 🚀 FIX: Explicitly set tutorial_completed to false for new users
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })

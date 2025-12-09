@@ -81,10 +81,10 @@ export function DashboardTutorial({ onStepChange }: { onStepChange?: (step: numb
       setIsChecking(true)
       
       // Check if user just signed up (has newUser param) or restarting tutorial
-      const isNewUser = searchParams.get('newUser') === 'true' || searchParams.get('userId')
+      const isNewUserParam = searchParams.get('newUser') === 'true' || searchParams.get('userId')
       const restartTutorial = searchParams.get('restartTutorial') === 'true'
       
-      if (isNewUser || restartTutorial) {
+      if (isNewUserParam || restartTutorial) {
         // For new users or restarting tutorial, always show tutorial
         // Clean up URL params after starting tutorial
         if (typeof window !== 'undefined') {
@@ -107,30 +107,50 @@ export function DashboardTutorial({ onStepChange }: { onStepChange?: (step: numb
         return
       }
       
-      // For existing users (login), check database to see if tutorial was completed
+      // 🚀 FIX: Check database to see if tutorial was completed
+      // Show tutorial for users who haven't completed it (new users)
       try {
-        const response = await fetch('/api/tutorial/check')
+        const response = await fetch('/api/tutorial/check', {
+          credentials: 'include',
+          cache: 'no-store'
+        })
         if (response.ok) {
           const data = await response.json()
-          if (data.success && !data.tutorialCompleted) {
-            // User hasn't completed tutorial in database, but don't show on login
-            // Only show on first signup (handled above)
-            setShowTutorial(false)
+          if (data.success) {
+            // If tutorial_completed is false or null, show tutorial (new user)
+            // If tutorial_completed is true, don't show (existing user who completed it)
+            const shouldShowTutorial = !data.tutorialCompleted
+            
+            if (shouldShowTutorial) {
+              console.log('✅ [TUTORIAL] User has not completed tutorial, showing tutorial')
+              // Small delay to ensure page is fully rendered
+              setTimeout(() => {
+                window.scrollTo({ top: 0, behavior: 'smooth' })
+                setShowTutorial(true)
+                setIsChecking(false)
+              }, 1000)
+            } else {
+              console.log('ℹ️ [TUTORIAL] User has already completed tutorial')
+              setShowTutorial(false)
+              setIsChecking(false)
+            }
           } else {
-            // User has completed tutorial, don't show
-            setShowTutorial(false)
+            // API returned error, fall back to localStorage check
+            const tutorialCompleted = localStorage.getItem('dashboard_tutorial_completed')
+            setShowTutorial(!tutorialCompleted)
+            setIsChecking(false)
           }
         } else {
           // If API fails, fall back to localStorage check (for backwards compatibility)
           const tutorialCompleted = localStorage.getItem('dashboard_tutorial_completed')
           setShowTutorial(!tutorialCompleted)
+          setIsChecking(false)
         }
       } catch (error) {
-        console.error('Error checking tutorial status:', error)
+        console.error('❌ [TUTORIAL] Error checking tutorial status:', error)
         // Fall back to localStorage check
         const tutorialCompleted = localStorage.getItem('dashboard_tutorial_completed')
         setShowTutorial(!tutorialCompleted)
-      } finally {
         setIsChecking(false)
       }
     }

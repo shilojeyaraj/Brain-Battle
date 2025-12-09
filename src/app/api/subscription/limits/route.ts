@@ -16,16 +16,15 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Get limits
-    const limits = await getUserLimits(userId)
-    
-    // Get document usage
-    const docLimit = await checkDocumentLimit(userId)
-    
-    // Get quiz usage
+    // 🚀 OPTIMIZATION: Parallelize all limit checks for faster response
     const { checkQuizLimit } = await import('@/lib/subscription/limits')
-    const quizLimit = await checkQuizLimit(userId)
+    const [limits, docLimit, quizLimit] = await Promise.all([
+      getUserLimits(userId),
+      checkDocumentLimit(userId),
+      checkQuizLimit(userId)
+    ])
 
+    // 🚀 OPTIMIZATION: Add caching headers for frequently accessed data (30 seconds)
     return NextResponse.json({
       success: true,
       limits: {
@@ -52,6 +51,10 @@ export async function GET(request: NextRequest) {
           remaining: quizLimit.remaining,
           isUnlimited: quizLimit.limit === Infinity,
         },
+      },
+    }, {
+      headers: {
+        'Cache-Control': 'private, max-age=30', // Cache for 30 seconds
       },
     })
   } catch (error: any) {

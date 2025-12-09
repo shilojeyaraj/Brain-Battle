@@ -1,46 +1,52 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback, memo } from "react"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { EmptyState } from "@/components/ui/empty-state"
 import { Trophy, Clock, Users, Target, FileText, ExternalLink } from "lucide-react"
 import Link from "next/link"
 
-export function RecentBattles() {
+export const RecentBattles = memo(function RecentBattles() {
   const [recentBattles, setRecentBattles] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const fetchRecentBattles = async () => {
-      try {
-        const response = await fetch("/api/user-stats", {
-          credentials: 'include',
-          cache: 'no-store'
-        })
-        if (response.ok) {
-          const data = await response.json()
-          if (data.recentGames && Array.isArray(data.recentGames)) {
-            setRecentBattles(data.recentGames)
-          } else {
-            console.log('ℹ️ [RECENT BATTLES] No recent games found or invalid format:', data)
-          }
+  // 🚀 OPTIMIZATION: Memoize fetch function to prevent unnecessary re-renders
+  const fetchRecentBattles = useCallback(async () => {
+    try {
+      const response = await fetch("/api/user-stats", {
+        credentials: 'include',
+        cache: 'no-store'
+      })
+      if (response.ok) {
+        const data = await response.json()
+        if (data.recentGames && Array.isArray(data.recentGames)) {
+          setRecentBattles(data.recentGames)
         } else {
-          console.error('❌ [RECENT BATTLES] Failed to fetch battles:', response.status, response.statusText)
+          console.log('ℹ️ [RECENT BATTLES] No recent games found or invalid format:', data)
         }
-      } catch (error) {
-        console.error('❌ [RECENT BATTLES] Error fetching recent battles:', error)
-      } finally {
-        setLoading(false)
+      } else {
+        console.error('❌ [RECENT BATTLES] Failed to fetch battles:', response.status, response.statusText)
       }
+    } catch (error) {
+      console.error('❌ [RECENT BATTLES] Error fetching recent battles:', error)
+    } finally {
+      setLoading(false)
     }
+  }, [])
 
+  useEffect(() => {
     fetchRecentBattles()
     
-    // Listen for quiz completion events to refresh battles
+    // 🚀 OPTIMIZATION: Debounce quiz completion handler to prevent rapid refreshes
+    let refreshTimeout: NodeJS.Timeout | null = null
     const handleQuizCompleted = () => {
-      // Wait a bit for the backend to process the results
-      setTimeout(() => {
+      // Clear any pending refresh
+      if (refreshTimeout) {
+        clearTimeout(refreshTimeout)
+      }
+      // Wait a bit for the backend to process the results (debounced)
+      refreshTimeout = setTimeout(() => {
         fetchRecentBattles()
       }, 1000)
     }
@@ -49,8 +55,11 @@ export function RecentBattles() {
     
     return () => {
       window.removeEventListener('quizCompleted', handleQuizCompleted)
+      if (refreshTimeout) {
+        clearTimeout(refreshTimeout)
+      }
     }
-  }, [])
+  }, [fetchRecentBattles])
 
   if (loading) {
     return (
@@ -170,4 +179,4 @@ export function RecentBattles() {
       </div>
     </Card>
   )
-}
+})

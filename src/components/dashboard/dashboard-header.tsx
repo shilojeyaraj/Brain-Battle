@@ -100,54 +100,63 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
     }
   }, [currentUserId, fetchUserProfile])
 
+  // 🚀 OPTIMIZATION: Memoize streak fetch function
+  const fetchStreak = useCallback(async () => {
+    if (!currentUserId) return
+    
+    try {
+      const response = await fetch('/api/user/streak')
+      if (response.ok) {
+        const data = await response.json()
+        setStreak(data.currentStreak || 0)
+      }
+    } catch (error) {
+      console.error('Error fetching streak:', error)
+    }
+  }, [currentUserId])
+
   // Fetch streak data
   useEffect(() => {
-    const fetchStreak = async () => {
-      try {
-        const response = await fetch('/api/user/streak')
-        if (response.ok) {
-          const data = await response.json()
-          setStreak(data.currentStreak || 0)
-        }
-      } catch (error) {
-        console.error('Error fetching streak:', error)
-      }
-    }
-
     if (currentUserId) {
       fetchStreak()
       // Refresh every 5 minutes
       const interval = setInterval(fetchStreak, 5 * 60 * 1000)
       return () => clearInterval(interval)
     }
-  }, [currentUserId])
+  }, [currentUserId, fetchStreak])
 
-  // Fetch usage limits when menu opens
-  useEffect(() => {
-    if (isMenuOpen && currentUserId) {
-      fetch('/api/subscription/limits', {
+  // 🚀 OPTIMIZATION: Memoize usage limits fetch to prevent unnecessary calls
+  const fetchUsageLimits = useCallback(async () => {
+    if (!currentUserId) return
+    
+    try {
+      const response = await fetch('/api/subscription/limits', {
         credentials: 'include'
       })
-        .then(res => res.json())
-        .then(data => {
-          if (data.success && data.usage) {
-            setUsageLimits({
-              documents: {
-                remaining: data.usage.documents.remaining,
-                isUnlimited: data.usage.documents.isUnlimited
-              },
-              quizzes: {
-                remaining: data.usage.quizzes.remaining,
-                isUnlimited: data.usage.quizzes.isUnlimited
-              }
-            })
+      const data = await response.json()
+      if (data.success && data.usage) {
+        setUsageLimits({
+          documents: {
+            remaining: data.usage.documents.remaining,
+            isUnlimited: data.usage.documents.isUnlimited
+          },
+          quizzes: {
+            remaining: data.usage.quizzes.remaining,
+            isUnlimited: data.usage.quizzes.isUnlimited
           }
         })
-        .catch(err => {
-          console.error('Error fetching usage limits:', err)
-        })
+      }
+    } catch (err) {
+      console.error('Error fetching usage limits:', err)
     }
-  }, [isMenuOpen, currentUserId])
+  }, [currentUserId])
+
+  // Fetch usage limits when menu opens (only fetch once per menu open)
+  useEffect(() => {
+    if (isMenuOpen && currentUserId && !usageLimits) {
+      fetchUsageLimits()
+    }
+  }, [isMenuOpen, currentUserId, usageLimits, fetchUsageLimits])
 
   const handleAvatarClick = useCallback(() => {
     setIsMenuOpen(prev => !prev)
