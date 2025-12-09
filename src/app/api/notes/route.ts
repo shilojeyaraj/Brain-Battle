@@ -15,8 +15,13 @@ import { sanitizeError, createSafeErrorResponse } from "@/lib/utils/error-saniti
 import { createAIClient } from "@/lib/ai/client-factory"
 import { extractTextFromDocument } from "@/lib/document-text-extractor"
 import type { AIChatMessage } from "@/lib/ai/types"
+import { initializeBrowserPolyfills } from "@/lib/polyfills/browser-apis"
 
 export async function POST(req: NextRequest) {
+  // CRITICAL: Initialize browser API polyfills BEFORE any PDF parsing
+  // This must happen before pdf-parse or pdfjs-dist are imported/used
+  initializeBrowserPolyfills()
+
   if (process.env.NODE_ENV === 'development') {
     console.log("🚀 [NOTES API] Starting notes generation request...")
   }

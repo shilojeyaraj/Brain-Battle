@@ -16,8 +16,13 @@ import {
 import { ensureUserExists } from '@/lib/utils/ensure-user-exists'
 import { createAIClient } from '@/lib/ai/client-factory'
 import type { AIChatMessage, AIChatCompletionResponse } from '@/lib/ai/types'
+import { initializeBrowserPolyfills } from '@/lib/polyfills/browser-apis'
 
 export async function POST(request: NextRequest) {
+  // CRITICAL: Initialize browser API polyfills BEFORE any PDF parsing
+  // This must happen before pdf-parse or pdfjs-dist are imported/used
+  initializeBrowserPolyfills()
+
   try {
     // SECURITY: Get userId from session cookie, not request body
     const { getUserIdFromRequest } = await import('@/lib/auth/session-cookies')

@@ -1,17 +1,15 @@
 'use client';
 
 import { PricingCard } from '@/components/subscription/pricing-card';
-import { useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useEffect, useState, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { ArrowRight, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-export default function PricingPage() {
-  const searchParams = useSearchParams();
-  const canceled = searchParams.get('canceled');
-  const isNewUser = searchParams.get('newUser') === 'true';
+function PricingContent() {
+  const [canceled, setCanceled] = useState<string | null>(null);
+  const [isNewUser, setIsNewUser] = useState(false);
   const [subscriptionStatus, setSubscriptionStatus] = useState<any>(null);
 
   useEffect(() => {
@@ -250,3 +248,14 @@ export default function PricingPage() {
   );
 }
 
+export default function PricingPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400"></div>
+      </div>
+    }>
+      <PricingContent />
+    </Suspense>
+  );
+}

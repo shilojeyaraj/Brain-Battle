@@ -430,26 +430,39 @@ export default function HomePage() {
               <div className="flex items-center gap-2 mb-3">
                 <Trophy className="w-5 h-5 text-yellow-400" />
                 <h3 className="text-sm md:text-base font-black text-white">Live Leaderboard</h3>
-                <TrendingUp className="w-4 h-4 text-green-400 ml-auto animate-pulse" />
+                {leaderboardLoading ? (
+                  <div className="ml-auto flex items-center gap-1.5">
+                    <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+                    <span className="text-xs text-blue-300/80 font-bold">Reloading...</span>
+                  </div>
+                ) : (
+                  <TrendingUp className="w-4 h-4 text-green-400 ml-auto animate-pulse" />
+                )}
               </div>
               
               <div className="space-y-2">
                 {leaderboardLoading ? (
-                  // Loading skeleton (top 3 only)
-                  [...Array(3)].map((_, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-2 p-2 rounded-lg bg-slate-700/30 border-2 border-slate-600/30"
-                    >
-                      <div className="w-8 h-8 rounded-full bg-slate-600/50 flex items-center justify-center">
-                        <Loader2 className="w-4 h-4 text-blue-300/50 animate-spin" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="h-3 bg-slate-600/50 rounded w-20 mb-1"></div>
-                        <div className="h-2 bg-slate-600/50 rounded w-16"></div>
-                      </div>
+                  <>
+                    {/* Loading message */}
+                    <div className="text-center py-2 mb-2">
+                      <p className="text-xs text-blue-300/70 font-bold animate-pulse">Refreshing leaderboard...</p>
                     </div>
-                  ))
+                    {/* Loading skeleton (top 3 only) */}
+                    {[...Array(3)].map((_, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center gap-2 p-2 rounded-lg bg-slate-700/30 border-2 border-slate-600/30"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-slate-600/50 flex items-center justify-center">
+                          <Loader2 className="w-4 h-4 text-blue-300/50 animate-spin" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="h-3 bg-slate-600/50 rounded w-20 mb-1"></div>
+                          <div className="h-2 bg-slate-600/50 rounded w-16"></div>
+                        </div>
+                      </div>
+                    ))}
+                  </>
                 ) : displayPlayers.length === 0 ? (
                   <div className="text-center py-4 text-sm text-blue-100/70">
                     No players yet. Be the first!

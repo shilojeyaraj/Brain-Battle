@@ -8,6 +8,8 @@
  * This extracts actual diagrams/figures, not just full pages!
  */
 
+import { initializeBrowserPolyfills } from '@/lib/polyfills/browser-apis'
+
 interface ExtractedDiagram {
   image_data_b64: string
   page: number
@@ -167,6 +169,9 @@ export async function smartExtractDiagrams(
   filename: string,
   options: ExtractionOptions = {}
 ): Promise<ExtractedDiagram[]> {
+  // CRITICAL: Initialize browser API polyfills BEFORE any PDF parsing
+  initializeBrowserPolyfills()
+
   const {
     minDiagramSize = 10000,
     maxDiagramsPerPage = 5

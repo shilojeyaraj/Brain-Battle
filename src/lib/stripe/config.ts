@@ -3,7 +3,7 @@ import Stripe from 'stripe';
 // Stripe is currently disabled - make it completely optional
 const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
 
-// Validate that we're using test mode keys (not live mode)
+// Validate Stripe keys based on environment
 if (stripeSecretKey) {
   // Check for whitespace or formatting issues
   const trimmedKey = stripeSecretKey.trim();
@@ -11,25 +11,42 @@ if (stripeSecretKey) {
     console.warn('⚠️ [STRIPE] Warning: Secret key has leading/trailing whitespace. Trimming...');
   }
   
-  if (trimmedKey.startsWith('sk_live_')) {
-    console.error('❌ [STRIPE] ERROR: You are using LIVE mode keys!');
-    console.error('❌ [STRIPE] Live mode keys start with "sk_live_" and will reject test cards.');
-    console.error('❌ [STRIPE] Please use TEST mode keys that start with "sk_test_"');
-    console.error('❌ [STRIPE] Get test keys from: Stripe Dashboard → Developers → API keys (with Test mode ON)');
-    throw new Error('Cannot use live mode keys with test cards. Please use test mode keys (sk_test_...)');
-  } else if (!trimmedKey.startsWith('sk_test_')) {
+  const isLiveMode = trimmedKey.startsWith('sk_live_');
+  const isTestMode = trimmedKey.startsWith('sk_test_');
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  // Validate key format
+  if (!isLiveMode && !isTestMode) {
     console.error('❌ [STRIPE] ERROR: Invalid secret key format!');
-    console.error('❌ [STRIPE] Key should start with "sk_test_" for test mode');
+    console.error('❌ [STRIPE] Key should start with "sk_test_" (test mode) or "sk_live_" (live mode)');
     console.error('❌ [STRIPE] Current key starts with:', trimmedKey.substring(0, Math.min(20, trimmedKey.length)));
     console.error('❌ [STRIPE] Key length:', trimmedKey.length, '(should be around 100+ characters)');
-    throw new Error('Invalid Stripe secret key format. Must start with "sk_test_" for test mode.');
-  } else if (trimmedKey.length < 50) {
+    throw new Error('Invalid Stripe secret key format. Must start with "sk_test_" or "sk_live_".');
+  }
+  
+  // Validate key length
+  if (trimmedKey.length < 50) {
     console.error('❌ [STRIPE] ERROR: Secret key appears to be incomplete!');
     console.error('❌ [STRIPE] Key length:', trimmedKey.length, '(should be around 100+ characters)');
     console.error('❌ [STRIPE] Make sure you copied the ENTIRE key from Stripe Dashboard');
     throw new Error('Stripe secret key appears incomplete. Please copy the full key from Stripe Dashboard.');
+  }
+  
+  // Warn about mode mismatch (but allow it - user knows what they're doing)
+  if (isLiveMode && !isProduction) {
+    console.warn('⚠️ [STRIPE] WARNING: Using LIVE mode keys in non-production environment!');
+    console.warn('⚠️ [STRIPE] Live mode keys will charge real money. Use test keys (sk_test_...) for development.');
+  } else if (isTestMode && isProduction) {
+    console.warn('⚠️ [STRIPE] WARNING: Using TEST mode keys in production!');
+    console.warn('⚠️ [STRIPE] Test mode keys will not process real payments. Use live keys (sk_live_...) for production.');
+  }
+  
+  // Log the mode being used
+  if (isLiveMode) {
+    console.log('✅ [STRIPE] Using LIVE mode keys (sk_live_...)');
+    console.log('✅ [STRIPE] Key length:', trimmedKey.length, 'characters');
   } else {
-    console.log('✅ [STRIPE] Using test mode keys (sk_test_...)');
+    console.log('✅ [STRIPE] Using TEST mode keys (sk_test_...)');
     console.log('✅ [STRIPE] Key length:', trimmedKey.length, 'characters');
   }
 }

@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import React, { Suspense } from "react"
 import { MotionConfig } from "@/components/ui/motion"
 import { SoundSettingsProvider, useSoundSettings } from "@/context/sound-settings"
 import { ClientWrapper } from "@/components/client-wrapper"
@@ -26,7 +26,9 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
           <ToastProvider>
             <MotionProvider>
               {children}
-              <GlobalNavigationLoading />
+              <Suspense fallback={null}>
+                <GlobalNavigationLoading />
+              </Suspense>
             </MotionProvider>
           </ToastProvider>
         </PostHogProvider>

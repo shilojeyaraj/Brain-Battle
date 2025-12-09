@@ -5,26 +5,35 @@ import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { Sparkles, Mail, Lock, ArrowLeft, AlertCircle, Loader2, Brain, Eye, EyeOff } from "lucide-react"
 import Link from "next/link"
-import { useSearchParams, useRouter } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { useEffect, useState, Suspense } from "react"
 import { authenticateUser } from "@/lib/actions/custom-auth"
 import { motion } from "framer-motion"
 
 function LoginForm() {
-  const searchParams = useSearchParams()
   const router = useRouter()
   const [error, setError] = useState<string | null>(null)
   const [isPending, setIsPending] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
+  const [redirectUrl, setRedirectUrl] = useState<string>('/dashboard')
 
   useEffect(() => {
-    const errorParam = searchParams.get('error')
-    if (errorParam) {
-      setError(decodeURIComponent(errorParam))
-      // Reset loading state when error is detected from URL
-      setIsPending(false)
+    // Read search params from URL on client side only
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      const errorParam = params.get('error')
+      const redirectParam = params.get('redirect')
+      
+      if (errorParam) {
+        setError(decodeURIComponent(errorParam))
+        setIsPending(false)
+      }
+      
+      if (redirectParam) {
+        setRedirectUrl(decodeURIComponent(redirectParam))
+      }
     }
-  }, [searchParams])
+  }, [])
 
   const clearError = () => {
     setError(null)
@@ -71,12 +80,6 @@ function LoginForm() {
             window.dispatchEvent(new CustomEvent('userLoggedIn'))
           }
           
-          // Check for redirect parameter
-          const redirectParam = searchParams.get('redirect')
-          const redirectUrl = redirectParam 
-            ? decodeURIComponent(redirectParam)
-            : '/dashboard'
-          
           // Successfully signed in, redirect to original destination or dashboard
           // Use window.location.href for hard redirect to ensure it happens
           setIsPending(false)
@@ -112,12 +115,6 @@ function LoginForm() {
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('userLoggedIn'))
           }
-          
-          // Check for redirect parameter
-          const redirectParam = searchParams.get('redirect')
-          const redirectUrl = redirectParam 
-            ? decodeURIComponent(redirectParam)
-            : '/dashboard'
           
           // Successfully signed in, redirect to original destination or dashboard
           // Use window.location.href for hard redirect to ensure it happens
@@ -279,13 +276,5 @@ function LoginForm() {
 }
 
 export default function LoginPage() {
-  return (
-    <Suspense fallback={
-      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 flex items-center justify-center p-6">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400"></div>
-      </div>
-    }>
-      <LoginForm />
-    </Suspense>
-  )
+  return <LoginForm />
 }

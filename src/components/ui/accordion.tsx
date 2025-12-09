@@ -24,15 +24,17 @@ export function AccordionItem({ question, answer, isOpen, onToggle, index }: Acc
     >
       <button
         onClick={onToggle}
-        className="w-full px-6 py-5 text-left flex items-center justify-between gap-4 focus:outline-none focus:ring-2 focus:ring-blue-400/50 rounded-t-2xl"
+        className="w-full px-6 py-5 text-left flex items-center justify-between gap-4 focus:outline-none focus:ring-2 focus:ring-blue-400/50 rounded-t-2xl group"
       >
-        <h3 className="text-lg md:text-xl font-black text-white pr-4">{question}</h3>
+        <h3 className="text-lg md:text-xl font-black bg-gradient-to-r from-blue-200 via-purple-200 to-orange-200 bg-clip-text text-transparent pr-4 group-hover:from-blue-100 group-hover:via-purple-100 group-hover:to-orange-100 transition-all">
+          {question}
+        </h3>
         <motion.div
           animate={{ rotate: isOpen ? 180 : 0 }}
           transition={{ duration: 0.3 }}
           className="flex-shrink-0"
         >
-          <ChevronDown className="w-6 h-6 text-blue-300" strokeWidth={3} />
+          <ChevronDown className={`w-6 h-6 ${isOpen ? 'text-orange-300' : 'text-blue-300'} transition-colors`} strokeWidth={3} />
         </motion.div>
       </button>
       <AnimatePresence>
@@ -45,7 +47,7 @@ export function AccordionItem({ question, answer, isOpen, onToggle, index }: Acc
             className="overflow-hidden"
           >
             <div className="px-6 pb-5 pt-0">
-              <p className="text-base text-blue-100/80 leading-relaxed">{answer}</p>
+              <p className="text-base text-blue-50/95 leading-relaxed font-medium">{answer}</p>
             </div>
           </motion.div>
         )}
