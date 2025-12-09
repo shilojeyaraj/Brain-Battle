@@ -12,8 +12,8 @@ export function DailyStreakFlame({ streak, isAnimating = false, className = "" }
   return (
     <div className={`relative inline-flex items-center justify-center ${className}`}>
       <svg
-        width="120"
-        height="120"
+        width="64"
+        height="64"
         viewBox="0 0 100 100"
         className={`
           transition-all duration-300
@@ -58,13 +58,13 @@ export function DailyStreakFlame({ streak, isAnimating = false, className = "" }
       <span
         className={`
           absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2
-          text-4xl font-bold text-white
+          text-2xl font-bold text-white
           transition-all duration-300
           ${isAnimating ? "scale-125" : "scale-100"}
         `}
         style={{
           textShadow: "0 2px 8px rgba(0,0,0,0.5), 0 0 20px rgba(251,146,60,0.4)",
-          marginTop: "4px",
+          marginTop: "2px",
         }}
       >
         {streak}
@@ -73,7 +73,7 @@ export function DailyStreakFlame({ streak, isAnimating = false, className = "" }
       {/* Glow effect on animation */}
       {isAnimating && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="w-32 h-32 bg-orange-400 rounded-full opacity-40 animate-ping" />
+          <div className="w-20 h-20 bg-orange-400 rounded-full opacity-40 animate-ping" />
         </div>
       )}
     </div>

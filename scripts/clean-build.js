@@ -67,13 +67,28 @@ nextCacheFiles.forEach(cacheFile => {
   }
 });
 
-// Recreate prerender-manifest.json to prevent -4058 errors
+// Recreate essential Next.js build files to prevent -4058 errors
 const manifestPath = path.join(process.cwd(), '.next', 'prerender-manifest.json');
+const devDir = path.join(nextDir, 'dev');
+const devServerDir = path.join(devDir, 'server');
+const devServerPagesDir = path.join(devServerDir, 'pages');
+const routesManifestPath = path.join(devDir, 'routes-manifest.json');
 
+// Create directory structure
 if (!fs.existsSync(nextDir)) {
   fs.mkdirSync(nextDir, { recursive: true });
 }
+if (!fs.existsSync(devDir)) {
+  fs.mkdirSync(devDir, { recursive: true });
+}
+if (!fs.existsSync(devServerDir)) {
+  fs.mkdirSync(devServerDir, { recursive: true });
+}
+if (!fs.existsSync(devServerPagesDir)) {
+  fs.mkdirSync(devServerPagesDir, { recursive: true });
+}
 
+// Create prerender-manifest.json
 const emptyManifest = {
   version: 4,
   routes: {},
@@ -88,6 +103,36 @@ const emptyManifest = {
 
 fs.writeFileSync(manifestPath, JSON.stringify(emptyManifest, null, 2));
 console.log('  ✅ Recreated prerender-manifest.json');
+
+// Create routes-manifest.json (empty, Next.js will populate it)
+const emptyRoutesManifest = {
+  version: 3,
+  pages404: true,
+  basePath: '',
+  redirects: [],
+  rewrites: [],
+  headers: [],
+  dynamicRoutes: [],
+  staticRoutes: [],
+  dataRoutes: [],
+  i18n: null,
+  rsc: {
+    header: 'RSC',
+    varyHeader: 'RSC, Next-Router-State-Tree, Next-Router-Prefetch',
+    prefetchHeader: 'Next-Router-Prefetch',
+  },
+};
+
+fs.writeFileSync(routesManifestPath, JSON.stringify(emptyRoutesManifest, null, 2));
+console.log('  ✅ Recreated routes-manifest.json');
+
+// Create placeholder _document.js (Next.js will replace it if needed)
+const documentPath = path.join(devServerPagesDir, '_document.js');
+if (!fs.existsSync(documentPath)) {
+  // Create an empty file - Next.js will generate the actual content
+  fs.writeFileSync(documentPath, '// Placeholder - Next.js will generate this file\n');
+  console.log('  ✅ Created placeholder _document.js');
+}
 
 console.log('✅ Build cleanup complete!');
 console.log('💡 Tip: If you still see -4058 errors, make sure all Node processes are stopped.');

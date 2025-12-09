@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { registerUser } from '@/lib/actions/custom-auth'
+import { registerUser } from '@/lib/auth/custom-auth'
+import { setSessionCookie } from '@/lib/auth/session-cookies'
 
 export async function POST(request: NextRequest) {
   try {
@@ -40,21 +41,41 @@ export async function POST(request: NextRequest) {
 
     // Register user with custom auth
     console.log("🚀 [API SIGNUP] Starting registration process...")
-    const result = await registerUser(email, password, username)
+    // registerUser accepts email as string (required), normalize it
+    const normalizedEmail = email ? email.trim().toLowerCase() : ''
+    const result = await registerUser(normalizedEmail, password, username)
     
-    if (!result.success) {
-      console.error("❌ [API SIGNUP] Registration failed:", result.error)
+    if (!result.success || !result.user) {
+      const errorMessage = result.error || "Registration failed"
+      console.error("❌ [API SIGNUP] Registration failed:", errorMessage)
       return NextResponse.json(
-        { success: false, error: result.error || "Registration failed" },
+        { success: false, error: errorMessage },
         { status: 400 }
       )
     }
 
-    console.log("✅ [API SIGNUP] Registration successful")
-    return NextResponse.json({
+    if (!result.user?.id) {
+      return NextResponse.json(
+        { success: false, error: 'Registration succeeded but user ID is missing' },
+        { status: 500 }
+      )
+    }
+
+    // Create response first
+    const response = NextResponse.json({
       success: true,
-      user: result.user
+      userId: result.user.id,
+      message: 'Registration successful'
     })
+    
+    // Set secure HTTP-only session cookie (invalidates previous sessions)
+    // Pass response so cookie is set on the response object
+    await setSessionCookie(result.user.id, request, response)
+    
+    console.log("✅ [API SIGNUP] Registration successful, session cookie set for user:", result.user.id)
+
+    // Return response with cookie set
+    return response
 
   } catch (error: unknown) {
     console.error("❌ [API SIGNUP] Server error:", error)

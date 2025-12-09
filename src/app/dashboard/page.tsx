@@ -14,6 +14,7 @@ import { StreakDisplay } from "@/components/dashboard/streak-display"
 import { Button } from "@/components/ui/button"
 import { ChevronDown, ChevronUp, BarChart3 } from "lucide-react"
 import dynamicImport from "next/dynamic"
+import { BrainBattleLoading } from "@/components/ui/brain-battle-loading"
 
 // Lazy load heavy components to improve initial page load
 const LazyLeaderboard = dynamicImport(() => import("@/components/dashboard/leaderboard").then(mod => ({ default: mod.Leaderboard })), {
@@ -54,19 +55,23 @@ export default function DashboardPage() {
 
   // Check authentication on mount
   useEffect(() => {
-    const checkAuth = async () => {
+    const checkAuth = async (retryCount = 0) => {
       try {
-        const response = await fetch('/api/user/current', {
-          credentials: 'include',
-          cache: 'no-store'
+        const { safeFetchJson } = await import('@/lib/utils/safe-fetch')
+        const { data, error, response } = await safeFetchJson<{ success: boolean; userId?: string; error?: string; errorCode?: string }>('/api/user/current', {
+          cache: 'no-store',
         })
         
-        const data = await response.json()
+        if (error || !data) {
+          console.error('❌ [DASHBOARD] Failed to fetch user:', error)
+          router.push('/login?error=' + encodeURIComponent(error || 'Server error. Please try again.'))
+          return
+        }
         
         if (!response.ok || response.status === 401) {
           // User is not authenticated - get error message and redirect to login with error
-          const errorMessage = data.error || 'Please log in to continue'
-          const errorCode = data.errorCode
+          const errorMessage = data?.error || 'Please log in to continue'
+          const errorCode = data?.errorCode
           
           // Special handling for "logged in elsewhere" - show message before redirect
           if (errorCode === 'LOGGED_IN_ELSEWHERE') {
@@ -78,12 +83,23 @@ export default function DashboardPage() {
             return
           }
           
-          // For other errors, redirect immediately with error message
+          // If coming from pricing page (newUser=true), retry a few times
+          // The session cookie might not be immediately available after signup
+          const searchParams = new URLSearchParams(window.location.search)
+          const isNewUser = searchParams.get('newUser') === 'true'
+          
+          if (isNewUser && retryCount < 5) {
+            console.log(`⏳ [DASHBOARD] New user - session not ready yet, retrying... (${retryCount + 1}/5)`)
+            setTimeout(() => checkAuth(retryCount + 1), 500 * (retryCount + 1)) // Exponential backoff
+            return
+          }
+          
+          // For other errors or after retries, redirect immediately with error message
           router.push(`/login?error=${encodeURIComponent(errorMessage)}`)
           return
         }
         
-        if (data.success && data.userId) {
+        if (data?.success && data?.userId) {
           setIsAuthenticated(true)
           setAuthError(null)
         } else {
@@ -93,7 +109,7 @@ export default function DashboardPage() {
         }
       } catch (error) {
         // Error checking auth - redirect to login
-        console.error('Error checking authentication:', error)
+        console.error('❌ [DASHBOARD] Error checking authentication:', error)
         router.push('/login?error=' + encodeURIComponent('An error occurred. Please log in again.'))
         return
       } finally {
@@ -155,11 +171,7 @@ export default function DashboardPage() {
 
   // Show loading state while checking authentication
   if (checkingAuth) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 flex items-center justify-center">
-        <p className="text-slate-400 font-bold">Loading...</p>
-      </div>
-    )
+    return <BrainBattleLoading message="Loading your dashboard..." />
   }
 
   // Don't render dashboard if not authenticated (will redirect)
@@ -202,25 +214,23 @@ export default function DashboardPage() {
           </Button>
         </div>
 
-        {/* Collapsible Stats */}
-        <div
-          className={`transition-all duration-500 ease-in-out overflow-hidden mb-6 ${
-            showStats ? 'max-h-[5000px] opacity-100' : 'max-h-0 opacity-0'
-          }`}
-        >
-          <StatsGrid />
-        </div>
+        {/* Collapsible Stats - Includes StatsGrid and StreakDisplay */}
+        {showStats ? (
+          <div className="mb-6">
+            <StatsGrid />
+            
+            {/* Daily Streak Display */}
+            <div className="mt-6">
+              <StreakDisplay 
+                tutorialStep={tutorialStep} 
+                totalTutorialSteps={9} // Total number of tutorial steps (0-8)
+              />
+            </div>
+          </div>
+        ) : null}
 
         {/* Subscription Banner - Shows for free users */}
         <SubscriptionBanner />
-
-        {/* Daily Streak Display */}
-        <div className="mb-6">
-          <StreakDisplay 
-            tutorialStep={tutorialStep} 
-            totalTutorialSteps={9} // Total number of tutorial steps (0-8)
-          />
-        </div>
 
         <div className="grid gap-12 lg:grid-cols-3">
           <div className="lg:col-span-2 space-y-12">

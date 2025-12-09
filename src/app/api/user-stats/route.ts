@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
           xp_earned,
           completed_at,
           session_id,
-          quiz_sessions(
+          quiz_sessions!left(
             id,
             session_name,
             room_id
@@ -131,29 +131,39 @@ export async function GET(request: NextRequest) {
     }))
 
     // Transform recent games to match expected format
-    const formattedRecentGames = (recentGames || []).map((game: any) => {
-      const isSingleplayer = !game.quiz_sessions?.room_id
-      const baseName = game.quiz_sessions?.session_name || 'Unknown Battle'
-      return {
-        id: game.id,
-        session_id: game.session_id || game.quiz_sessions?.id,
-        name: baseName,
-        subject: isSingleplayer
-          ? baseName.replace('Singleplayer: ', '')
-          : baseName,
-        result: isSingleplayer
-          ? "Practice"
-          : game.correct_answers >= game.questions_answered * 0.6
-          ? "Won"
-          : "Lost",
-        score: `${game.correct_answers}/${game.questions_answered}`,
-        duration: `${Math.round(game.total_time || 0)}s`,
-        players: isSingleplayer ? "1" : "Multiplayer",
-        date: new Date(game.completed_at).toLocaleDateString(),
-        xpEarned: game.xp_earned || 0,
-        percentage: Math.round((game.correct_answers / game.questions_answered) * 100)
-      }
-    })
+    // Filter out games without quiz_sessions (shouldn't happen, but handle gracefully)
+    const formattedRecentGames = (recentGames || [])
+      .filter((game: any) => {
+        // Only include games that have a valid quiz session or at least have the required fields
+        if (!game.quiz_sessions && !game.session_id) {
+          console.warn('⚠️ [USER STATS] Game result missing quiz session:', game.id)
+          return false
+        }
+        return true
+      })
+      .map((game: any) => {
+        const isSingleplayer = !game.quiz_sessions?.room_id
+        const baseName = game.quiz_sessions?.session_name || `Battle ${game.id.substring(0, 8)}`
+        return {
+          id: game.id,
+          session_id: game.session_id || game.quiz_sessions?.id,
+          name: baseName,
+          subject: isSingleplayer
+            ? baseName.replace('Singleplayer: ', '')
+            : baseName,
+          result: isSingleplayer
+            ? "Practice"
+            : game.correct_answers >= game.questions_answered * 0.6
+            ? "Won"
+            : "Lost",
+          score: `${game.correct_answers}/${game.questions_answered}`,
+          duration: `${Math.round(game.total_time || 0)}s`,
+          players: isSingleplayer ? "1" : "Multiplayer",
+          date: new Date(game.completed_at).toLocaleDateString(),
+          xpEarned: game.xp_earned || 0,
+          percentage: Math.round((game.correct_answers / game.questions_answered) * 100)
+        }
+      })
 
     // 🚀 OPTIMIZATION: Return data directly (already filtered by select())
     return NextResponse.json({

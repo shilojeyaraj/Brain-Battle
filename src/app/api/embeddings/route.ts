@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { MoonshotClient } from '@/lib/ai/moonshot-client'
+import { OpenAIClient } from '@/lib/ai/openai-client'
 
-const moonshotClient = new MoonshotClient()
+// Use OpenAI for embeddings since Moonshot/OpenRouter doesn't support embeddings
+let openAIClient: OpenAIClient | null = null
+
+function getOpenAIClient(): OpenAIClient {
+  if (!openAIClient) {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY is required for embeddings. Moonshot/OpenRouter does not support embeddings.')
+    }
+    openAIClient = new OpenAIClient()
+  }
+  return openAIClient
+}
 
 // Function to chunk text into smaller pieces for embedding
 function chunkText(text: string, chunkSize: number = 1000, overlap: number = 200): string[] {
@@ -34,7 +45,8 @@ function chunkText(text: string, chunkSize: number = 1000, overlap: number = 200
 // Function to generate embeddings for text chunks
 async function generateEmbeddings(textChunks: string[]): Promise<number[][]> {
   try {
-    return await moonshotClient.createEmbeddings(textChunks, "text-embedding-3-small")
+    const client = getOpenAIClient()
+    return await client.createEmbeddings(textChunks, "text-embedding-3-small")
   } catch (error) {
     console.error('Error generating embeddings:', error)
     throw new Error('Failed to generate embeddings')
@@ -64,7 +76,11 @@ Return as JSON:
 }
 `
 
-    const completion = await moonshotClient.chatCompletions(
+    // Use Moonshot for text analysis (chat completions)
+    const { createAIClient } = await import('@/lib/ai/client-factory')
+    const aiClient = createAIClient('moonshot')
+    
+    const completion = await aiClient.chatCompletions(
       [
         {
           role: "system",

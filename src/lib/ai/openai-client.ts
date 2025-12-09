@@ -50,5 +50,30 @@ export class OpenAIClient implements AIClient {
       provider: 'openai',
     }
   }
+
+  /**
+   * Generate embeddings for text input
+   * Supports batch embeddings (array of texts)
+   */
+  async createEmbeddings(texts: string[], model: string = 'text-embedding-3-small'): Promise<number[][]> {
+    if (!texts || texts.length === 0) {
+      throw new Error('No texts provided for embedding generation')
+    }
+
+    const response = await this.client.embeddings.create({
+      model: model,
+      input: texts,
+    })
+
+    return response.data.map(item => item.embedding)
+  }
+
+  /**
+   * Generate single embedding (convenience method)
+   */
+  async embeddings(text: string): Promise<number[]> {
+    const results = await this.createEmbeddings([text])
+    return results[0]
+  }
 }
 

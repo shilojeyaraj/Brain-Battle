@@ -1,16 +1,33 @@
 -- Create user_sessions table to track active sessions
 -- This enables single-device login by invalidating previous sessions when a new login occurs
 
-CREATE TABLE IF NOT EXISTS public.user_sessions (
+-- Create user_sessions table to track active sessions
+-- This enables single-device login by invalidating previous sessions when a new login occurs
+
+-- Drop existing table if it exists (for clean migration)
+DROP TABLE IF EXISTS public.user_sessions CASCADE;
+
+CREATE TABLE public.user_sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
-  session_token TEXT NOT NULL UNIQUE, -- The JWT token ID
+  user_id UUID NOT NULL,
+  session_token TEXT NOT NULL UNIQUE, -- The unique session ID (stored in JWT token)
   created_at TIMESTAMPTZ DEFAULT NOW(),
   expires_at TIMESTAMPTZ NOT NULL,
   is_active BOOLEAN DEFAULT TRUE,
   user_agent TEXT,
-  ip_address TEXT
+  ip_address INET -- Changed to INET type for better IP storage
 );
+
+-- Add foreign key constraint (references users table)
+-- Note: This assumes users table exists with UUID id column
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'users') THEN
+    ALTER TABLE public.user_sessions 
+    ADD CONSTRAINT fk_user_sessions_user_id 
+    FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+  END IF;
+END $$;
 
 -- Create index for fast lookups
 CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON public.user_sessions(user_id);

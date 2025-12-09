@@ -16,6 +16,7 @@ export default function PricingPage() {
 
   useEffect(() => {
     // Get userId from session cookie (more secure)
+    // For new users, we don't require immediate authentication - they can still see pricing
     const fetchStatus = async (retryCount = 0) => {
       try {
         // Try to get userId from session cookie first
@@ -24,6 +25,7 @@ export default function PricingPage() {
           const response = await fetch('/api/user/current', {
             method: 'GET',
             credentials: 'include', // CRITICAL: Include cookies for authentication
+            cache: 'no-store',
           });
           if (response.ok) {
             const data = await response.json();
@@ -33,35 +35,38 @@ export default function PricingPage() {
           } else if (response.status === 401) {
             // User not authenticated - this is OK for new users on pricing page
             // If it's a new user (isNewUser=true), retry a few times as cookie might not be set yet
-            if (isNewUser && retryCount < 3) {
-              console.log(`User not authenticated yet (new user flow), retrying... (${retryCount + 1}/3)`);
-              setTimeout(() => fetchStatus(retryCount + 1), 1000 * (retryCount + 1)); // Exponential backoff
+            if (isNewUser && retryCount < 5) {
+              console.log(`⏳ [PRICING] User not authenticated yet (new user flow), retrying... (${retryCount + 1}/5)`);
+              setTimeout(() => fetchStatus(retryCount + 1), 500 * (retryCount + 1)); // Exponential backoff
               return;
             }
-            console.log('User not authenticated (not a new user or retries exhausted)');
+            // For existing users or after retries, it's OK - they can still see pricing
+            console.log('ℹ️ [PRICING] User not authenticated (may be viewing pricing before login)');
           }
         } catch (e) {
-          console.warn('Failed to get userId from API:', e);
+          console.warn('⚠️ [PRICING] Failed to get userId from API:', e);
           // Fallback to localStorage (for backwards compatibility)
           userId = localStorage.getItem('userId');
         }
 
         if (!userId) {
-          // If new user and still no userId after retries, log for debugging
+          // If new user and still no userId after retries, that's OK - they can still see pricing
+          // The authentication will be checked when they click "Continue with Free Plan"
           if (isNewUser) {
-            console.warn('⚠️ [PRICING] New user but no userId found after retries. User may need to log in.');
+            console.log('ℹ️ [PRICING] New user - authentication will be verified when selecting plan');
           }
-          return;
+          return; // Don't fetch subscription status if no userId
         }
 
-        // Fetch current subscription status
+        // Fetch current subscription status only if we have a userId
         const res = await fetch(`/api/stripe/subscription-status?userId=${userId}`, {
           credentials: 'include', // Include cookies
+          cache: 'no-store',
         });
         const data = await res.json();
         setSubscriptionStatus(data);
       } catch (err) {
-        console.error('Error fetching subscription:', err);
+        console.error('❌ [PRICING] Error fetching subscription:', err);
       }
     };
 

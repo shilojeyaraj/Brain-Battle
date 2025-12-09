@@ -37,52 +37,76 @@ export function PricingCard({
 
     setLoading(true);
     try {
-      // First, verify we're authenticated
+      // For new users, retry authentication check (cookie might not be immediately available)
       let userId: string | null = null;
-      try {
-        const authResponse = await fetch('/api/user/current', {
-          method: 'GET',
-          credentials: 'include',
-        });
-        
-        if (authResponse.ok) {
-          const authData = await authResponse.json();
-          if (authData.success && authData.userId) {
-            userId = authData.userId;
+      const maxRetries = 5;
+      const retryDelay = 500; // 500ms between retries
+      
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          const authResponse = await fetch('/api/user/current', {
+            method: 'GET',
+            credentials: 'include',
+            cache: 'no-store',
+          });
+          
+          if (authResponse.ok) {
+            const authData = await authResponse.json();
+            if (authData.success && authData.userId) {
+              userId = authData.userId;
+              console.log(`✅ [PRICING] Authentication successful on attempt ${attempt + 1}`);
+              break; // Success, exit retry loop
+            }
+          } else if (authResponse.status === 401 && attempt < maxRetries - 1) {
+            // Not authenticated yet, but we have retries left
+            console.log(`⏳ [PRICING] Authentication not ready yet, retrying... (${attempt + 1}/${maxRetries})`);
+            await new Promise(resolve => setTimeout(resolve, retryDelay * (attempt + 1))); // Exponential backoff
+            continue;
+          }
+        } catch (e) {
+          console.warn(`⚠️ [PRICING] Auth check attempt ${attempt + 1} failed:`, e);
+          if (attempt < maxRetries - 1) {
+            await new Promise(resolve => setTimeout(resolve, retryDelay * (attempt + 1)));
+            continue;
           }
         }
-      } catch (e) {
-        console.warn('Failed to verify authentication:', e);
       }
 
       if (!userId) {
-        alert('Please log in to continue. Redirecting to login page...');
+        console.error('❌ [PRICING] Authentication failed after all retries');
+        alert('Unable to verify your session. Please try logging in again.');
         window.location.href = '/login?redirect=/pricing?newUser=true';
         setLoading(false);
         return;
       }
 
+      console.log('✅ [PRICING] Proceeding with free plan setup for user:', userId);
+
+      // Call set-free API
       const response = await fetch('/api/subscription/set-free', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         credentials: 'include', // CRITICAL: Include cookies for authentication
+        cache: 'no-store',
       });
 
       const data = await response.json();
 
       if (data.success) {
+        console.log('✅ [PRICING] Free plan set successfully, redirecting to dashboard');
         // Redirect to dashboard with newUser flag to trigger tutorial
+        // Use window.location.href for a full page reload to ensure session is recognized
         window.location.href = '/dashboard?newUser=true';
       } else {
-        console.error('Failed to set free plan:', data.error);
-        const errorMsg = data.error || 'Failed to set free plan. Please try again.';
+        console.error('❌ [PRICING] Failed to set free plan:', data.error);
+        const errorMsg = data.error || data.message || 'Failed to set free plan. Please try again.';
         alert(errorMsg);
         setLoading(false);
       }
     } catch (error) {
-      console.error('Error setting free plan:', error);
+      console.error('❌ [PRICING] Error setting free plan:', error);
       alert('An error occurred. Please try again or contact support if the problem persists.');
       setLoading(false);
     }

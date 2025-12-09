@@ -14,21 +14,42 @@ export function RecentBattles() {
   useEffect(() => {
     const fetchRecentBattles = async () => {
       try {
-        const response = await fetch("/api/user-stats")
+        const response = await fetch("/api/user-stats", {
+          credentials: 'include',
+          cache: 'no-store'
+        })
         if (response.ok) {
           const data = await response.json()
           if (data.recentGames && Array.isArray(data.recentGames)) {
             setRecentBattles(data.recentGames)
+          } else {
+            console.log('ℹ️ [RECENT BATTLES] No recent games found or invalid format:', data)
           }
+        } else {
+          console.error('❌ [RECENT BATTLES] Failed to fetch battles:', response.status, response.statusText)
         }
       } catch (error) {
-        console.error('Error fetching recent battles:', error)
+        console.error('❌ [RECENT BATTLES] Error fetching recent battles:', error)
       } finally {
         setLoading(false)
       }
     }
 
     fetchRecentBattles()
+    
+    // Listen for quiz completion events to refresh battles
+    const handleQuizCompleted = () => {
+      // Wait a bit for the backend to process the results
+      setTimeout(() => {
+        fetchRecentBattles()
+      }, 1000)
+    }
+    
+    window.addEventListener('quizCompleted', handleQuizCompleted)
+    
+    return () => {
+      window.removeEventListener('quizCompleted', handleQuizCompleted)
+    }
   }, [])
 
   if (loading) {

@@ -5,10 +5,11 @@ import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { Sparkles, Mail, Lock, User, ArrowLeft, Loader2, AlertCircle, CheckCircle2, Brain, Eye, EyeOff } from "lucide-react"
 import Link from "next/link"
-import { signup } from "@/lib/actions/custom-auth"
+// Using API route instead of server action to ensure session cookie is properly set
 import { useEffect, useState, Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { motion } from "framer-motion"
+import { BrainBattleLoading } from "@/components/ui/brain-battle-loading"
 
 function SignupForm() {
   const [isPending, setIsPending] = useState(false)
@@ -95,44 +96,44 @@ function SignupForm() {
     // Use setTimeout to ensure React renders the loading state before async operation
     setTimeout(async () => {
       try {
-        // Sign up using server action (handles session cookie and redirect)
+        // Use API route instead of server action to ensure cookie is properly set
         const formDataObj = new FormData()
         formDataObj.append('username', username)
         formDataObj.append('email', email.trim().toLowerCase())
         formDataObj.append('password', password)
         formDataObj.append('confirmPassword', confirmPassword)
 
-        // Call server action - it will handle redirect to pricing page
-        await signup(formDataObj)
+        const response = await fetch('/api/auth/signup', {
+          method: 'POST',
+          body: formDataObj,
+          credentials: 'include', // CRITICAL: Include cookies
+        })
+
+        const data = await response.json()
+
+        if (!response.ok || !data.success) {
+          setError(data.error || 'Sign up failed. Please try again.')
+          setIsPending(false)
+          return
+        }
+
+        // Success! Session cookie is now set
+        console.log('✅ [SIGNUP] Registration successful, session cookie set')
         
-        // If we reach here, the redirect didn't happen (shouldn't normally occur)
+        // Small delay to ensure cookie is available
+        await new Promise(resolve => setTimeout(resolve, 200))
+        
+        // Redirect to pricing page
         setSuccessMessage("Account created successfully! Redirecting...")
-        setTimeout(() => {
-          router.push('/pricing?newUser=true')
-        }, 1500)
+        router.push('/pricing?newUser=true')
       } catch (err: any) {
-        // Always reset loading state, even for redirects
+        // Always reset loading state
         setIsPending(false)
         
-        // Ignore Next.js redirect errors (they're expected behavior)
-        if (err?.digest?.startsWith('NEXT_REDIRECT')) {
-          // Redirect is happening, don't show error
-          // Loading state will be reset when page reloads with error in URL
-          return
-        }
-        
         // Only show user-friendly error messages
-        const errorMessage = err?.message || 'Sign up failed'
-        
-        // Filter out technical error messages
-        if (errorMessage.includes('NEXT_REDIRECT') || 
-            errorMessage.includes('digest') ||
-            errorMessage.toLowerCase().includes('redirect')) {
-          // Don't show redirect-related errors to users
-          return
-        }
-        
+        const errorMessage = err?.message || 'Sign up failed. Please try again.'
         setError(errorMessage)
+        console.error('❌ [SIGNUP] Error:', err)
       }
     }, 0)
   }
@@ -309,7 +310,7 @@ export default function SignupPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
         >
-          <Suspense fallback={<Card className="p-8 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50"><div className="text-center text-white">Loading...</div></Card>}>
+          <Suspense fallback={<BrainBattleLoading message="Loading signup form..." />}>
             <SignupForm />
           </Suspense>
         </motion.div>

@@ -77,6 +77,13 @@ export async function validateSessionInDatabase(userId: string, sessionId: strin
       .eq('is_active', true)
       .single()
     
+    // If table doesn't exist, allow session (graceful degradation)
+    if (error?.code === 'PGRST205' || error?.message?.includes('Could not find the table')) {
+      console.warn('⚠️ [SESSION] user_sessions table does not exist - allowing session without database validation')
+      console.warn('   Please run the migration: supabase/migrations/add-user-sessions-table.sql')
+      return true // Allow session to work even if table doesn't exist
+    }
+    
     if (error || !data) {
       if (process.env.NODE_ENV === 'development') {
         console.log('❌ [SESSION] Session not found in database:', { userId, sessionId, error: error?.message })
@@ -100,6 +107,11 @@ export async function validateSessionInDatabase(userId: string, sessionId: strin
     return true
   } catch (error) {
     console.error('❌ [SESSION] Error validating session in database:', error)
+    // If it's a table not found error, allow the session
+    if (error instanceof Error && (error.message.includes('Could not find the table') || error.message.includes('PGRST205'))) {
+      console.warn('⚠️ [SESSION] Table missing - allowing session without validation')
+      return true
+    }
     return false
   }
 }
@@ -128,12 +140,16 @@ export async function setSessionCookie(
     .eq('is_active', true)
   
   if (invalidateError) {
-    console.error('❌ [SESSION] Error invalidating previous sessions:', invalidateError)
+    // Check if error is because table doesn't exist
+    if (invalidateError.code === 'PGRST205' || invalidateError.message?.includes('Could not find the table')) {
+      console.warn('⚠️ [SESSION] user_sessions table does not exist - skipping session invalidation')
+      console.warn('   Please run the migration: supabase/migrations/add-user-sessions-table.sql')
+    } else {
+      console.error('❌ [SESSION] Error invalidating previous sessions:', invalidateError)
+    }
     // Continue anyway - don't block login
   } else {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('✅ [SESSION] Invalidated previous sessions for user:', userId)
-    }
+    console.log('✅ [SESSION] Invalidated previous sessions for user:', userId)
   }
   
   // Generate new session ID and token
@@ -163,12 +179,16 @@ export async function setSessionCookie(
     })
   
   if (insertError) {
-    console.error('❌ [SESSION] Error storing session in database:', insertError)
+    // Check if error is because table doesn't exist
+    if (insertError.code === 'PGRST205' || insertError.message?.includes('Could not find the table')) {
+      console.error('❌ [SESSION] user_sessions table does not exist! Please run the migration: supabase/migrations/add-user-sessions-table.sql')
+      console.error('   Session cookie will still work, but single-device login enforcement will not function.')
+    } else {
+      console.error('❌ [SESSION] Error storing session in database:', insertError)
+    }
     // Continue anyway - session cookie will still work, but won't be tracked
   } else {
-    if (process.env.NODE_ENV === 'development') {
-      console.log('✅ [SESSION] Session stored in database:', { userId, sessionId })
-    }
+    console.log('✅ [SESSION] Session stored in database:', { userId, sessionId })
   }
   
   // Determine domain for production (should match your production domain)

@@ -24,27 +24,55 @@ export async function middleware(request: NextRequest) {
 
   // Enhanced rate limiting for API routes with per-endpoint limits
   if (path.startsWith('/api/')) {
-    const identifier = getRateLimitIdentifier(request)
+    // For authenticated endpoints, try to use user ID instead of IP for better rate limiting
+    let identifier = getRateLimitIdentifier(request)
+    
+    // Try to get user ID from session for authenticated endpoints
+    // This gives each user their own rate limit instead of sharing by IP
+    if (path.includes('/notes') || path.includes('/generate-quiz') || path.includes('/quiz-results')) {
+      try {
+        const { getUserIdFromRequest } = await import('@/lib/auth/session-cookies')
+        const userId = await getUserIdFromRequest(request)
+        if (userId) {
+          identifier = `user:${userId}`
+        }
+      } catch (e) {
+        // If auth check fails, fall back to IP-based rate limiting
+        // This is fine - rate limiting should not block on auth errors
+      }
+    }
     
     // Use centralized rate limit configuration
     const { getRateLimitConfig } = await import('@/lib/security/rate-limit-config')
     const rateLimitConfig = getRateLimitConfig(path)
     
-    const rateLimitResult = rateLimit(identifier, rateLimitConfig)
-    
-    if (!rateLimitResult.success) {
-      return NextResponse.json(
-        { error: 'Too many requests. Please try again later.' },
-        { 
-          status: 429,
-          headers: {
-            'X-RateLimit-Limit': rateLimitResult.limit.toString(),
-            'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
-            'X-RateLimit-Reset': new Date(rateLimitResult.reset).toISOString(),
-            'Retry-After': Math.ceil((rateLimitResult.reset - Date.now()) / 1000).toString(),
+    // Skip rate limiting in development for easier testing
+    if (process.env.NODE_ENV === 'development' && process.env.SKIP_RATE_LIMIT === 'true') {
+      // Rate limiting disabled in dev
+    } else {
+      const rateLimitResult = rateLimit(identifier, rateLimitConfig)
+      
+      if (!rateLimitResult.success) {
+        const resetTime = new Date(rateLimitResult.reset).toISOString()
+        const retryAfter = Math.ceil((rateLimitResult.reset - Date.now()) / 1000)
+        
+        return NextResponse.json(
+          { 
+            error: 'Too many requests. Please try again later.',
+            retryAfter: retryAfter,
+            resetTime: resetTime
+          },
+          { 
+            status: 429,
+            headers: {
+              'X-RateLimit-Limit': rateLimitResult.limit.toString(),
+              'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
+              'X-RateLimit-Reset': resetTime,
+              'Retry-After': retryAfter.toString(),
+            }
           }
-        }
-      )
+        )
+      }
     }
   }
 

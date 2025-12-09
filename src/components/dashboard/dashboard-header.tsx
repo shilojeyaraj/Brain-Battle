@@ -234,7 +234,23 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
               </button>
                   <button
                     className="w-full flex items-center gap-2 px-3 py-2 hover:bg-muted rounded-lg text-left"
-                    onClick={() => { localStorage.removeItem('dashboard_tutorial_completed'); window.location.reload() }}
+                    onClick={async () => {
+                      // Clear localStorage
+                      localStorage.removeItem('dashboard_tutorial_completed')
+                      
+                      // Reset tutorial in database
+                      try {
+                        await fetch('/api/tutorial/reset', {
+                          method: 'POST',
+                          credentials: 'include',
+                        })
+                      } catch (error) {
+                        console.error('Error resetting tutorial:', error)
+                      }
+                      
+                      // Reload page with newUser param to trigger tutorial
+                      window.location.href = '/dashboard?newUser=true&restartTutorial=true'
+                    }}
                     title="Restart Tutorial"
                   >
                     <RotateCw className="h-4 w-4 text-foreground" strokeWidth={3} />

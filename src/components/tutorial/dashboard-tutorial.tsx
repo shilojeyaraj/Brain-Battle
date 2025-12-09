@@ -80,26 +80,30 @@ export function DashboardTutorial({ onStepChange }: { onStepChange?: (step: numb
     const checkTutorialStatus = async () => {
       setIsChecking(true)
       
-      // Check if user just signed up (has newUser param)
+      // Check if user just signed up (has newUser param) or restarting tutorial
       const isNewUser = searchParams.get('newUser') === 'true' || searchParams.get('userId')
+      const restartTutorial = searchParams.get('restartTutorial') === 'true'
       
-      if (isNewUser) {
-        // For new users, always show tutorial (first signup only)
+      if (isNewUser || restartTutorial) {
+        // For new users or restarting tutorial, always show tutorial
         // Clean up URL params after starting tutorial
         if (typeof window !== 'undefined') {
           const url = new URL(window.location.href)
-          if (url.searchParams.has('newUser') || url.searchParams.has('userId')) {
+          if (url.searchParams.has('newUser') || url.searchParams.has('userId') || url.searchParams.has('restartTutorial')) {
             url.searchParams.delete('newUser')
             url.searchParams.delete('userId')
+            url.searchParams.delete('restartTutorial')
             window.history.replaceState({}, '', url.toString())
           }
         }
         
-        // Small delay to ensure page is fully rendered
+        // Small delay to ensure page is fully rendered, then scroll to top
         setTimeout(() => {
+          // Scroll to top of page to ensure first tutorial element is visible
+          window.scrollTo({ top: 0, behavior: 'smooth' })
           setShowTutorial(true)
           setIsChecking(false)
-        }, 800)
+        }, 1000) // Increased delay to ensure all components are rendered
         return
       }
       

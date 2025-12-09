@@ -193,89 +193,37 @@ export async function getUserStatsClient(userId: string): Promise<{ success: boo
       .eq('user_id', userId)
       .single()
     
+    // Stats are auto-created when quiz results are saved, so just return defaults if none exist
+    // Don't try to POST to /api/player-stats as it's disabled for security
     if (statsError || !statsData) {
-      // Check authentication before trying to create stats
-      try {
-        const authCheck = await fetch('/api/user/current', {
-          credentials: 'include',
-          cache: 'no-store'
-        })
-        
-        if (!authCheck.ok || authCheck.status === 401) {
-          // User is not authenticated - don't try to create stats
-          return { 
-            success: false, 
-            error: 'User not authenticated' 
-          }
-        }
-      } catch (authError) {
-        // Can't verify auth - don't create stats
-        return { 
-          success: false, 
-          error: 'Authentication check failed' 
-        }
+      // Return default stats - they'll be created automatically when user completes their first quiz
+      const defaultStats = {
+        user_id: userId,
+        level: 1,
+        xp: 0,
+        total_wins: 0,
+        total_losses: 0,
+        total_games: 0,
+        win_streak: 0,
+        best_streak: 0,
+        total_questions_answered: 0,
+        correct_answers: 0,
+        accuracy: 0,
+        average_response_time: 0,
+        favorite_subject: null,
+        daily_streak: 0,
+        longest_streak: 0,
+        last_activity_date: null
       }
       
-      // Create default stats if none exist via API route (bypasses RLS)
-      try {
-        const response = await fetch('/api/player-stats', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            user_id: userId,
-            stats: {
-              level: 1,
-              xp: 0,
-              total_wins: 0,
-              total_losses: 0,
-              total_games: 0,
-              win_streak: 0,
-              best_streak: 0,
-              total_questions_answered: 0,
-              correct_answers: 0,
-              accuracy: 0.00,
-              average_response_time: 0.00,
-              favorite_subject: null
-            }
-          })
-        })
-        
-        if (response.status === 401) {
-          // User is not authenticated
-          return { 
-            success: false, 
-            error: 'User not authenticated' 
-          }
+      console.log('ℹ️ [USER STATS] No stats found - returning defaults. Stats will be created when user completes their first quiz.')
+      
+      return {
+        success: true,
+        data: {
+          ...userData,
+          stats: defaultStats
         }
-        
-        if (response.ok) {
-          const result = await response.json()
-          if (result.success && result.data) {
-            console.log('✅ [USER STATS] Stats created successfully via API')
-            return {
-              success: true,
-              data: {
-                ...userData,
-                stats: result.data
-              }
-            }
-          } else {
-            const errorText = result.error || 'Unknown error'
-            console.error('❌ [USER STATS] Failed to create stats via API:', errorText)
-            return { success: false, error: `Failed to create user stats: ${errorText}` }
-          }
-        } else {
-          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-          // Don't log empty error objects
-          if (errorData.error) {
-            console.error('❌ [USER STATS] Failed to create stats:', errorData.error)
-          }
-          return { success: false, error: `Failed to create user stats: ${errorData.error || 'HTTP ' + response.status}` }
-        }
-      } catch (apiError) {
-        console.error('❌ [USER STATS] Error calling stats API:', apiError)
-        return { success: false, error: 'Failed to create user stats' }
       }
     }
     

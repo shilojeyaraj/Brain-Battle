@@ -1,8 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
-import { MoonshotClient } from '@/lib/ai/moonshot-client'
+import { OpenAIClient } from '@/lib/ai/openai-client'
 
-const moonshotClient = new MoonshotClient()
+// Use OpenAI for embeddings since Moonshot/OpenRouter doesn't support embeddings
+let openAIClient: OpenAIClient | null = null
+
+function getOpenAIClient(): OpenAIClient {
+  if (!openAIClient) {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY is required for embeddings. Moonshot/OpenRouter does not support embeddings.')
+    }
+    openAIClient = new OpenAIClient()
+  }
+  return openAIClient
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -15,8 +26,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Generate embedding for the search query
-    const embeddings = await moonshotClient.createEmbeddings([query], "text-embedding-3-small")
+    // Generate embedding for the search query using OpenAI
+    const client = getOpenAIClient()
+    const embeddings = await client.createEmbeddings([query], "text-embedding-3-small")
     const queryEmbedding = embeddings[0]
 
     // Search for similar documents using pgvector

@@ -139,20 +139,21 @@ export function StreakDisplay({ tutorialStep, totalTutorialSteps }: StreakDispla
 
   if (loading) {
     return (
-      <Card className="p-4 bg-gradient-to-br from-orange-500/20 to-orange-600/20 border-4 border-orange-400/50" data-tutorial="streak-display">
+      <Card className="p-4 bg-gradient-to-br from-orange-500/20 to-orange-600/20 border-2 border-orange-400/50" data-tutorial="streak-display">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-orange-500/20 animate-pulse"></div>
+          <div className="w-10 h-10 rounded-xl bg-orange-500/20 animate-pulse"></div>
           <div className="flex-1">
-            <div className="h-4 bg-orange-500/20 rounded w-24 mb-2 animate-pulse"></div>
-            <div className="h-3 bg-orange-500/20 rounded w-32 animate-pulse"></div>
+            <div className="h-3 bg-orange-500/20 rounded w-20 mb-1.5 animate-pulse"></div>
+            <div className="h-2.5 bg-orange-500/20 rounded w-28 animate-pulse"></div>
           </div>
         </div>
       </Card>
     )
   }
 
-  // Show placeholder for new users or during tutorial
-  if (!streak || (streak.currentStreak === 0 && !isTutorialActive)) {
+  // Show streak display even if it's 0 (for new users) or during tutorial
+  // Only hide if we have no streak data at all
+  if (!streak) {
     return null
   }
 
@@ -168,20 +169,20 @@ export function StreakDisplay({ tutorialStep, totalTutorialSteps }: StreakDispla
           transition={{ duration: 0.3 }}
           data-tutorial="streak-display"
         >
-          <Card className="p-6 bg-gradient-to-br from-orange-500/20 to-orange-600/20 border-4 border-orange-400/50 shadow-lg">
+          <Card className="p-4 bg-gradient-to-br from-orange-500/20 to-orange-600/20 border-2 border-orange-400/50 shadow-lg">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
                 <DailyStreakFlame 
                   streak={displayStreak} 
                   isAnimating={showTutorialAnimation && animatedStreak === 1}
                 />
                 <div>
-                  <div className="flex items-baseline gap-2 mb-1">
-                    <span className="text-lg font-bold text-orange-200">
+                  <div className="flex items-baseline gap-2 mb-0.5">
+                    <span className="text-base font-bold text-orange-200">
                       day{displayStreak !== 1 ? 's' : ''}
                     </span>
                   </div>
-                  <p className="text-sm font-bold text-orange-200/80">
+                  <p className="text-xs font-bold text-orange-200/80">
                     {displayStreak === 0 
                       ? "🔥 Start your streak by completing a quiz!"
                       : "🔥 Great job! You've started your streak!"}
@@ -189,8 +190,8 @@ export function StreakDisplay({ tutorialStep, totalTutorialSteps }: StreakDispla
                 </div>
               </div>
               <div className="text-right">
-                <div className="flex items-center gap-2 text-sm text-orange-200/70">
-                  <Trophy className="w-4 h-4" strokeWidth={3} />
+                <div className="flex items-center gap-1.5 text-xs text-orange-200/70">
+                  <Trophy className="w-3.5 h-3.5" strokeWidth={3} />
                   <span className="font-bold">Complete quizzes daily!</span>
                 </div>
               </div>
@@ -237,25 +238,25 @@ export function StreakDisplay({ tutorialStep, totalTutorialSteps }: StreakDispla
         transition={{ duration: 0.3 }}
         data-tutorial="streak-display"
       >
-        <Card className={`p-6 bg-gradient-to-br ${getStreakColor()}/20 border-4 border-orange-400/50 shadow-lg ${isAtRisk ? 'ring-2 ring-orange-500 ring-opacity-50' : ''}`}>
+        <Card className={`p-4 bg-gradient-to-br ${getStreakColor()}/20 border-2 border-orange-400/50 shadow-lg ${isAtRisk ? 'ring-2 ring-orange-500 ring-opacity-50' : ''}`}>
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
               <DailyStreakFlame 
                 streak={streak.currentStreak} 
                 isAnimating={isAnimating}
               />
               
               <div>
-                <div className="flex items-baseline gap-2 mb-1">
-                  <span className="text-lg font-bold text-orange-200">
+                <div className="flex items-baseline gap-2 mb-0.5">
+                  <span className="text-base font-bold text-orange-200">
                     day{streak.currentStreak !== 1 ? 's' : ''}
                   </span>
                 </div>
-                <p className="text-sm font-bold text-orange-200/80">
+                <p className="text-xs font-bold text-orange-200/80">
                   {getStreakMessage()}
                 </p>
                 {isAtRisk && (
-                  <div className="flex items-center gap-1 mt-1 text-xs text-orange-300">
+                  <div className="flex items-center gap-1 mt-0.5 text-xs text-orange-300">
                     <AlertCircle className="w-3 h-3" strokeWidth={3} />
                     <span className="font-bold">Complete a quiz today to keep your streak!</span>
                   </div>
@@ -264,12 +265,12 @@ export function StreakDisplay({ tutorialStep, totalTutorialSteps }: StreakDispla
             </div>
 
             <div className="text-right">
-              <div className="flex items-center gap-2 text-sm text-orange-200/70 mb-2">
-                <Trophy className="w-4 h-4" strokeWidth={3} />
+              <div className="flex items-center gap-1.5 text-xs text-orange-200/70 mb-1">
+                <Trophy className="w-3.5 h-3.5" strokeWidth={3} />
                 <span className="font-bold">Best: {streak.longestStreak}</span>
               </div>
               {!streak.isActiveToday && streak.daysUntilBreak > 0 && (
-                <div className="flex items-center gap-2 text-xs text-orange-300/70">
+                <div className="flex items-center gap-1.5 text-xs text-orange-300/70">
                   <Calendar className="w-3 h-3" strokeWidth={3} />
                   <span className="font-bold">
                     {streak.daysUntilBreak} day{streak.daysUntilBreak !== 1 ? 's' : ''} left
@@ -281,7 +282,7 @@ export function StreakDisplay({ tutorialStep, totalTutorialSteps }: StreakDispla
 
           {/* Milestone indicators */}
           {streak.currentStreak > 0 && (
-            <div className="mt-4 pt-4 border-t border-orange-400/30">
+            <div className="mt-3 pt-3 border-t border-orange-400/30">
               <div className="flex items-center justify-between text-xs">
                 {[7, 14, 30, 100].map((milestone) => (
                   <div
@@ -293,13 +294,13 @@ export function StreakDisplay({ tutorialStep, totalTutorialSteps }: StreakDispla
                     }`}
                   >
                     <div
-                      className={`w-2 h-2 rounded-full mb-1 ${
+                      className={`w-1.5 h-1.5 rounded-full mb-0.5 ${
                         streak.currentStreak >= milestone
                           ? 'bg-orange-400'
                           : 'bg-orange-400/30'
                       }`}
                     />
-                    <span className="font-bold">{milestone}</span>
+                    <span className="font-bold text-[10px]">{milestone}</span>
                   </div>
                 ))}
               </div>

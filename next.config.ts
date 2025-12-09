@@ -12,6 +12,9 @@ const nextConfig: NextConfig = {
     // Optimize package imports for commonly used libraries
     optimizePackageImports: ['lucide-react', 'framer-motion', '@radix-ui/react-dialog', '@radix-ui/react-select'],
   },
+  // Explicitly configure Turbopack (even though we're using webpack)
+  // This silences the warning about having webpack config without turbopack config
+  turbopack: {},
   // Externalize PDF parsing libraries to avoid bundling issues
   // Moved from experimental.serverComponentsExternalPackages (deprecated in Next.js 15)
   serverExternalPackages: [

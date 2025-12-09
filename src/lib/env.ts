@@ -14,14 +14,15 @@ const envSchema = z.object({
   
   // Server-side variables
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(1),
-  MOONSHOT_API_KEY: z.string().min(1),
+  OPEN_ROUTER_KEY: z.string().min(1), // OpenRouter API key (used for Moonshot models)
   SESSION_SECRET: z.string().min(1).optional(), // Optional in dev, required in production
   
   // Optional variables
   OPENAI_API_KEY: z.string().optional(), // Optional - only needed for parallel testing or fallback
   ADMIN_PASSWORD: z.string().optional(), // Optional - admin panel password
   COOKIE_DOMAIN: z.string().optional(), // Optional - for custom domains
-  MOONSHOT_MODEL: z.string().optional(), // Optional - override default model
+  MOONSHOT_MODEL: z.string().optional(), // Optional - override default model (maps to OpenRouter Moonshot models)
+  OPENROUTER_MODEL: z.string().optional(), // Optional - OpenRouter model name override
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   VERCEL_URL: z.string().optional(),
 })
@@ -34,7 +35,7 @@ function validateEnv() {
       NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
       NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL,
       SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
-      MOONSHOT_API_KEY: process.env.MOONSHOT_API_KEY,
+      OPEN_ROUTER_KEY: process.env.OPEN_ROUTER_KEY,
       SESSION_SECRET: process.env.SESSION_SECRET,
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
       ADMIN_PASSWORD: process.env.ADMIN_PASSWORD,

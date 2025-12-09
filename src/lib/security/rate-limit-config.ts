@@ -15,7 +15,9 @@ export interface RateLimitConfig {
 export function getRateLimitConfig(path: string): RateLimitConfig {
   // Stricter limits for expensive/security-sensitive endpoints
   if (path.includes('/generate-quiz') || path.includes('/notes')) {
-    return { interval: 60000, limit: 10 } // 10 AI requests per minute
+    // Increased limit: 30 requests per minute (was 10)
+    // Notes generation can take time, so users may retry if it fails
+    return { interval: 60000, limit: 30 } // 30 AI requests per minute
   }
   
   if (path.includes('/embeddings')) {

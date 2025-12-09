@@ -60,12 +60,44 @@ export function TutorialOverlay({
     let originalZIndex: string = ''
     let originalPosition: string = ''
 
+    const updateTargetRect = (element: HTMLElement) => {
+      const rect = element.getBoundingClientRect()
+      const computedStyle = window.getComputedStyle(element)
+      
+      // Include margins in the rect calculation for better coverage
+      const marginTop = parseFloat(computedStyle.marginTop) || 0
+      const marginBottom = parseFloat(computedStyle.marginBottom) || 0
+      const marginLeft = parseFloat(computedStyle.marginLeft) || 0
+      const marginRight = parseFloat(computedStyle.marginRight) || 0
+      
+      // Also check parent container for padding that might affect positioning
+      const parent = element.parentElement
+      let parentPaddingTop = 0
+      let parentPaddingLeft = 0
+      if (parent) {
+        const parentStyle = window.getComputedStyle(parent)
+        parentPaddingTop = parseFloat(parentStyle.paddingTop) || 0
+        parentPaddingLeft = parseFloat(parentStyle.paddingLeft) || 0
+      }
+      
+      // Create expanded rect that includes margins and ensures full coverage
+      // Add extra padding (8px) for the border highlight
+      const borderPadding = 8
+      const expandedRect = new DOMRect(
+        Math.max(0, rect.left - marginLeft - borderPadding),
+        Math.max(0, rect.top - marginTop - borderPadding),
+        rect.width + marginLeft + marginRight + (borderPadding * 2),
+        rect.height + marginTop + marginBottom + (borderPadding * 2)
+      )
+      
+      setTargetRect(expandedRect)
+    }
+
     const findTarget = () => {
       const element = document.querySelector(step.targetSelector) as HTMLElement
       if (element) {
         elementRef = element
         setTargetElement(element)
-        updateTargetRect(element)
         
         // Ensure target element is visible above overlay
         originalZIndex = element.style.zIndex
@@ -75,28 +107,41 @@ export function TutorialOverlay({
           element.style.position = 'relative'
         }
         
-        // Scroll element into view
-        element.scrollIntoView({ 
-          behavior: 'smooth', 
-          block: 'center',
-          inline: 'center'
-        })
+        // Initial rect calculation before scroll
+        updateTargetRect(element)
         
-        // Update rect after scroll
-        setTimeout(() => updateTargetRect(element), 300)
+        // Scroll element into view with proper offset
+        // Use requestAnimationFrame to ensure DOM is ready
+        requestAnimationFrame(() => {
+          // Scroll to center the element in viewport
+          element.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center',
+            inline: 'nearest'
+          })
+          
+          // Wait for scroll animation to complete, then update rect multiple times
+          // Smooth scroll typically takes 300-500ms
+          setTimeout(() => {
+            updateTargetRect(element)
+            // Update again after a short delay to catch any layout shifts
+            setTimeout(() => {
+              updateTargetRect(element)
+              // Final check after another frame
+              requestAnimationFrame(() => {
+                updateTargetRect(element)
+              })
+            }, 100)
+          }, 500)
+        })
       } else {
         // Retry after a short delay if element not found
         setTimeout(findTarget, 100)
       }
     }
 
-    const updateTargetRect = (element: HTMLElement) => {
-      const rect = element.getBoundingClientRect()
-      setTargetRect(rect)
-    }
-
-    // Wait for DOM to be ready
-    const timer = setTimeout(findTarget, 100)
+    // Wait for DOM to be ready, with longer delay for restart scenarios
+    const timer = setTimeout(findTarget, currentStep === 0 ? 200 : 100)
     
     // Update on scroll/resize
     const handleUpdate = () => {
@@ -370,7 +415,7 @@ export function TutorialOverlay({
       {/* Dark overlay with spotlight cutout - using multiple divs for better performance */}
       {targetRect && (
         <>
-          {/* Top dimmed area */}
+          {/* Top dimmed area - covers everything above the target */}
           <div
             className="fixed z-[99998] bg-black/70 pointer-events-auto transition-all duration-300"
             onClick={handleSkip}
@@ -378,40 +423,40 @@ export function TutorialOverlay({
               top: 0,
               left: 0,
               right: 0,
-              height: `${targetRect.top}px`,
+              height: `${Math.max(0, targetRect.top - 8)}px`,
             }}
           />
-          {/* Bottom dimmed area */}
+          {/* Bottom dimmed area - covers everything below the target */}
           <div
             className="fixed z-[99998] bg-black/70 pointer-events-auto transition-all duration-300"
             onClick={handleSkip}
             style={{
-              top: `${targetRect.bottom}px`,
+              top: `${targetRect.bottom + 8}px`,
               left: 0,
               right: 0,
               bottom: 0,
             }}
           />
-          {/* Left dimmed area */}
+          {/* Left dimmed area - covers everything to the left of the target */}
           <div
             className="fixed z-[99998] bg-black/70 pointer-events-auto transition-all duration-300"
             onClick={handleSkip}
             style={{
-              top: `${targetRect.top}px`,
+              top: `${Math.max(0, targetRect.top - 8)}px`,
               left: 0,
-              width: `${targetRect.left}px`,
-              height: `${targetRect.height}px`,
+              width: `${Math.max(0, targetRect.left - 8)}px`,
+              height: `${targetRect.height + 16}px`,
             }}
           />
-          {/* Right dimmed area */}
+          {/* Right dimmed area - covers everything to the right of the target */}
           <div
             className="fixed z-[99998] bg-black/70 pointer-events-auto transition-all duration-300"
             onClick={handleSkip}
             style={{
-              top: `${targetRect.top}px`,
-              left: `${targetRect.right}px`,
+              top: `${Math.max(0, targetRect.top - 8)}px`,
+              left: `${targetRect.right + 8}px`,
               right: 0,
-              height: `${targetRect.height}px`,
+              height: `${targetRect.height + 16}px`,
             }}
           />
         </>
@@ -423,14 +468,14 @@ export function TutorialOverlay({
           ref={spotlightRef}
           className="fixed z-[99999] pointer-events-none transition-all duration-300"
           style={{
-            top: `${targetRect.top - 4}px`,
-            left: `${targetRect.left - 4}px`,
-            width: `${targetRect.width + 8}px`,
-            height: `${targetRect.height + 8}px`,
+            top: `${Math.max(0, targetRect.top - 8)}px`,
+            left: `${Math.max(0, targetRect.left - 8)}px`,
+            width: `${targetRect.width + 16}px`,
+            height: `${targetRect.height + 16}px`,
             borderRadius: '0.75rem',
             border: '4px solid',
             borderColor: 'hsl(var(--primary))',
-            boxShadow: '0 0 20px rgba(59, 130, 246, 0.5), 0 0 40px rgba(59, 130, 246, 0.3)',
+            boxShadow: '0 0 20px rgba(59, 130, 246, 0.5), 0 0 40px rgba(59, 130, 246, 0.3), inset 0 0 20px rgba(59, 130, 246, 0.2)',
           }}
         />
       )}

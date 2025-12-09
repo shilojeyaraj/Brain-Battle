@@ -117,6 +117,7 @@ export default function RoomPage() {
   
   // Notes functionality
   const [studyInstructions, setStudyInstructions] = useState('')
+  const [studyContext, setStudyContext] = useState<any>(null) // For parity with singleplayer
   const [generatedNotes, setGeneratedNotes] = useState<any>(null)
   const [isGeneratingNotes, setIsGeneratingNotes] = useState(false)
   const [activeTab, setActiveTab] = useState<'quiz-settings' | 'study-session'>('quiz-settings')
@@ -963,9 +964,24 @@ export default function RoomPage() {
           quizRequestBody.studyNotes = generatedNotes
         }
         
+        // Include studyContext for parity with singleplayer
+        if (studyContext) {
+          quizRequestBody.studyContext = studyContext
+        }
+        
+        // Include files if notes aren't available (for parity with singleplayer)
+        // Note: In multiplayer, files are usually already processed into notes,
+        // but we include this for consistency with singleplayer flow
+        if (!generatedNotes && uploadedFiles.length > 0) {
+          // Files can't be sent in JSON, so we note that files were uploaded
+          // The API will use notes if provided, otherwise it can extract from files
+          console.log('📝 [ROOM] Files available but notes not generated - quiz will use topic only')
+        }
+        
         console.log('📝 [ROOM] Generating quiz with request:', {
           ...quizRequestBody,
-          studyNotes: generatedNotes ? 'provided' : 'not provided'
+          studyNotes: generatedNotes ? 'provided' : 'not provided',
+          studyContext: studyContext ? 'provided' : 'not provided'
         })
         
         const questionsResponse = await fetch('/api/generate-quiz', {
@@ -1087,6 +1103,10 @@ export default function RoomPage() {
       if (quizSettings.contentFocus) {
         formData.append('contentFocus', quizSettings.contentFocus)
       }
+      // Add studyContext for parity with singleplayer
+      if (studyContext) {
+        formData.append('studyContext', JSON.stringify(studyContext))
+      }
       
       const response = await fetch('/api/notes', {
         method: 'POST',
@@ -1107,6 +1127,9 @@ export default function RoomPage() {
             console.error('❌ [ROOM] Failed to save notes to database:', updateError)
           } else {
             console.log('✅ [ROOM] Notes saved to database for room sharing')
+            if (result.noteId) {
+              console.log(`✅ [ROOM] Notes also saved with ID: ${result.noteId} (for host's personal access)`)
+            }
             // Also update local state
             setGeneratedNotes(result.notes)
           }

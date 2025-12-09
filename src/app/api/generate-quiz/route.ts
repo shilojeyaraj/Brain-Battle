@@ -15,7 +15,7 @@ import {
 } from '@/lib/quiz/question-deduplication'
 import { ensureUserExists } from '@/lib/utils/ensure-user-exists'
 import { createAIClient } from '@/lib/ai/client-factory'
-import type { AIChatMessage } from '@/lib/ai/types'
+import type { AIChatMessage, AIChatCompletionResponse } from '@/lib/ai/types'
 
 export async function POST(request: NextRequest) {
   try {
@@ -246,8 +246,57 @@ export async function POST(request: NextRequest) {
     }
 
     // Extract text from uploaded files if available, OR use notes content
+    // OPTIMIZATION: Prefer notes over file extraction if notes are available (faster, already processed)
     let fileContent = ""
-    if (files && files.length > 0) {
+    if (notes) {
+      // If notes are provided, use them instead of re-extracting files (optimization)
+      try {
+        const parsedNotes = typeof notes === 'string' ? JSON.parse(notes) : notes
+        console.log(`📝 [QUIZ API] Using study notes content for quiz generation (optimized - skipping file extraction)...`)
+        
+        // Extract all text content from notes structure - comprehensive extraction
+        const noteSections: string[] = []
+        
+        if (parsedNotes.title) noteSections.push(`Title: ${parsedNotes.title}`)
+        
+        if (parsedNotes.outline && Array.isArray(parsedNotes.outline)) {
+          noteSections.push(`Outline:\n${parsedNotes.outline.join('\n')}`)
+        }
+        
+        if (parsedNotes.key_terms && Array.isArray(parsedNotes.key_terms)) {
+          noteSections.push(`Key Terms:\n${parsedNotes.key_terms.map((kt: any) => 
+            typeof kt === 'string' ? kt : `${kt.term || kt}: ${kt.definition || ''}`
+          ).join('\n')}`)
+        }
+        
+        if (parsedNotes.concepts && Array.isArray(parsedNotes.concepts)) {
+          noteSections.push(`Concepts:\n${parsedNotes.concepts.map((c: any) => {
+            if (typeof c === 'string') return c
+            const heading = c.heading || c.title || c.name || ''
+            const bullets = c.bullets ? (Array.isArray(c.bullets) ? c.bullets.join('\n  • ') : c.bullets) : ''
+            const description = c.description || c.content || ''
+            const examples = c.examples ? `\nExamples: ${Array.isArray(c.examples) ? c.examples.join(', ') : c.examples}` : ''
+            return `${heading}\n  • ${bullets || description}${examples}`
+          }).join('\n\n')}`)
+        }
+        
+        if (parsedNotes.formulas && Array.isArray(parsedNotes.formulas)) {
+          noteSections.push(`Formulas:\n${parsedNotes.formulas.map((f: any) => 
+            typeof f === 'string' ? f : `${f.name || f.formula || ''}: ${f.formula || f.description || ''}`
+          ).join('\n')}`)
+        }
+        
+        fileContent = noteSections.join('\n\n')
+        console.log(`✅ [QUIZ API] Extracted ${fileContent.length} characters from study notes`)
+      } catch (error) {
+        console.error(`❌ [QUIZ API] Error extracting content from notes:`, error)
+        // Fall back to file extraction if notes parsing fails
+        fileContent = ""
+      }
+    }
+    
+    // Only extract from files if we don't have notes content
+    if (!fileContent && files && files.length > 0) {
       console.log(`📄 [QUIZ API] Processing ${files.length} uploaded files for quiz generation...`)
       try {
         const { extractTextFromDocument } = await import('@/lib/document-text-extractor')
@@ -258,30 +307,63 @@ export async function POST(request: NextRequest) {
             if (file.type === "text/plain") {
               return `=== ${file.name} ===\n${buffer.toString('utf-8')}\n`
             } else if (file.type === "application/pdf") {
-              // Use serverless-compatible pdfjs configuration
-              const { getPdfjsLib, SERVERLESS_PDF_OPTIONS } = await import('@/lib/pdfjs-config')
-              const pdfjsLib = await getPdfjsLib()
+              // Use pdf-parse directly (more reliable than pdfjs-dist in this environment)
+              // pdf-parse v2.4.5 uses a class-based API (PDFParse)
+              const pdfParseModule: any = await import('pdf-parse')
+              const PDFParse = pdfParseModule.PDFParse || pdfParseModule.default?.PDFParse || pdfParseModule.default
               
-              // Load the PDF document with server-side optimized settings
-              const loadingTask = pdfjsLib.getDocument({
-                data: new Uint8Array(buffer),
-                ...SERVERLESS_PDF_OPTIONS,
-              })
-              
-              const pdfDocument = await loadingTask.promise
-              
-              // Extract text from all pages
-              const textParts: string[] = []
-              for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
-                const page = await pdfDocument.getPage(pageNum)
-                const textContent = await page.getTextContent()
-                const pageText = textContent.items
-                  .map((item: any) => item.str)
-                  .join(' ')
-                textParts.push(pageText)
+              if (!PDFParse || typeof PDFParse !== 'function') {
+                throw new Error(`pdf-parse PDFParse class not found. Module keys: ${Object.keys(pdfParseModule).join(', ')}`)
               }
               
-              const text = textParts.join('\n\n')
+              // Create instance with serverless options
+              const parser = new PDFParse({ 
+                data: buffer,
+                useSystemFonts: true,
+                disableAutoFetch: true,
+                useWorkerFetch: false,  // CRITICAL: Disable worker fetch completely
+                isEvalSupported: false,
+                verbosity: 0  // Reduce logging
+              })
+              
+              // CRITICAL: Patch pdf-parse's internal pdfjs to disable worker
+              // pdf-parse loads pdfjs into globalThis.pdfjs when getText() is called
+              // We need to patch it BEFORE getText() tries to use it
+              // Wait a tick to ensure pdfjs is loaded into globalThis
+              await new Promise(resolve => setImmediate(resolve))
+              
+              if (typeof globalThis !== 'undefined' && (globalThis as any).pdfjs) {
+                const internalPdfjs = (globalThis as any).pdfjs
+                if (internalPdfjs && internalPdfjs.GlobalWorkerOptions) {
+                  // Force disable worker by setting to empty string
+                  // Empty string tells pdfjs to use fake worker without trying to load anything
+                  internalPdfjs.GlobalWorkerOptions.workerSrc = ''
+                  
+                  // Disable worker fetch if available
+                  if (typeof internalPdfjs.setWorkerFetch === 'function') {
+                    try {
+                      internalPdfjs.setWorkerFetch(false)
+                    } catch (e) {
+                      // Ignore if not available
+                    }
+                  }
+                  
+                  if (process.env.NODE_ENV === 'development') {
+                    console.log(`  🔧 [QUIZ API] pdf-parse internal pdfjs worker disabled for ${file.name} (workerSrc: "${internalPdfjs.GlobalWorkerOptions.workerSrc}")`)
+                  }
+                }
+              }
+              
+              // Now call getText() - this will internally call pdfjs.getDocument()
+              // The worker should be disabled now, so it will use fake worker
+              const textResult = await parser.getText()
+              const text = textResult.text || textResult.texts?.join('\n\n') || ''
+              
+              // Clean up
+              if (parser.destroy) {
+                await parser.destroy()
+              }
+              
               return `=== ${file.name} ===\n${text}\n`
             } else if (
               file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
@@ -306,8 +388,12 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         console.error(`❌ [QUIZ API] Error extracting file content:`, error)
       }
-    } else if (notes) {
-      // If no files but notes are provided, extract content from notes
+    }
+    
+    // Notes extraction is now handled at the top (before file extraction) for optimization
+    // This block is kept for backward compatibility but should not be reached if notes were provided
+    if (!fileContent && notes && !files?.length) {
+      // Fallback: If no file content and notes are provided, extract content from notes
       try {
         const parsedNotes = typeof notes === 'string' ? JSON.parse(notes) : notes
         console.log(`📝 [QUIZ API] Using study notes content for quiz generation...`)
@@ -391,14 +477,23 @@ export async function POST(request: NextRequest) {
 
     // Validate that we have content to generate questions from
     if (!fileContent || fileContent.trim().length < 50) {
-      console.error(`❌ [QUIZ API] No content available for quiz generation. File content length: ${fileContent?.length || 0}`)
+      console.error("❌ [QUIZ API] Insufficient content to generate questions")
+      console.error("   fileContent length:", fileContent?.length || 0)
+      console.error("   Has files:", !!files?.length)
+      console.error("   Has notes:", !!notes)
       return NextResponse.json(
         { 
           success: false, 
-          error: 'No document content available. Please ensure files are uploaded or study notes are provided.' 
+          error: 'Insufficient content to generate questions. Please provide documents or notes with at least 50 characters of content.' 
         },
         { status: 400 }
       )
+    }
+    
+    // Log content summary for debugging
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`📄 [QUIZ API] Content summary: ${fileContent.length} characters`)
+      console.log(`   First 200 chars: ${fileContent.substring(0, 200)}...`)
     }
 
     // Create a comprehensive prompt for quiz generation
@@ -545,7 +640,7 @@ IMPORTANT FOR IMAGES AND DIAGRAMS:
 - Include questions that ask students to interpret or analyze visual elements
 - Reference specific images by their page number or description when available
 
-Format the response as JSON with this structure:
+CRITICAL: You MUST return valid JSON. The response MUST be a valid JSON object with this EXACT structure:
 {
   "questions": [
     {
@@ -560,6 +655,14 @@ Format the response as JSON with this structure:
     }
   ]
 }
+
+⚠️ IMPORTANT JSON FORMATTING RULES:
+- The "questions" field MUST be an array (use square brackets [])
+- Do NOT put quotes around the array: use "questions": [{...}] NOT "questions": ":[{"
+- Each question object must be properly closed with }
+- The entire response must be valid JSON that can be parsed with JSON.parse()
+- Do NOT include any text before or after the JSON object
+- Do NOT wrap the JSON in markdown code blocks
 
 ⚠️ CRITICAL: The examples above are just structure examples. DO NOT use photosynthesis, circle area, or any generic topics. ALL questions MUST be about the actual document content provided.
 
@@ -640,7 +743,9 @@ IMAGES AND VISUAL CONTENT - DISABLED:
 - Set "requires_image" to false for ALL questions
 `}
 
-Generate exactly ${numQuestions} questions that test knowledge of the specific document content provided.
+CRITICAL REQUIREMENT: You MUST generate exactly ${numQuestions} questions. The questions array MUST contain ${numQuestions} question objects. DO NOT return an empty array. If you cannot create questions from the content, you MUST still create questions based on what is available, even if you need to infer or extrapolate from the provided content.
+
+Generate exactly ${numQuestions} questions that test knowledge of the specific document content provided. The response MUST have a "questions" array with exactly ${numQuestions} question objects. An empty array is NOT acceptable.
 `
 
     // Use Moonshot for quiz generation
@@ -651,14 +756,16 @@ Generate exactly ${numQuestions} questions that test knowledge of the specific d
         role: "system",
         content: `You are an expert quiz generator. Your ONLY job is to create questions based on the EXACT document content provided. 
 
-STRICT RULES:
-1. NEVER create generic questions about a topic - only use what's in the documents
-2. If the document is about sorting algorithms, create questions about sorting algorithms from the document
-3. If the document is about biology, create questions about biology from the document
-4. Every question MUST reference specific facts, examples, formulas, or processes from the provided documents
-5. If you cannot find enough content in the documents to create questions, indicate this clearly
-6. DO NOT invent or assume content that isn't in the documents
-7. Always return valid JSON format`
+CRITICAL REQUIREMENTS:
+1. You MUST ALWAYS generate the requested number of questions - NEVER return an empty questions array
+2. NEVER create generic questions about a topic - only use what's in the documents
+3. If the document is about sorting algorithms, create questions about sorting algorithms from the document
+4. If the document is about biology, create questions about biology from the document
+5. Every question MUST reference specific facts, examples, formulas, or processes from the provided documents
+6. If content is limited, create questions based on what IS available - even if you need to ask about definitions, concepts, or basic information from the documents
+7. DO NOT invent or assume content that isn't in the documents, but DO create questions from whatever content IS provided
+8. Always return valid JSON format with a "questions" array containing the exact number of questions requested
+9. An empty questions array is NEVER acceptable - you must generate questions even if the content is minimal`
       },
       {
         role: "user",
@@ -682,12 +789,35 @@ STRICT RULES:
       console.log(`   ✅ [QUIZ API] Moonshot client created successfully`)
     }
     
-    const aiResponse = await aiClient.chatCompletions(messages, {
+    // Add timeout wrapper to prevent hanging (2 minutes max)
+    console.log(`⏱️ [QUIZ API] Starting AI call with 2-minute timeout...`)
+    const startTime = Date.now()
+    
+    const aiCallPromise = aiClient.chatCompletions(messages, {
       model: process.env.MOONSHOT_MODEL || 'kimi-k2-thinking',
       temperature: 0.3,
       responseFormat: 'json_object',
-      maxTokens: 3000,
+      maxTokens: 12000, // Increased from 3000 to handle comprehensive quiz questions with detailed explanations
     })
+    
+    // Add 2 minute timeout to prevent hanging
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+        reject(new Error(`AI API call timed out after ${elapsed} seconds. The request may be too complex or the API is slow. Please try again with fewer questions or simpler content.`))
+      }, 120000) // 2 minutes
+    })
+    
+    let aiResponse: AIChatCompletionResponse
+    try {
+      aiResponse = await Promise.race([aiCallPromise, timeoutPromise])
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+      console.log(`✅ [QUIZ API] AI call completed in ${elapsed} seconds`)
+    } catch (error: any) {
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+      console.error(`❌ [QUIZ API] AI call failed after ${elapsed} seconds:`, error.message)
+      throw error
+    }
 
     response = aiResponse.content
     modelUsed = aiResponse.model
@@ -697,28 +827,286 @@ STRICT RULES:
       throw new Error(`No response from Moonshot`)
     }
 
+    // Log raw response for debugging
+    if (process.env.NODE_ENV === 'development') {
+      console.log("📄 [QUIZ API] Raw response (first 500 chars):", response.substring(0, 500))
+    }
+
     // Parse the JSON response
-    // Strip markdown code blocks if present (fallback for cases where OpenAI still wraps it)
+    // Strip markdown code blocks if present (fallback for cases where AI still wraps it)
     let cleanedResponse = response.trim()
+    
+    // Remove markdown code block wrapper (handle both complete and incomplete blocks)
     if (cleanedResponse.startsWith('```json')) {
-      cleanedResponse = cleanedResponse.replace(/^```json\s*/, '').replace(/\s*```$/, '')
+      cleanedResponse = cleanedResponse.replace(/^```json\s*\n?/, '')
+      // Remove trailing ``` if present (might be missing if truncated)
+      cleanedResponse = cleanedResponse.replace(/\n?\s*```\s*$/, '')
     } else if (cleanedResponse.startsWith('```')) {
-      cleanedResponse = cleanedResponse.replace(/^```\s*/, '').replace(/\s*```$/, '')
+      cleanedResponse = cleanedResponse.replace(/^```\s*\n?/, '')
+      // Remove trailing ``` if present (might be missing if truncated)
+      cleanedResponse = cleanedResponse.replace(/\n?\s*```\s*$/, '')
+    }
+    
+    cleanedResponse = cleanedResponse.trim()
+    
+    // Fix common JSON malformations BEFORE parsing
+    // Fix: "questions": ":[{" -> "questions": [{
+    cleanedResponse = cleanedResponse.replace(/"questions"\s*:\s*":\[{/g, '"questions": [{')
+    // Fix: "questions": ":[{" -> "questions": [{ (with space)
+    cleanedResponse = cleanedResponse.replace(/"questions"\s*:\s*":\s*\[{/g, '"questions": [{')
+    // Fix: "questions": :[{ -> "questions": [{
+    cleanedResponse = cleanedResponse.replace(/"questions"\s*:\s*:\[{/g, '"questions": [{')
+    // Fix: "questions": "[{ -> "questions": [{
+    cleanedResponse = cleanedResponse.replace(/"questions"\s*:\s*"\[{/g, '"questions": [{')
+    // Fix: "questions":":[{ -> "questions": [{
+    cleanedResponse = cleanedResponse.replace(/"questions"\s*":\s*\[{/g, '"questions": [{')
+    
+    // CRITICAL FIX: Handle the case where we have "questions": [{","type":...
+    // This happens when the AI starts the array but then outputs flat objects
+    // Pattern: "questions": [{","type" -> "questions": [{","type" (invalid) needs to become proper structure
+    // We need to find where the array should actually start and fix it
+    const brokenArrayPattern = /"questions"\s*:\s*\[\{\s*",\s*"type"/
+    if (brokenArrayPattern.test(cleanedResponse)) {
+      // Replace "questions": [{","type" with "questions": [{"type"
+      cleanedResponse = cleanedResponse.replace(/"questions"\s*:\s*\[\{\s*",\s*"type"/g, '"questions": [{"type"')
+    }
+    
+    // Log cleaned response for debugging
+    if (process.env.NODE_ENV === 'development') {
+      console.log("🔧 [QUIZ API] Cleaned response (first 500 chars):", cleanedResponse.substring(0, 500))
+    }
+    
+    // Check if response might be truncated (common signs: unterminated strings, incomplete JSON)
+    const responseLength = cleanedResponse.length
+    const lastChar = cleanedResponse[responseLength - 1]
+    const hasUnterminatedString = cleanedResponse.match(/"[^"]*$/m) // String that starts but doesn't end
+    
+    if (hasUnterminatedString && lastChar !== '}') {
+      console.warn("⚠️ [QUIZ API] Response appears truncated - last char:", lastChar)
+      console.warn("   Response length:", responseLength, "characters")
+      console.warn("   This may indicate maxTokens limit was reached")
     }
     
     let quizData
     try {
       quizData = JSON.parse(cleanedResponse)
-    } catch (error) {
+      
+      // Log parsed structure for debugging
+      if (process.env.NODE_ENV === 'development') {
+        console.log("✅ [QUIZ API] JSON parsed successfully")
+        console.log("📋 [QUIZ API] Parsed quiz data structure:", {
+          hasQuestions: !!quizData.questions,
+          questionsIsArray: Array.isArray(quizData.questions),
+          questionsLength: Array.isArray(quizData.questions) ? quizData.questions.length : 'N/A',
+          topLevelKeys: Object.keys(quizData),
+          sampleData: JSON.stringify(quizData).substring(0, 500)
+        })
+      }
+    } catch (error: any) {
       console.error("❌ [QUIZ API] Failed to parse AI response as JSON:", error)
-      console.log("📄 [QUIZ API] Raw response:", response)
-      console.log("📄 [QUIZ API] Cleaned response:", cleanedResponse)
-      throw new Error("Failed to parse quiz data from AI provider")
+      console.log("📄 [QUIZ API] Response length:", cleanedResponse.length, "characters")
+      console.log("📄 [QUIZ API] First 100 chars:", cleanedResponse.substring(0, 100))
+      console.log("📄 [QUIZ API] Last 200 chars:", cleanedResponse.slice(-200))
+      
+      // Try to repair the JSON by extracting questions from flat structure
+      // The AI often outputs questions as flat objects at root level instead of in an array
+      // Pattern: {"questions":":[{","type":"multiple_choice","question":"...","options":[...]}
+      try {
+        console.log("🔧 [QUIZ API] Attempting to repair malformed JSON by extracting questions...")
+        
+        // Strategy: Parse what we can, then extract question objects from the flat structure
+        // The response has questions as flat objects mixed with the broken "questions" field
+        
+        // Strategy: The AI outputs questions as flat objects at root level
+        // Pattern: {"questions":":[{","type":"multiple_choice","question":"...","options":[...]}
+        // We need to extract all question objects and reconstruct the array
+        
+        // Step 1: Remove the broken "questions" field to make the rest parseable
+        let repairableJson = cleanedResponse
+          .replace(/"questions"\s*:\s*":\[{/g, '') // Remove broken questions field
+          .replace(/^\{,\s*/, '{') // Fix leading comma after removal
+          .trim()
+        
+        // Step 2: Try to parse what remains - it should be question objects
+        // But first, we need to wrap them properly or extract them individually
+        
+        // Step 3: Extract all complete JSON objects that look like questions
+        const questionObjects: any[] = []
+        let braceDepth = 0
+        let inString = false
+        let escapeNext = false
+        let currentObject = ''
+        
+        // Parse character by character to extract complete objects
+        for (let i = 0; i < repairableJson.length; i++) {
+          const char = repairableJson[i]
+          
+          if (escapeNext) {
+            currentObject += char
+            escapeNext = false
+            continue
+          }
+          
+          if (char === '\\') {
+            escapeNext = true
+            currentObject += char
+            continue
+          }
+          
+          if (char === '"') {
+            inString = !inString
+            currentObject += char
+            continue
+          }
+          
+          if (!inString) {
+            if (char === '{') {
+              if (braceDepth === 0) {
+                currentObject = '{'
+              } else {
+                currentObject += char
+              }
+              braceDepth++
+            } else if (char === '}') {
+              currentObject += char
+              braceDepth--
+              if (braceDepth === 0 && currentObject.trim()) {
+                // Complete object found
+                try {
+                  const parsed = JSON.parse(currentObject)
+                  // Check if it looks like a question object
+                  if (parsed.type && parsed.question) {
+                    questionObjects.push(parsed)
+                  }
+                } catch (e) {
+                  // Not valid JSON, skip
+                }
+                currentObject = ''
+              }
+            } else {
+              if (braceDepth > 0) {
+                currentObject += char
+              }
+            }
+          } else {
+            currentObject += char
+          }
+        }
+        
+        // If we found question objects, use them
+        if (questionObjects.length > 0) {
+          console.log(`✅ [QUIZ API] Successfully extracted ${questionObjects.length} questions from malformed JSON`)
+          quizData = { questions: questionObjects.map((q, idx) => ({ id: idx + 1, ...q })) }
+        } else {
+          // Fallback: Try simpler approach - remove broken questions field and try to parse the rest
+          // The remaining structure should be question objects at root level
+          const withoutBrokenQuestions = cleanedResponse.replace(/"questions"\s*:\s*":\[{/g, '').trim()
+          
+          // Try wrapping in array: [ {...}, {...} ]
+          // But first, we need to find where objects start and end
+          // Simple regex approach: find objects with "type" and "question"
+          const questionPattern = /\{[^{}]*(?:\{[^{}]*\}[^{}]*)*"type"\s*:\s*"[^"]+"[^{}]*(?:\{[^{}]*\}[^{}]*)*"question"\s*:\s*"[^"]+"[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g
+          const matches = cleanedResponse.match(questionPattern) || []
+          
+          const extractedQuestions: any[] = []
+          for (const match of matches) {
+            try {
+              const parsed = JSON.parse(match)
+              if (parsed.type && parsed.question) {
+                extractedQuestions.push(parsed)
+              }
+            } catch (e) {
+              // Skip invalid
+            }
+          }
+          
+          if (extractedQuestions.length > 0) {
+            console.log(`✅ [QUIZ API] Extracted ${extractedQuestions.length} questions using regex fallback`)
+            quizData = { questions: extractedQuestions.map((q, idx) => ({ id: idx + 1, ...q })) }
+          } else {
+            throw new Error("Could not extract questions from malformed JSON")
+          }
+        }
+      } catch (repairError) {
+        // If it's a syntax error and response seems truncated, provide helpful error
+        if (error instanceof SyntaxError && (error.message.includes('Unterminated') || error.message.includes('Unexpected end'))) {
+          console.error("⚠️ [QUIZ API] JSON appears to be truncated - likely hit maxTokens limit")
+          console.error("   Current maxTokens: 12000")
+          console.error("   Consider increasing maxTokens or reducing question complexity")
+          throw new Error(`Response was truncated (likely hit token limit). JSON parsing failed at position ${error.message.match(/position (\d+)/)?.[1] || 'unknown'}. Try reducing the number of questions or question complexity.`)
+        }
+        
+        console.log("📄 [QUIZ API] Full cleaned response (first 2000 chars):", cleanedResponse.substring(0, 2000))
+        throw new Error(`Failed to parse quiz data from AI provider: ${error.message}`)
+      }
     }
     
     // Validate the response structure
     if (!quizData.questions || !Array.isArray(quizData.questions)) {
-      throw new Error("Invalid response format from AI provider")
+      console.error("❌ [QUIZ API] Invalid response structure:")
+      console.error("   Expected: { questions: [...] }")
+      console.error("   Received keys:", Object.keys(quizData))
+      console.error("   quizData.questions type:", typeof quizData.questions)
+      console.error("   quizData.questions value:", quizData.questions)
+      console.error("   Full response (first 2000 chars):", JSON.stringify(quizData, null, 2).substring(0, 2000))
+      console.error("   Cleaned response (first 1000 chars):", cleanedResponse.substring(0, 1000))
+    } else if (quizData.questions.length === 0) {
+      // CRITICAL: Empty questions array - AI didn't generate any questions
+      console.error("❌ [QUIZ API] AI returned empty questions array!")
+      console.error("   Expected: At least 1 question")
+      console.error("   Received: 0 questions")
+      console.error("   This usually means:")
+      console.error("   1. The prompt wasn't clear enough")
+      console.error("   2. The document content wasn't sufficient")
+      console.error("   3. The AI model failed to generate questions")
+      console.error("   Raw response:", cleanedResponse.substring(0, 500))
+      throw new Error(`AI failed to generate any questions. The response was valid JSON but contained an empty questions array. Please check that document content was provided and try again.`)
+      
+      // Try to handle alternative response formats
+      if (Array.isArray(quizData)) {
+        console.warn("⚠️ [QUIZ API] Response is an array, not an object. Wrapping in questions property.")
+        quizData = { questions: quizData }
+      } else if (quizData.quiz && Array.isArray(quizData.quiz)) {
+        console.warn("⚠️ [QUIZ API] Response has 'quiz' property instead of 'questions'. Using 'quiz'.")
+        quizData.questions = quizData.quiz
+      } else if (quizData.items && Array.isArray(quizData.items)) {
+        console.warn("⚠️ [QUIZ API] Response has 'items' property instead of 'questions'. Using 'items'.")
+        quizData.questions = quizData.items
+      } else if (typeof quizData.questions === 'string' && quizData.questions.startsWith(':[{')) {
+        // Handle malformed JSON where questions is a string like ":[{"
+        console.warn("⚠️ [QUIZ API] 'questions' is a malformed string. Attempting to extract questions from broken structure.")
+        
+        // Try to reconstruct questions array from the broken object structure
+        // The broken structure has question fields at the top level mixed with the questions string
+        const reconstructedQuestions: any[] = []
+        
+        // Check if we have question-like fields at the top level
+        if (quizData.question || quizData.type) {
+          // Extract first question from top-level fields
+          const firstQuestion: any = {}
+          if (quizData.type) firstQuestion.type = quizData.type
+          if (quizData.question) firstQuestion.question = quizData.question
+          if (quizData.options) firstQuestion.options = quizData.options
+          if (quizData.correct !== undefined) firstQuestion.correct = quizData.correct
+          if (quizData.explanation) firstQuestion.explanation = quizData.explanation
+          if (quizData.source_document) firstQuestion.source_document = quizData.source_document
+          if (quizData.requires_image !== undefined) firstQuestion.requires_image = quizData.requires_image
+          if (quizData.image_reference) firstQuestion.image_reference = quizData.image_reference
+          if (quizData.expected_answer) firstQuestion.expected_answer = quizData.expected_answer
+          if (quizData.answer_format_hints) firstQuestion.answer_format_hints = quizData.answer_format_hints
+          
+          reconstructedQuestions.push(firstQuestion)
+        }
+        
+        if (reconstructedQuestions.length > 0) {
+          console.warn(`⚠️ [QUIZ API] Reconstructed ${reconstructedQuestions.length} question(s) from broken structure`)
+          quizData.questions = reconstructedQuestions
+        } else {
+          throw new Error(`Invalid response format from AI provider. Expected 'questions' array, but got keys: ${Object.keys(quizData).join(', ')}. The 'questions' field is malformed: "${quizData.questions}". This suggests the AI response was truncated or improperly formatted.`)
+        }
+      } else {
+        throw new Error(`Invalid response format from AI provider. Expected 'questions' array, but got keys: ${Object.keys(quizData).join(', ')}. Full response preview: ${JSON.stringify(quizData).substring(0, 500)}`)
+      }
     }
 
     // Ensure each question has the required fields

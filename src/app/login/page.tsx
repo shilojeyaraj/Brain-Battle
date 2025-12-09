@@ -78,7 +78,9 @@ function LoginForm() {
             : '/dashboard'
           
           // Successfully signed in, redirect to original destination or dashboard
-          router.push(redirectUrl)
+          // Use window.location.href for hard redirect to ensure it happens
+          setIsPending(false)
+          window.location.href = redirectUrl
           return
         } else {
           // Show user-friendly error message
@@ -118,7 +120,9 @@ function LoginForm() {
             : '/dashboard'
           
           // Successfully signed in, redirect to original destination or dashboard
-          router.push(redirectUrl)
+          // Use window.location.href for hard redirect to ensure it happens
+          setIsPending(false)
+          window.location.href = redirectUrl
         } else {
           setError('Login failed. Please check your credentials and try again.')
           setIsPending(false)

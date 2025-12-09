@@ -58,51 +58,33 @@ export function BrainBattleLoading({ message = "Loading your Brain Battle experi
   }, [])
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden">
-      {/* Animated Gradient Background */}
-      <motion.div
-        className="absolute inset-0"
-        animate={{
-          background: [
-            "linear-gradient(135deg, #0a1628 0%, #1e3a5f 30%, #2d4a6f 60%, #0a1628 100%)",
-            "linear-gradient(135deg, #1e3a5f 0%, #2d4a6f 30%, #0a1628 60%, #1e3a5f 100%)",
-            "linear-gradient(135deg, #2d4a6f 0%, #0a1628 30%, #1e3a5f 60%, #2d4a6f 100%)",
-            "linear-gradient(135deg, #0a1628 0%, #1e3a5f 30%, #2d4a6f 60%, #0a1628 100%)",
-          ],
-        }}
-        transition={{
-          duration: 10,
-          repeat: Infinity,
-          ease: "easeInOut",
-        }}
-      />
-      
-      {/* Animated Background Elements */}
+    <div className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden bg-gradient-to-br from-[#0a1628] via-[#1e3a5f] to-[#0a1628]">
+      {/* Subtle animated background elements for depth */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/5 rounded-full blur-3xl animate-float" />
         <div
-          className="absolute -bottom-40 -left-40 w-80 h-80 bg-orange-500/10 rounded-full blur-3xl animate-float"
+          className="absolute -bottom-40 -left-40 w-80 h-80 bg-orange-500/5 rounded-full blur-3xl animate-float"
           style={{ animationDelay: "1s" }}
         />
       </div>
       
       <div className="relative z-10 flex flex-col items-center justify-center -mt-40">
-        {/* Logo - Bigger but responsive with preload */}
+        {/* Logo - Blended with background, no square card */}
         <div className="w-[800px] h-[800px] md:w-[850px] md:h-[850px] flex items-center justify-center">
           <Image
             src="/brain-battle-logo.png"
             alt="Brain Battle"
             width={850}
             height={850}
-            className={`w-full h-full object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.3)] transition-opacity duration-300 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+            className={`w-full h-full object-contain transition-opacity duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+            style={{
+              filter: 'drop-shadow(0 0 30px rgba(59, 130, 246, 0.6)) drop-shadow(0 0 60px rgba(251, 146, 60, 0.3))',
+            }}
             priority
             fetchPriority="high"
             quality={100}
             onLoad={() => setImageLoaded(true)}
           />
-          {!imageLoaded && (
-            <div className="absolute w-full h-full bg-slate-800/30 rounded-lg animate-pulse" />
-          )}
         </div>
         
         {/* Loading Animation - Fixed position in bottom 25% */}

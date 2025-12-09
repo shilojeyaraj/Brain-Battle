@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { notesSchema } from "@/lib/schemas/notes-schema"
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/server-admin"
 import { extractImagesFromPDF as extractPDFImages } from "@/lib/pdf-image-extractor"
 import { smartExtractDiagrams } from "@/lib/pdf-smart-extractor"
 import { DiagramAnalyzerAgent } from "@/lib/agents/diagram-analyzer-agent"
@@ -208,46 +209,77 @@ export async function POST(req: NextRequest) {
         }
         
         try {
-          // Use serverless-compatible pdfjs configuration
-          const { getPdfjsLib, SERVERLESS_PDF_OPTIONS } = await import('@/lib/pdfjs-config')
-          const pdfjsLib = await getPdfjsLib()
+          // Use pdf-parse directly (more reliable than pdfjs-dist in this environment)
+          // pdf-parse v2.4.5 uses a class-based API (PDFParse)
+          const pdfParseModule: any = await import('pdf-parse')
+          const PDFParse = pdfParseModule.PDFParse || pdfParseModule.default?.PDFParse || pdfParseModule.default
           
-          const loadingTask = pdfjsLib.getDocument({
-            data: new Uint8Array(buffer),
-            ...SERVERLESS_PDF_OPTIONS,
+          if (!PDFParse || typeof PDFParse !== 'function') {
+            throw new Error(`pdf-parse PDFParse class not found. Module keys: ${Object.keys(pdfParseModule).join(', ')}`)
+          }
+          
+          // CRITICAL: Disable worker BEFORE creating instance
+          // pdf-parse uses its own internal pdfjs-dist version (4.4.168)
+          // We must disable the worker to prevent version mismatch and fake worker setup errors
+          if (typeof PDFParse.setWorker === 'function') {
+            // Don't call setWorker - it may set a data URI which causes issues
+            // Instead, we'll patch globalThis.pdfjs directly after PDFParse loads it
+          }
+          
+          // Create instance with serverless options
+          const parser = new PDFParse({ 
+            data: buffer,
+            useSystemFonts: true,
+            disableAutoFetch: true,
+            useWorkerFetch: false,  // CRITICAL: Disable worker fetch completely
+            isEvalSupported: false,
+            verbosity: 0  // Reduce logging
           })
           
-          const pdfDocument = await loadingTask.promise
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`  📄 [NOTES API] PDF ${file.name} loaded: ${pdfDocument.numPages} pages`)
+          // CRITICAL: Patch pdf-parse's internal pdfjs to disable worker
+          // pdf-parse loads pdfjs into globalThis.pdfjs when getText() is called
+          // We need to patch it BEFORE getText() tries to use it
+          // Wait a tick to ensure pdfjs is loaded into globalThis
+          await new Promise(resolve => setImmediate(resolve))
+          
+          if (typeof globalThis !== 'undefined' && (globalThis as any).pdfjs) {
+            const internalPdfjs = (globalThis as any).pdfjs
+            if (internalPdfjs && internalPdfjs.GlobalWorkerOptions) {
+              // Force disable worker by setting to empty string
+              // Empty string tells pdfjs to use fake worker without trying to load anything
+              internalPdfjs.GlobalWorkerOptions.workerSrc = ''
+              
+              // Disable worker fetch if available
+              if (typeof internalPdfjs.setWorkerFetch === 'function') {
+                try {
+                  internalPdfjs.setWorkerFetch(false)
+                } catch (e) {
+                  // Ignore if not available
+                }
+              }
+              
+              if (process.env.NODE_ENV === 'development') {
+                console.log(`  🔧 [NOTES API] pdf-parse internal pdfjs worker disabled (workerSrc: "${internalPdfjs.GlobalWorkerOptions.workerSrc}")`)
+              }
+            }
           }
           
-          // Parallel page processing - process 3-5 pages concurrently
-          const pageNumbers = Array.from({ length: pdfDocument.numPages }, (_, i) => i + 1)
-          const CONCURRENT_PAGES = 4 // Process 4 pages at a time
-          const textParts: string[] = []
+          // Now call getText() - this will internally call pdfjs.getDocument()
+          // The worker should be disabled now, so it will use fake worker
+          const textResult = await parser.getText()
+          textContent = textResult.text || textResult.texts?.join('\n\n') || ''
           
-          // Process pages in batches
-          for (let i = 0; i < pageNumbers.length; i += CONCURRENT_PAGES) {
-            const batch = pageNumbers.slice(i, i + CONCURRENT_PAGES)
-            const batchResults = await Promise.all(
-              batch.map(async (pageNum) => {
-                const page = await pdfDocument.getPage(pageNum)
-                const textContent = await page.getTextContent()
-                return textContent.items.map((item: any) => item.str).join(' ')
-              })
-            )
-            textParts.push(...batchResults)
+          // Clean up
+          if (parser.destroy) {
+            await parser.destroy()
           }
-          
-          textContent = textParts.join('\n\n')
           
           if (!textContent || textContent.trim().length < 100) {
             throw new Error(`PDF parsing returned insufficient content (${textContent.length} characters).`)
           }
           
           if (process.env.NODE_ENV === 'development') {
-            console.log(`  ✅ [NOTES API] Extracted ${textContent.length} characters from ${file.name}`)
+            console.log(`  ✅ [NOTES API] Extracted ${textContent.length} characters from ${file.name} using pdf-parse`)
           }
         } catch (pdfError) {
           throw new Error(`Failed to parse PDF "${file.name}". Error: ${pdfError instanceof Error ? pdfError.message : String(pdfError)}`)
@@ -1271,8 +1303,40 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
     console.log(`  - Diagrams: ${enrichedNotes.diagrams?.length || 0}`)
     console.log(`  - Quiz questions: ${enrichedNotes.quiz?.length || 0}`)
 
+    // Save notes to database so users can access them later
+    let noteId: string | null = null
+    try {
+      // Use admin client to bypass RLS (we handle auth in API layer)
+      const supabase = createAdminClient()
+      
+      const { data: savedNote, error: saveError } = await supabase
+        .from('user_study_notes')
+        .insert({
+          user_id: userId,
+          title: enrichedNotes.title,
+          subject: enrichedNotes.subject,
+          notes_json: enrichedNotes,
+          file_names: fileNames,
+        })
+        .select('id')
+        .single()
+
+      if (saveError) {
+        console.error('⚠️ [NOTES API] Failed to save notes to database:', saveError)
+        // Don't fail the request if save fails - notes are still returned
+        // User can still use the notes, they just won't be able to access them later
+      } else if (savedNote) {
+        noteId = savedNote.id
+        console.log(`✅ [NOTES API] Notes saved to database with ID: ${noteId}`)
+      }
+    } catch (dbError) {
+      console.error('⚠️ [NOTES API] Database save error:', dbError)
+      // Continue even if database save fails
+    }
+
     return NextResponse.json({ 
       success: true, 
+      noteId: noteId, // Return note ID so user can access notes later
       notes: enrichedNotes,
       extractedImages: extractedImages.length,
       processedFiles: fileNames.length,
