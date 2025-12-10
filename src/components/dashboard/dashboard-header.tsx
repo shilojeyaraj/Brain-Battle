@@ -94,13 +94,7 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
     }
   }, [currentUserId, userProfile])
 
-  useEffect(() => {
-    if (currentUserId) {
-      fetchUserProfile()
-    }
-  }, [currentUserId, fetchUserProfile])
-
-  // 🚀 OPTIMIZATION: Memoize streak fetch function
+  // 🚀 OPTIMIZATION: Memoize streak fetch function (must be defined before useEffect that uses it)
   const fetchStreak = useCallback(async () => {
     if (!currentUserId) return
     
@@ -115,17 +109,7 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
     }
   }, [currentUserId])
 
-  // Fetch streak data
-  useEffect(() => {
-    if (currentUserId) {
-      fetchStreak()
-      // Refresh every 5 minutes
-      const interval = setInterval(fetchStreak, 5 * 60 * 1000)
-      return () => clearInterval(interval)
-    }
-  }, [currentUserId, fetchStreak])
-
-  // 🚀 OPTIMIZATION: Memoize usage limits fetch to prevent unnecessary calls
+  // 🚀 OPTIMIZATION: Memoize usage limits fetch to prevent unnecessary calls (must be defined before useEffect that uses it)
   const fetchUsageLimits = useCallback(async () => {
     if (!currentUserId) return
     
@@ -150,6 +134,39 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
       console.error('Error fetching usage limits:', err)
     }
   }, [currentUserId])
+
+  // Fetch streak data
+  useEffect(() => {
+    if (currentUserId) {
+      fetchStreak()
+      // Refresh every 5 minutes
+      const interval = setInterval(fetchStreak, 5 * 60 * 1000)
+      return () => clearInterval(interval)
+    }
+  }, [currentUserId, fetchStreak])
+
+  // Listen for quiz completion events to refresh stats
+  useEffect(() => {
+    if (currentUserId) {
+      fetchUserProfile()
+    }
+    
+    // Listen for quiz completion events to refresh stats
+    const handleQuizComplete = () => {
+      console.log('🔄 [DASHBOARD HEADER] Quiz completed, refreshing stats...')
+      if (currentUserId) {
+        fetchUserProfile()
+        fetchStreak()
+        fetchUsageLimits()
+      }
+    }
+    
+    window.addEventListener('quizCompleted', handleQuizComplete)
+    
+    return () => {
+      window.removeEventListener('quizCompleted', handleQuizComplete)
+    }
+  }, [currentUserId, fetchUserProfile, fetchStreak, fetchUsageLimits])
 
   // Fetch usage limits when menu opens (only fetch once per menu open)
   useEffect(() => {

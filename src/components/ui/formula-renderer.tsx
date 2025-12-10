@@ -99,27 +99,70 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
       // Convert common plain text patterns to LaTeX before rendering
       let latexFormula = cleanFormula
       
+      // Fix common function name errors: "In" -> "ln", "in" -> "ln" (when it's natural log)
+      latexFormula = latexFormula.replace(/\bIn\s*\(/g, '\\ln(')
+      latexFormula = latexFormula.replace(/\bin\s*\(/g, '\\ln(')
+      
       // Superscript map for conversion
       const superscriptMap: Record<string, string> = {
         '²': '2', '³': '3', '¹': '1', '⁰': '0', '⁴': '4', '⁵': '5',
         '⁶': '6', '⁷': '7', '⁸': '8', '⁹': '9', '⁺': '+', '⁻': '-'
       }
       
-      // Convert subscripts: l_f -> l_{f}, A_0 -> A_{0}
-      latexFormula = latexFormula.replace(/([A-Za-z])_([0-9a-z]+)/g, '$1_{$2}')
+      // Convert subscripts: l_f -> l_{f}, A_0 -> A_{0}, D_i -> D_{i}
+      // Handle both single and multi-character subscripts
+      latexFormula = latexFormula.replace(/([A-Za-z0-9\)\]])_([0-9a-z]+)/g, '$1_{$2}')
       
-      // Convert superscripts: x² -> x^{2}, x³ -> x^{3}
+      // Convert superscripts: x² -> x^{2}, x³ -> x^{3}, D² -> D^{2}
       Object.entries(superscriptMap).forEach(([sup, num]) => {
-        latexFormula = latexFormula.replace(new RegExp(`([A-Za-z0-9])${sup.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'), `$1^{${num}}`)
+        latexFormula = latexFormula.replace(new RegExp(`([A-Za-z0-9\)\]])${sup.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'g'), `$1^{${num}}`)
       })
       
-      // Convert fractions: a/b -> \frac{a}{b} (but be careful with complex expressions)
-      // Only convert simple fractions (number/number or single variable/variable)
-      latexFormula = latexFormula.replace(/(\d+)\s*\/\s*(\d+)/g, '\\frac{$1}{$2}')
-      latexFormula = latexFormula.replace(/([A-Za-z])\s*\/\s*([A-Za-z])/g, '\\frac{$1}{$2}')
+      // Convert square roots: √(expression) -> \sqrt{expression}, sqrt(expression) -> \sqrt{expression}
+      latexFormula = latexFormula.replace(/√\s*\(([^)]+)\)/g, '\\sqrt{$1}')
+      latexFormula = latexFormula.replace(/sqrt\s*\(([^)]+)\)/g, '\\sqrt{$1}')
+      latexFormula = latexFormula.replace(/√\s*([A-Za-z0-9_]+)/g, '\\sqrt{$1}')
+      
+      // Convert fractions: a/b -> \frac{a}{b}
+      // Handle complex fractions with parentheses: (a+b)/(c+d) -> \frac{a+b}{c+d}
+      latexFormula = latexFormula.replace(/\(([^)]+)\)\s*\/\s*\(([^)]+)\)/g, '\\frac{$1}{$2}')
+      // Handle simple fractions: number/number or variable/variable
+      latexFormula = latexFormula.replace(/(\d+|[A-Za-z_]+)\s*\/\s*(\d+|[A-Za-z_]+)/g, (match, num, den) => {
+        // Skip if it's part of a larger expression that's already been converted
+        if (match.includes('\\frac') || match.includes('\\sqrt')) return match
+        return `\\frac{${num}}{${den}}`
+      })
+      
+      // Convert Greek letters to LaTeX commands (if not already)
+      const greekMap: Record<string, string> = {
+        'α': '\\alpha', 'β': '\\beta', 'γ': '\\gamma', 'δ': '\\delta', 'ε': '\\epsilon',
+        'θ': '\\theta', 'λ': '\\lambda', 'μ': '\\mu', 'π': '\\pi', 'ρ': '\\rho',
+        'σ': '\\sigma', 'τ': '\\tau', 'φ': '\\phi', 'ω': '\\omega',
+        'Δ': '\\Delta', 'Σ': '\\Sigma', 'Π': '\\Pi', 'Ω': '\\Omega'
+      }
+      Object.entries(greekMap).forEach(([unicode, latexCmd]) => {
+        // Only replace if not already a LaTeX command
+        if (!latexFormula.includes(latexCmd)) {
+          latexFormula = latexFormula.replace(new RegExp(unicode, 'g'), latexCmd)
+        }
+      })
+      
+      // Convert operators to LaTeX
+      latexFormula = latexFormula.replace(/×/g, '\\times')
+      latexFormula = latexFormula.replace(/÷/g, '\\div')
+      latexFormula = latexFormula.replace(/±/g, '\\pm')
+      latexFormula = latexFormula.replace(/≈/g, '\\approx')
+      latexFormula = latexFormula.replace(/≠/g, '\\neq')
+      latexFormula = latexFormula.replace(/≤/g, '\\leq')
+      latexFormula = latexFormula.replace(/≥/g, '\\geq')
+      latexFormula = latexFormula.replace(/∞/g, '\\infty')
       
       // Convert percentages: % -> \%
       latexFormula = latexFormula.replace(/%/g, '\\%')
+      
+      // Handle complex nested expressions: improve fraction handling in denominators/numerators
+      // Example: 2F/(πD[D-√(D²-D_i²)]) should become \frac{2F}{\pi D[D-\sqrt{D^2-D_i^2}]}
+      // This is a more complex pattern that needs careful handling
       
       // Try to render as LaTeX
       let renderSuccess = false
@@ -152,12 +195,13 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
         
         katexElements.forEach((el) => {
           const htmlEl = el as HTMLElement
-          // Ensure text is visible - use blue-300 color (#93c5fd)
-          htmlEl.style.color = '#93c5fd' // blue-300 - force visibility
+          // Ensure text is visible - use brighter blue color (#bfdbfe = blue-200)
+          htmlEl.style.color = '#bfdbfe' // blue-200 - brighter for better visibility
           // Ensure background is transparent so dark background shows through
           htmlEl.style.backgroundColor = 'transparent'
-          // Ensure font is visible
+          // Ensure font is visible and slightly larger
           htmlEl.style.opacity = '1'
+          htmlEl.style.fontSize = '1.1em' // Slightly larger for better readability
           // Allow wrapping for long formulas
           if (el.classList.contains('katex-display')) {
             htmlEl.style.overflowX = 'auto'
@@ -167,7 +211,7 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
         })
         
         // Set container styles for overflow handling
-        containerRef.current.style.color = '#93c5fd' // blue-300
+        containerRef.current.style.color = '#bfdbfe' // blue-200 - brighter
         containerRef.current.style.opacity = '1'
         containerRef.current.style.maxWidth = '100%'
         containerRef.current.style.overflowX = 'hidden' // Changed from 'auto' to 'hidden' - we'll scale instead
@@ -238,10 +282,11 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
             ALLOWED_TAGS: ['sub', 'sup'],
             ALLOWED_ATTR: [],
           })
-          containerRef.current.style.fontSize = '1.25em'
+          containerRef.current.style.fontSize = '1.4em' // Larger for better readability
           containerRef.current.style.fontFamily = 'system-ui, -apple-system, sans-serif'
-          containerRef.current.style.color = '#93c5fd' // blue-300
-          containerRef.current.style.lineHeight = '1.6'
+          containerRef.current.style.color = '#bfdbfe' // blue-200 - brighter
+          containerRef.current.style.lineHeight = '1.8' // More spacing for readability
+          containerRef.current.style.fontWeight = '500' // Medium weight for better visibility
           
           // Scale down plain text formulas if they overflow
           requestAnimationFrame(() => {
@@ -323,7 +368,7 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
       ref={containerRef} 
       className={className}
       style={{ 
-        color: '#93c5fd', // blue-300 - ensure visibility
+        color: '#bfdbfe', // blue-200 - brighter for better visibility
         display: 'inline-block',
         minHeight: '1em',
         maxWidth: '100%',
@@ -331,6 +376,7 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
         overflowY: 'hidden',
         wordBreak: 'break-word',
         wordWrap: 'break-word',
+        fontWeight: '500', // Medium weight for better visibility
       }}
     />
   )

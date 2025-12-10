@@ -13,6 +13,21 @@ function PricingContent() {
   const [subscriptionStatus, setSubscriptionStatus] = useState<any>(null);
 
   useEffect(() => {
+    // Check URL parameters for newUser flag
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const newUserParam = params.get('newUser');
+      if (newUserParam === 'true') {
+        setIsNewUser(true);
+      }
+      const canceledParam = params.get('canceled');
+      if (canceledParam === 'true') {
+        setCanceled('true');
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     // Get userId from session cookie (more secure)
     // For new users, we don't require immediate authentication - they can still see pricing
     const fetchStatus = async (retryCount = 0) => {

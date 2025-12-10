@@ -8,13 +8,38 @@ import { getCurrentUserId } from "@/lib/auth/session"
 import { getRankFromXP, getRankIcon, formatXP } from "@/lib/rank-system"
 import { CompactXPBar } from "@/components/ui/xp-progress-bar"
 
+interface StatsGridProps {
+  userProfile?: UserProfile | null
+  loading?: boolean
+}
+
 // 🚀 OPTIMIZATION: Memoize component to prevent unnecessary re-renders
-export const StatsGrid = memo(function StatsGrid() {
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
-  const [loading, setLoading] = useState(true)
+// 🚀 OPTIMIZATION: Accept props to avoid redundant API calls
+export const StatsGrid = memo(function StatsGrid({ userProfile: propUserProfile, loading: propLoading }: StatsGridProps) {
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(propUserProfile || null)
+  const [loading, setLoading] = useState(propLoading !== undefined ? propLoading : true)
   const [error, setError] = useState<string | null>(null)
 
+  // Update local state when props change
+  useEffect(() => {
+    if (propUserProfile !== undefined) {
+      setUserProfile(propUserProfile)
+    }
+  }, [propUserProfile])
+
+  useEffect(() => {
+    if (propLoading !== undefined) {
+      setLoading(propLoading)
+    }
+  }, [propLoading])
+
+  // Fallback: Only fetch if props not provided (for backwards compatibility)
   const fetchUserStats = useCallback(async () => {
+    if (propUserProfile !== undefined) {
+      // Props provided, don't fetch
+      return
+    }
+    
     setLoading(true)
     setError(null)
     try {
@@ -50,8 +75,14 @@ export const StatsGrid = memo(function StatsGrid() {
         return
       }
 
+      // Add timestamp to bust cache
       const result = await getUserStatsClient(userId)
       if (result.success && result.data) {
+        console.log('✅ [STATS GRID] Stats fetched successfully:', {
+          xp: result.data.stats?.xp,
+          level: result.data.stats?.level,
+          total_games: result.data.stats?.total_games
+        })
         setUserProfile(result.data)
       } else {
         // If error is due to authentication, redirect to login
@@ -59,6 +90,7 @@ export const StatsGrid = memo(function StatsGrid() {
           window.location.href = '/login'
           return
         }
+        console.error('❌ [STATS GRID] Failed to fetch stats:', result.error)
         setError(result.error || "Failed to fetch stats")
       }
     } catch (err) {
@@ -68,32 +100,14 @@ export const StatsGrid = memo(function StatsGrid() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [propUserProfile])
 
+  // Only fetch if props not provided
   useEffect(() => {
-    fetchUserStats()
-    
-    // Refresh stats when page becomes visible (user returns to dashboard)
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        fetchUserStats()
-      }
-    }
-    
-    // Listen for quiz completion events to refresh stats
-    const handleQuizComplete = () => {
-      console.log('🔄 [STATS] Quiz completed, refreshing stats...')
+    if (propUserProfile === undefined) {
       fetchUserStats()
     }
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-    window.addEventListener('quizCompleted', handleQuizComplete)
-    
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-      window.removeEventListener('quizCompleted', handleQuizComplete)
-    }
-  }, [fetchUserStats])
+  }, [propUserProfile, fetchUserStats])
 
   // 🚀 OPTIMIZATION: Memoize expensive calculations
   // Must be called unconditionally (before any early returns) to follow Rules of Hooks

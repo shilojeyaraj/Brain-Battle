@@ -1,6 +1,6 @@
 "use client"
 
-import { Suspense, useState, useEffect } from "react"
+import { Suspense, useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { DashboardHeader } from "@/components/dashboard/dashboard-header"
 import { StatsGrid } from "@/components/dashboard/stats-grid"
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { ChevronDown, ChevronUp, BarChart3 } from "lucide-react"
 import dynamicImport from "next/dynamic"
 import { BrainBattleLoading } from "@/components/ui/brain-battle-loading"
+import { getUserStatsClient, UserProfile } from "@/lib/actions/user-stats-client"
 
 // Lazy load heavy components to improve initial page load
 const LazyLeaderboard = dynamicImport(() => import("@/components/dashboard/leaderboard").then(mod => ({ default: mod.Leaderboard })), {
@@ -29,19 +30,6 @@ const LazyLeaderboard = dynamicImport(() => import("@/components/dashboard/leade
   )
 })
 
-const LazyRecentBattles = dynamicImport(() => import("@/components/dashboard/recent-battles").then(mod => ({ default: mod.RecentBattles })), {
-  loading: () => (
-    <div className="animate-pulse">
-      <div className="h-8 bg-muted rounded mb-4"></div>
-      <div className="space-y-3">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="h-20 bg-muted rounded"></div>
-        ))}
-      </div>
-    </div>
-  )
-})
-
 export default function DashboardPage() {
   const router = useRouter()
   const [showStats, setShowStats] = useState(true)
@@ -49,6 +37,10 @@ export default function DashboardPage() {
   const [tutorialStep, setTutorialStep] = useState<number | undefined>(undefined)
   const [checkingAuth, setCheckingAuth] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [userStats, setUserStats] = useState<UserProfile | null>(null)
+  const [recentGames, setRecentGames] = useState<any[]>([])
+  const [loadingStats, setLoadingStats] = useState(false)
 
   const [authError, setAuthError] = useState<string | null>(null)
 
@@ -100,6 +92,7 @@ export default function DashboardPage() {
         
         if (data?.success && data?.userId) {
           setIsAuthenticated(true)
+          setUserId(data.userId)
           setAuthError(null)
         } else {
           // No user ID - redirect to login
@@ -119,15 +112,77 @@ export default function DashboardPage() {
     checkAuth()
   }, [router])
 
+  // 🚀 OPTIMIZATION: Fetch user stats once at page level and share with components
+  const fetchUserStats = useCallback(async () => {
+    if (!userId || loadingStats) return
+    
+    setLoadingStats(true)
+    try {
+      const result = await getUserStatsClient(userId)
+      if (result.success && result.data) {
+        console.log('✅ [DASHBOARD PAGE] Stats fetched successfully')
+        setUserStats(result.data)
+        // Extract recent games from the stats data
+        if (result.data.recentGames) {
+          setRecentGames(result.data.recentGames)
+        }
+      } else {
+        console.error('❌ [DASHBOARD PAGE] Failed to fetch stats:', result.error)
+      }
+    } catch (error) {
+      console.error('❌ [DASHBOARD PAGE] Error fetching stats:', error)
+    } finally {
+      setLoadingStats(false)
+    }
+  }, [userId, loadingStats])
+
+  // Fetch stats immediately after authentication
+  useEffect(() => {
+    if (userId && isAuthenticated) {
+      fetchUserStats()
+    }
+  }, [userId, isAuthenticated, fetchUserStats])
+
   // Dispatch login event on mount to trigger streak check (only if authenticated)
   useEffect(() => {
     if (isAuthenticated && typeof window !== 'undefined') {
       // Small delay to ensure components are mounted
       setTimeout(() => {
         window.dispatchEvent(new CustomEvent('userLoggedIn'))
+        // Also dispatch a refresh event to ensure stats are up-to-date
+        window.dispatchEvent(new CustomEvent('dashboardRefresh'))
       }, 100)
     }
   }, [isAuthenticated])
+  
+  // Refresh stats when navigating back to dashboard
+  useEffect(() => {
+    if (isAuthenticated && typeof window !== 'undefined') {
+      const handleFocus = () => {
+        // Refresh stats when user returns to the tab
+        if (userId) {
+          fetchUserStats()
+        }
+      }
+      
+      const handleQuizComplete = () => {
+        // Refresh stats after quiz completion
+        if (userId) {
+          setTimeout(() => {
+            fetchUserStats()
+          }, 1500) // Wait for backend to process
+        }
+      }
+      
+      window.addEventListener('focus', handleFocus)
+      window.addEventListener('quizCompleted', handleQuizComplete)
+      
+      return () => {
+        window.removeEventListener('focus', handleFocus)
+        window.removeEventListener('quizCompleted', handleQuizComplete)
+      }
+    }
+  }, [isAuthenticated, userId, fetchUserStats])
 
   // Check if tutorial is active
   useEffect(() => {
@@ -216,7 +271,7 @@ export default function DashboardPage() {
         {/* Collapsible Stats */}
         {showStats ? (
           <div className="mb-6">
-            <StatsGrid />
+            <StatsGrid userProfile={userStats} loading={loadingStats} />
           </div>
         ) : null}
 
@@ -228,18 +283,7 @@ export default function DashboardPage() {
             <LobbySection />
             
             <ClansSection />
-            <Suspense fallback={
-              <div className="animate-pulse">
-                <div className="h-8 bg-muted rounded mb-4"></div>
-                <div className="space-y-3">
-                  {[1, 2, 3].map((i) => (
-                    <div key={i} className="h-20 bg-muted rounded"></div>
-                  ))}
-                </div>
-              </div>
-            }>
-              <LazyRecentBattles />
-            </Suspense>
+            <RecentBattles recentGames={recentGames} loading={loadingStats} />
           </div>
 
           <div>

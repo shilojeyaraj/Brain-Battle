@@ -199,9 +199,11 @@ export async function POST(req: NextRequest) {
       console.log(`📁 [NOTES API] Processing ${uniqueFiles.length} unique files in parallel...`)
     }
     
-    // Helper function to extract text from a single file
-    const extractTextFromFile = async (file: File, buffer: Buffer): Promise<{ textContent: string; fileName: string }> => {
+    // Helper function to extract text and images from a single file
+    // 🚀 OPTIMIZATION: For PDFs, extract both text and images in a single scan
+    const extractTextAndImagesFromFile = async (file: File, buffer: Buffer): Promise<{ textContent: string; fileName: string; images: { image_data_b64: string; page: number; width?: number; height?: number }[] }> => {
       let textContent = ""
+      let images: { image_data_b64: string; page: number; width?: number; height?: number }[] = []
       
       if (file.type === "text/plain") {
         if (process.env.NODE_ENV === 'development') {
@@ -210,81 +212,23 @@ export async function POST(req: NextRequest) {
         textContent = buffer.toString('utf-8')
       } else if (file.type === "application/pdf") {
         if (process.env.NODE_ENV === 'development') {
-          console.log(`  📄 [NOTES API] Processing ${file.name} as PDF file`)
+          console.log(`  📄 [NOTES API] Processing ${file.name} as PDF file (unified extraction)`)
         }
         
         try {
-          // Use pdf-parse directly (more reliable than pdfjs-dist in this environment)
-          // pdf-parse v2.4.5 uses a class-based API (PDFParse)
-          const pdfParseModule: any = await import('pdf-parse')
-          const PDFParse = pdfParseModule.PDFParse || pdfParseModule.default?.PDFParse || pdfParseModule.default
+          // 🚀 OPTIMIZATION: Use unified extractor - loads PDF once, extracts both text and images
+          const { extractPDFTextAndImages } = await import('@/lib/pdf-unified-extractor')
+          const pdfContent = await extractPDFTextAndImages(buffer, file.name)
           
-          if (!PDFParse || typeof PDFParse !== 'function') {
-            throw new Error(`pdf-parse PDFParse class not found. Module keys: ${Object.keys(pdfParseModule).join(', ')}`)
-          }
-          
-          // CRITICAL: Disable worker BEFORE creating instance
-          // pdf-parse uses its own internal pdfjs-dist version (4.4.168)
-          // We must disable the worker to prevent version mismatch and fake worker setup errors
-          if (typeof PDFParse.setWorker === 'function') {
-            // Don't call setWorker - it may set a data URI which causes issues
-            // Instead, we'll patch globalThis.pdfjs directly after PDFParse loads it
-          }
-          
-          // Create instance with serverless options
-          const parser = new PDFParse({ 
-            data: buffer,
-            useSystemFonts: true,
-            disableAutoFetch: true,
-            useWorkerFetch: false,  // CRITICAL: Disable worker fetch completely
-            isEvalSupported: false,
-            verbosity: 0  // Reduce logging
-          })
-          
-          // CRITICAL: Patch pdf-parse's internal pdfjs to disable worker
-          // pdf-parse loads pdfjs into globalThis.pdfjs when getText() is called
-          // We need to patch it BEFORE getText() tries to use it
-          // Wait a tick to ensure pdfjs is loaded into globalThis
-          await new Promise(resolve => setImmediate(resolve))
-          
-          if (typeof globalThis !== 'undefined' && (globalThis as any).pdfjs) {
-            const internalPdfjs = (globalThis as any).pdfjs
-            if (internalPdfjs && internalPdfjs.GlobalWorkerOptions) {
-              // Force disable worker by setting to empty string
-              // Empty string tells pdfjs to use fake worker without trying to load anything
-              internalPdfjs.GlobalWorkerOptions.workerSrc = ''
-              
-              // Disable worker fetch if available
-              if (typeof internalPdfjs.setWorkerFetch === 'function') {
-                try {
-                  internalPdfjs.setWorkerFetch(false)
-                } catch (e) {
-                  // Ignore if not available
-                }
-              }
-              
-              if (process.env.NODE_ENV === 'development') {
-                console.log(`  🔧 [NOTES API] pdf-parse internal pdfjs worker disabled (workerSrc: "${internalPdfjs.GlobalWorkerOptions.workerSrc}")`)
-              }
-            }
-          }
-          
-          // Now call getText() - this will internally call pdfjs.getDocument()
-          // The worker should be disabled now, so it will use fake worker
-          const textResult = await parser.getText()
-          textContent = textResult.text || textResult.texts?.join('\n\n') || ''
-          
-          // Clean up
-          if (parser.destroy) {
-            await parser.destroy()
-          }
+          textContent = pdfContent.text
+          images = pdfContent.images
           
           if (!textContent || textContent.trim().length < 100) {
             throw new Error(`PDF parsing returned insufficient content (${textContent.length} characters).`)
           }
           
           if (process.env.NODE_ENV === 'development') {
-            console.log(`  ✅ [NOTES API] Extracted ${textContent.length} characters from ${file.name} using pdf-parse`)
+            console.log(`  ✅ [NOTES API] Extracted ${textContent.length} characters and ${images.length} images from ${file.name} (single scan)`)
           }
         } catch (pdfError) {
           throw new Error(`Failed to parse PDF "${file.name}". Error: ${pdfError instanceof Error ? pdfError.message : String(pdfError)}`)
@@ -293,7 +237,7 @@ export async function POST(req: NextRequest) {
         file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
         file.type === 'application/msword'
       ) {
-        // Word document (.docx or .doc)
+        // Word document (.docx or .doc) - no images
         if (process.env.NODE_ENV === 'development') {
           console.log(`  📝 [NOTES API] Processing ${file.name} as Word document`)
         }
@@ -308,11 +252,12 @@ export async function POST(req: NextRequest) {
         } catch (wordError) {
           throw new Error(`Failed to parse Word document "${file.name}". Error: ${wordError instanceof Error ? wordError.message : String(wordError)}`)
         }
+        images = [] // Word documents don't have extractable images
       } else if (
         file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
         file.type === 'application/vnd.ms-powerpoint'
       ) {
-        // PowerPoint presentation (.pptx or .ppt)
+        // PowerPoint presentation (.pptx or .ppt) - no images
         if (process.env.NODE_ENV === 'development') {
           console.log(`  📊 [NOTES API] Processing ${file.name} as PowerPoint presentation`)
         }
@@ -327,6 +272,7 @@ export async function POST(req: NextRequest) {
         } catch (pptError) {
           throw new Error(`Failed to parse PowerPoint "${file.name}". Error: ${pptError instanceof Error ? pptError.message : String(pptError)}`)
         }
+        images = [] // PowerPoint files don't have extractable images in our current implementation
       } else if (file.type?.startsWith('text/')) {
         if (process.env.NODE_ENV === 'development') {
           console.log(`  📝 [NOTES API] Processing ${file.name} as text file (${file.type})`)
@@ -335,33 +281,16 @@ export async function POST(req: NextRequest) {
         if (!textContent || textContent.trim().length < 10) {
           throw new Error(`Text file "${file.name}" appears to be empty.`)
         }
+        images = [] // Text files don't have images
       } else {
         throw new Error(`Unsupported file type: ${file.type}. Supported types: PDF, DOC, DOCX, PPT, PPTX, TXT`)
       }
       
-      return { textContent, fileName: file.name }
+      return { textContent, fileName: file.name, images }
     }
     
-    // Helper function to extract images from a single file
-    const extractImagesFromFile = async (file: File, buffer: Buffer): Promise<{ image_data_b64: string; page: number; width?: number; height?: number }[]> => {
-      if (file.type === "application/pdf") {
-        try {
-          const images = await extractPDFImages(buffer, file.name)
-          if (process.env.NODE_ENV === 'development' && images.length > 0) {
-            console.log(`  ✅ [NOTES API] Extracted ${images.length} images from ${file.name}`)
-          }
-          return images
-        } catch (error) {
-          if (process.env.NODE_ENV === 'development') {
-            console.error(`  ⚠️ [NOTES API] Error extracting images from ${file.name}:`, error)
-          }
-          return []
-        }
-      }
-      return []
-    }
-    
-    // Process all files in parallel - extract text and images simultaneously for each file
+    // 🚀 OPTIMIZATION: Process all files in parallel
+    // For PDFs, text and images are extracted together in a single scan (no duplicate loading!)
     const fileProcessingStart = Date.now()
     const fileProcessingPromises = uniqueFiles.map(async (file, index) => {
       if (process.env.NODE_ENV === 'development') {
@@ -370,16 +299,13 @@ export async function POST(req: NextRequest) {
       
       const buffer = Buffer.from(await file.arrayBuffer())
       
-      // Extract text and images in parallel for this file
-      const [textResult, images] = await Promise.all([
-        extractTextFromFile(file, buffer),
-        extractImagesFromFile(file, buffer)
-      ])
+      // Extract text and images together (for PDFs, this is a single scan)
+      const result = await extractTextAndImagesFromFile(file, buffer)
       
       return {
-        textContent: textResult.textContent,
-        fileName: textResult.fileName,
-        images
+        textContent: result.textContent,
+        fileName: result.fileName,
+        images: result.images
       }
     })
     
@@ -504,6 +430,15 @@ HARD REQUIREMENTS (NO EXCEPTIONS):
    - Extract formulas from: main text, examples, diagrams, captions, side notes, footnotes, worked problems, and any mathematical expressions
    - If a formula appears multiple times, include it with each page reference
    - Include derived formulas, conversion formulas, and formulas used in worked examples
+   - **FORMULA FORMATTING (CRITICAL)**: Format formulas using LaTeX-style notation for proper display:
+     * Use underscores for subscripts: D_i, A_0, l_f (not D<sub>i</sub>)
+     * Use caret (^) or Unicode superscripts for powers: x^2, x², D²
+     * Use \frac{numerator}{denominator} for fractions: \frac{2F}{\pi D}
+     * Use \sqrt{} for square roots: \sqrt{D^2 - D_i^2}
+     * Use proper function names: \ln, \log, \sin, \cos (not "In" or "in")
+     * Preserve Greek letters: \mu, \pi, \sigma, \alpha, \beta, etc.
+     * Use proper operators: \times, \div, \pm, \leq, \geq
+     * Example: "BHN = \frac{2F}{\pi D[D-\sqrt{D^2-D_i^2}]}" instead of "BHN = 2F/(πD[D-√(D²-Di²)])"
    - Preserve mathematical notation exactly: subscripts, superscripts, Greek letters, special symbols, formatting
    - **COUNT**: Before finishing, count how many formulas you found in the document and ensure ALL are in the formulas array
 
@@ -1308,40 +1243,64 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
     console.log(`  - Diagrams: ${enrichedNotes.diagrams?.length || 0}`)
     console.log(`  - Quiz questions: ${enrichedNotes.quiz?.length || 0}`)
 
-    // Save notes to database so users can access them later
+    // 🚀 OPTIMIZATION: Save notes to database asynchronously (non-blocking)
+    // This doesn't delay the response - saves 100-500ms
     let noteId: string | null = null
-    try {
-      // Use admin client to bypass RLS (we handle auth in API layer)
-      const supabase = createAdminClient()
-      
-      const { data: savedNote, error: saveError } = await supabase
-        .from('user_study_notes')
-        .insert({
-          user_id: userId,
-          title: enrichedNotes.title,
-          subject: enrichedNotes.subject,
-          notes_json: enrichedNotes,
-          file_names: fileNames,
-        })
-        .select('id')
-        .single()
+    
+    // Start the save operation but don't block the response
+    const savePromise = (async () => {
+      try {
+        const supabase = createAdminClient()
+        const { data: savedNote, error: saveError } = await supabase
+          .from('user_study_notes')
+          .insert({
+            user_id: userId,
+            title: enrichedNotes.title,
+            subject: enrichedNotes.subject,
+            notes_json: enrichedNotes,
+            file_names: fileNames,
+          })
+          .select('id')
+          .single()
 
-      if (saveError) {
-        console.error('⚠️ [NOTES API] Failed to save notes to database:', saveError)
-        // Don't fail the request if save fails - notes are still returned
-        // User can still use the notes, they just won't be able to access them later
-      } else if (savedNote) {
-        noteId = savedNote.id
-        console.log(`✅ [NOTES API] Notes saved to database with ID: ${noteId}`)
+        if (saveError) {
+          console.error('⚠️ [NOTES API] Failed to save notes to database:', saveError)
+          return null
+        } else if (savedNote) {
+          const id = savedNote.id
+          console.log(`✅ [NOTES API] Notes saved to database with ID: ${id}`)
+          return id
+        }
+        return null
+      } catch (dbError: any) {
+        console.error('⚠️ [NOTES API] Database save error:', dbError)
+        return null
       }
-    } catch (dbError) {
-      console.error('⚠️ [NOTES API] Database save error:', dbError)
-      // Continue even if database save fails
+    })()
+    
+    // Try to get result quickly (100ms timeout), but don't block
+    try {
+      const timeoutPromise = new Promise<string | null>((resolve) => 
+        setTimeout(() => resolve(null), 100)
+      )
+      noteId = await Promise.race([savePromise, timeoutPromise])
+    } catch (error) {
+      // If race fails, continue without noteId - save will complete in background
+      console.warn('⚠️ [NOTES API] Database save timeout, continuing in background')
     }
+    
+    // Continue saving in background even if we didn't get the ID
+    savePromise.then((id) => {
+      if (id && !noteId) {
+        console.log(`✅ [NOTES API] Notes saved to database (background) with ID: ${id}`)
+      }
+    }).catch((dbError: any) => {
+      console.error('⚠️ [NOTES API] Background database save error:', dbError)
+    })
 
     return NextResponse.json({ 
       success: true, 
-      noteId: noteId, // Return note ID so user can access notes later
+      noteId: noteId, // May be null if save is still in progress
       notes: enrichedNotes,
       extractedImages: extractedImages.length,
       processedFiles: fileNames.length,

@@ -769,26 +769,83 @@ export default function BattlePage() {
                   <h3 className="font-black text-white mb-2">Explanation:</h3>
                 )}
               </div>
-              <p className="text-white font-bold mb-3 leading-relaxed">{question.explanation || question.a}</p>
+              {/* Explanation - make it slimmer and prevent overflow */}
+              <div className="mb-3 max-w-full overflow-hidden">
+                <p className="text-white font-bold leading-relaxed break-words whitespace-normal max-w-full text-sm">
+                  {question.explanation || question.a}
+                </p>
+              </div>
               
               {/* Always show correct answers for open-ended questions */}
               {question.type === "open_ended" && (
-                <div className="mt-3 p-3 rounded-lg bg-chart-3/10 border-2 border-chart-3/30">
-                  <h4 className="font-black text-chart-3 mb-2 flex items-center gap-2">
+                <div className="mt-3 p-3 rounded-lg bg-chart-3/10 border-2 border-chart-3/30 max-w-full overflow-hidden">
+                  <h4 className="font-black text-chart-3 mb-3 flex items-center gap-2">
                     <CheckCircle className="h-5 w-5 text-chart-3" strokeWidth={3} />
                     Correct Answer(s):
                   </h4>
                   {question.expected_answers && question.expected_answers.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {question.expected_answers.map((answer: string, index: number) => (
-                        <Badge key={index} className="border-2 border-chart-3/40 bg-chart-3 text-foreground font-black text-base px-3 py-1.5">
-                          {answer}
-                        </Badge>
-                      ))}
+                    <div className="space-y-3">
+                      {question.expected_answers.map((answer: string, index: number) => {
+                        // Check if answer contains multi-part indicators (a), (b), (c) or a), b), c)
+                        const parts = answer.split(/(?=\([a-z]\)|^[a-z]\))/i).filter(p => p.trim())
+                        
+                        if (parts.length > 1) {
+                          // Multi-part answer - display each part separately with spacing
+                          return (
+                            <div key={index} className="space-y-2">
+                              {parts.map((part: string, partIndex: number) => (
+                                <div key={partIndex} className="p-3 rounded-lg border-2 border-chart-3/40 bg-chart-3/20 text-foreground break-words whitespace-normal">
+                                  <p className="font-bold text-sm leading-relaxed">{part.trim()}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )
+                        } else {
+                          // Single answer or no clear parts - check for inline (a), (b), (c) patterns
+                          const inlineParts = answer.match(/(\([a-z]\)[^\(]*?)(?=\([a-z]\)|$)/gi)
+                          
+                          if (inlineParts && inlineParts.length > 1) {
+                            return (
+                              <div key={index} className="space-y-2">
+                                {inlineParts.map((part, partIndex) => (
+                                  <div key={partIndex} className="p-3 rounded-lg border-2 border-chart-3/40 bg-chart-3/20 text-foreground break-words whitespace-normal">
+                                    <p className="font-bold text-sm leading-relaxed">{part.trim()}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            )
+                          } else {
+                            // Single answer - display normally
+                            return (
+                              <div key={index} className="p-3 rounded-lg border-2 border-chart-3/40 bg-chart-3/20 text-foreground break-words whitespace-normal">
+                                <p className="font-bold text-sm leading-relaxed">{answer}</p>
+                              </div>
+                            )
+                          }
+                        }
+                      })}
                     </div>
                   ) : (
-                    <div className="text-sm text-muted-foreground font-bold">
-                      {question.answer || question.a || "See explanation above for the correct answer"}
+                    <div className="text-sm text-muted-foreground font-bold break-words whitespace-normal max-w-full">
+                      {(() => {
+                        const answerText = question.answer || question.a || "See explanation above for the correct answer"
+                        // Check if answer contains multi-part indicators
+                        const parts = answerText.match(/(\([a-z]\)[^\(]*?)(?=\([a-z]\)|$)/gi)
+                        
+                        if (parts && parts.length > 1) {
+                          return (
+                            <div className="space-y-2">
+                              {parts.map((part: string, partIndex: number) => (
+                                <div key={partIndex} className="p-3 rounded-lg border-2 border-chart-3/40 bg-chart-3/20 text-foreground break-words whitespace-normal">
+                                  <p className="font-bold text-sm leading-relaxed">{part.trim()}</p>
+                                </div>
+                              ))}
+                            </div>
+                          )
+                        } else {
+                          return answerText
+                        }
+                      })()}
                     </div>
                   )}
                 </div>
@@ -1156,16 +1213,38 @@ function BattleResultsScreen({
                             <strong className={isCorrect ? "text-green-200" : "text-red-200"}>Your answer:</strong> <span className={isCorrect ? "text-green-100" : "text-red-100"}>{userAnswerText}</span>
                           </p>
                         </div>
-                        <p className="text-blue-100/70">
-                          <strong className="text-white">Correct answer:</strong> <span className="font-bold text-white">{correctAnswerText}</span>
-                        </p>
+                        <div className="text-blue-100/70">
+                          <strong className="text-white">Correct answer:</strong>
+                          {(() => {
+                            // Check if answer contains multi-part indicators
+                            const correctAnswerParts = correctAnswerText.match(/(\([a-z]\)[^\(]*?)(?=\([a-z]\)|$)/gi)
+                            
+                            if (correctAnswerParts && correctAnswerParts.length > 1) {
+                              return (
+                                <div className="mt-2 space-y-2">
+                                  {correctAnswerParts.map((part: string, partIndex: number) => (
+                                    <div key={partIndex} className="p-2 rounded-lg border-2 border-green-400/30 bg-green-500/10 break-words whitespace-normal">
+                                      <span className="font-bold text-white text-sm leading-relaxed">{part.trim()}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )
+                            } else {
+                              return (
+                                <div className="mt-1 p-2 rounded-lg border-2 border-green-400/30 bg-green-500/10 break-words whitespace-normal">
+                                  <span className="font-bold text-white text-sm leading-relaxed">{correctAnswerText}</span>
+                                </div>
+                              )
+                            }
+                          })()}
+                        </div>
                         {(question.explanation || question.answer) && (
-                          <div className="mt-3 p-3 rounded-lg bg-blue-500/10 border-2 border-blue-400/30">
+                          <div className="mt-3 p-3 rounded-lg bg-blue-500/10 border-2 border-blue-400/30 max-w-full overflow-hidden">
                             <div className="flex items-start gap-2">
                               <Lightbulb className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" strokeWidth={3} />
-                              <div className="flex-1">
+                              <div className="flex-1 min-w-0">
                                 <p className="text-blue-300 font-black text-xs mb-1">Explanation:</p>
-                                <p className="text-blue-100/90 font-bold text-sm leading-relaxed">
+                                <p className="text-blue-100/90 font-bold text-sm leading-relaxed break-words whitespace-normal max-w-full">
                                   {question.explanation || question.answer || "This is the correct answer based on the study material."}
                                 </p>
                               </div>

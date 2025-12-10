@@ -166,7 +166,7 @@ export async function GET(request: NextRequest) {
       })
 
     // 🚀 OPTIMIZATION: Return data directly (already filtered by select())
-    // 🚀 OPTIMIZATION: Add caching headers (15 seconds - stats change frequently)
+    // 🚀 OPTIMIZATION: Reduced cache time to 0 for immediate updates after quiz completion
     return NextResponse.json({
       success: true,
       profile,
@@ -175,7 +175,9 @@ export async function GET(request: NextRequest) {
       achievements: formattedAchievements
     }, {
       headers: {
-        'Cache-Control': 'private, max-age=15', // Cache for 15 seconds
+        'Cache-Control': 'no-store, no-cache, must-revalidate, private', // No cache - always fresh data
+        'Pragma': 'no-cache',
+        'Expires': '0',
       },
     })
 

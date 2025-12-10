@@ -312,13 +312,53 @@ export async function POST(request: NextRequest) {
             if (file.type === "text/plain") {
               return `=== ${file.name} ===\n${buffer.toString('utf-8')}\n`
             } else if (file.type === "application/pdf") {
-              // Use pdf-parse directly (more reliable than pdfjs-dist in this environment)
-              // pdf-parse v2.4.5 uses a class-based API (PDFParse)
+              // CRITICAL: Configure pdf-parse's internal pdfjs-dist BEFORE importing pdf-parse
+              // pdf-parse loads pdfjs-dist internally, and we need to configure it before it tries to load the worker
+              // We'll pre-configure the global pdfjs instance that pdf-parse will use
+              
+              // First, try to configure pdfjs-dist globally before pdf-parse imports it
+              try {
+                // Import pdfjs-dist directly and configure it
+                const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
+                const pdfjsLib = pdfjsModule.default || pdfjsModule
+                
+                // Configure worker to use fake worker (empty string)
+                if (pdfjsLib.GlobalWorkerOptions) {
+                  pdfjsLib.GlobalWorkerOptions.workerSrc = ''
+                  if (typeof pdfjsLib.setWorkerFetch === 'function') {
+                    pdfjsLib.setWorkerFetch(false)
+                  }
+                }
+                
+                // Store in globalThis so pdf-parse can use it
+                if (typeof globalThis !== 'undefined') {
+                  (globalThis as any).pdfjs = pdfjsLib
+                }
+                
+                if (process.env.NODE_ENV === 'development') {
+                  console.log(`  🔧 [QUIZ API] Pre-configured pdfjs-dist for pdf-parse (worker disabled)`)
+                }
+              } catch (preConfigError) {
+                if (process.env.NODE_ENV === 'development') {
+                  console.warn(`  ⚠️ [QUIZ API] Pre-configuration warning:`, preConfigError)
+                }
+              }
+              
+              // Now import pdf-parse - it should use the pre-configured pdfjs instance
               const pdfParseModule: any = await import('pdf-parse')
               const PDFParse = pdfParseModule.PDFParse || pdfParseModule.default?.PDFParse || pdfParseModule.default
               
               if (!PDFParse || typeof PDFParse !== 'function') {
                 throw new Error(`pdf-parse PDFParse class not found. Module keys: ${Object.keys(pdfParseModule).join(', ')}`)
+              }
+              
+              // CRITICAL: Use setWorker to disable worker BEFORE creating instance
+              // Empty string tells pdf-parse to use fake worker
+              if (typeof PDFParse.setWorker === 'function') {
+                PDFParse.setWorker('')
+                if (process.env.NODE_ENV === 'development') {
+                  console.log(`  🔧 [QUIZ API] pdf-parse worker set to empty string (fake worker)`)
+                }
               }
               
               // Create instance with serverless options
@@ -331,17 +371,15 @@ export async function POST(request: NextRequest) {
                 verbosity: 0  // Reduce logging
               })
               
-              // CRITICAL: Patch pdf-parse's internal pdfjs to disable worker
-              // pdf-parse loads pdfjs into globalThis.pdfjs when getText() is called
-              // We need to patch it BEFORE getText() tries to use it
-              // Wait a tick to ensure pdfjs is loaded into globalThis
+              // CRITICAL: Patch pdf-parse's internal pdfjs to disable worker (double-check)
+              // pdf-parse may load pdfjs into globalThis.pdfjs when getText() is called
+              // Ensure it's configured before use
               await new Promise(resolve => setImmediate(resolve))
               
               if (typeof globalThis !== 'undefined' && (globalThis as any).pdfjs) {
                 const internalPdfjs = (globalThis as any).pdfjs
                 if (internalPdfjs && internalPdfjs.GlobalWorkerOptions) {
                   // Force disable worker by setting to empty string
-                  // Empty string tells pdfjs to use fake worker without trying to load anything
                   internalPdfjs.GlobalWorkerOptions.workerSrc = ''
                   
                   // Disable worker fetch if available

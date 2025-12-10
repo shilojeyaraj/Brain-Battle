@@ -639,12 +639,12 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames, hideActions 
                         </div>
                         
                         {/* Formula Display */}
-                        <div className="bg-slate-900/50 p-6 rounded-xl border-4 border-blue-400/30 mb-4 min-h-[80px] flex items-center justify-center overflow-hidden">
-                          <div className="text-xl md:text-2xl text-blue-300 text-center leading-relaxed flex items-center justify-center w-full max-w-full">
+                        <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/80 p-8 rounded-xl border-4 border-blue-500/50 mb-4 min-h-[100px] flex items-center justify-center overflow-hidden shadow-lg shadow-blue-500/20">
+                          <div className="text-2xl md:text-3xl text-blue-200 text-center leading-relaxed flex items-center justify-center w-full max-w-full">
                             {formula.formula && formula.formula.trim() ? (
                               <FormulaRenderer 
                                 formula={formula.formula}
-                                className="text-blue-300 max-w-full break-words"
+                                className="text-blue-200 max-w-full break-words font-medium"
                                 displayMode={true}
                               />
                             ) : (

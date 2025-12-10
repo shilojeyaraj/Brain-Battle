@@ -26,7 +26,10 @@ export function AccordionItem({ question, answer, isOpen, onToggle, index }: Acc
         onClick={onToggle}
         className="w-full px-6 py-5 text-left flex items-center justify-between gap-4 focus:outline-none focus:ring-2 focus:ring-blue-400/50 rounded-t-2xl group"
       >
-        <h3 className="text-lg md:text-xl font-black bg-gradient-to-r from-blue-200 via-purple-200 to-orange-200 bg-clip-text text-transparent pr-4 group-hover:from-blue-100 group-hover:via-purple-100 group-hover:to-orange-100 transition-all">
+        <h3 className="text-lg md:text-xl font-black text-orange-400 pr-4 transition-all" style={{
+          textShadow: '2px 2px 0px #000, -2px -2px 0px #000, 2px -2px 0px #000, -2px 2px 0px #000, 0px 2px 0px #000, 0px -2px 0px #000, 2px 0px 0px #000, -2px 0px 0px #000',
+          WebkitTextStroke: '1.5px #000'
+        }}>
           {question}
         </h3>
         <motion.div

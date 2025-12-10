@@ -24,6 +24,8 @@ export interface UserProfile {
   created_at: string
   last_login: string | null
   stats: UserStats
+  recentGames?: any[] // Optional: recent games from API
+  achievements?: any[] // Optional: achievements from API
 }
 
 export async function getUserStatsClient(userId: string): Promise<{ success: boolean; data?: UserProfile; error?: string }> {
@@ -186,7 +188,48 @@ export async function getUserStatsClient(userId: string): Promise<{ success: boo
       last_login: null
     }
     
-    // Get user stats
+    // Use API route to get stats (ensures fresh data and proper RLS handling)
+    // This also includes recentGames which we need
+    try {
+      const apiResponse = await fetch(`/api/user-stats?t=${Date.now()}`, {
+        credentials: 'include',
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      })
+      
+      if (apiResponse.ok) {
+        const apiData = await apiResponse.json()
+        if (apiData.success && apiData.stats) {
+          console.log('✅ [USER STATS] Stats fetched from API:', {
+            xp: apiData.stats.xp,
+            level: apiData.stats.level,
+            total_games: apiData.stats.total_games
+          })
+          
+          return {
+            success: true,
+            data: {
+              ...userData,
+              stats: apiData.stats,
+              recentGames: apiData.recentGames || [],
+              achievements: apiData.achievements || []
+            }
+          }
+        }
+      } else if (apiResponse.status === 401) {
+        return { 
+          success: false, 
+          error: 'User not authenticated' 
+        }
+      }
+    } catch (apiError) {
+      console.warn('⚠️ [USER STATS] API route failed, falling back to direct query:', apiError)
+    }
+    
+    // Fallback: Direct Supabase query (with no cache)
     const { data: statsData, error: statsError } = await supabase
       .from('player_stats')
       .select('*')
@@ -226,6 +269,12 @@ export async function getUserStatsClient(userId: string): Promise<{ success: boo
         }
       }
     }
+    
+    console.log('✅ [USER STATS] Stats fetched from Supabase:', {
+      xp: statsData.xp,
+      level: statsData.level,
+      total_games: statsData.total_games
+    })
     
     return {
       success: true,

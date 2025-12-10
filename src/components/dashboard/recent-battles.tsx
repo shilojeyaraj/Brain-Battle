@@ -7,59 +7,75 @@ import { EmptyState } from "@/components/ui/empty-state"
 import { Trophy, Clock, Users, Target, FileText, ExternalLink } from "lucide-react"
 import Link from "next/link"
 
-export const RecentBattles = memo(function RecentBattles() {
-  const [recentBattles, setRecentBattles] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+interface RecentBattlesProps {
+  recentGames?: any[]
+  loading?: boolean
+}
+
+// 🚀 OPTIMIZATION: Accept props to avoid redundant API calls
+export const RecentBattles = memo(function RecentBattles({ recentGames: propRecentGames, loading: propLoading }: RecentBattlesProps) {
+  const [recentBattles, setRecentBattles] = useState<any[]>(propRecentGames || [])
+  const [loading, setLoading] = useState(propLoading !== undefined ? propLoading : true)
+
+  // Update local state when props change
+  useEffect(() => {
+    if (propRecentGames !== undefined) {
+      setRecentBattles(propRecentGames)
+    }
+  }, [propRecentGames])
+
+  useEffect(() => {
+    if (propLoading !== undefined) {
+      setLoading(propLoading)
+    }
+  }, [propLoading])
 
   // 🚀 OPTIMIZATION: Memoize fetch function to prevent unnecessary re-renders
+  // Fallback: Only fetch if props not provided (for backwards compatibility)
   const fetchRecentBattles = useCallback(async () => {
+    if (propRecentGames !== undefined) {
+      // Props provided, don't fetch
+      return
+    }
+    
+    setLoading(true)
     try {
-      const response = await fetch("/api/user-stats", {
+      // Add timestamp to bust cache
+      const response = await fetch(`/api/user-stats?t=${Date.now()}`, {
         credentials: 'include',
-        cache: 'no-store'
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
       })
       if (response.ok) {
         const data = await response.json()
         if (data.recentGames && Array.isArray(data.recentGames)) {
+          console.log(`✅ [RECENT BATTLES] Fetched ${data.recentGames.length} recent games`)
           setRecentBattles(data.recentGames)
         } else {
           console.log('ℹ️ [RECENT BATTLES] No recent games found or invalid format:', data)
+          setRecentBattles([])
         }
       } else {
         console.error('❌ [RECENT BATTLES] Failed to fetch battles:', response.status, response.statusText)
+        setRecentBattles([])
       }
     } catch (error) {
       console.error('❌ [RECENT BATTLES] Error fetching recent battles:', error)
+      setRecentBattles([])
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [propRecentGames])
 
+  // Only fetch if props not provided
   useEffect(() => {
-    fetchRecentBattles()
-    
-    // 🚀 OPTIMIZATION: Debounce quiz completion handler to prevent rapid refreshes
-    let refreshTimeout: NodeJS.Timeout | null = null
-    const handleQuizCompleted = () => {
-      // Clear any pending refresh
-      if (refreshTimeout) {
-        clearTimeout(refreshTimeout)
-      }
-      // Wait a bit for the backend to process the results (debounced)
-      refreshTimeout = setTimeout(() => {
-        fetchRecentBattles()
-      }, 1000)
+    if (propRecentGames === undefined) {
+      fetchRecentBattles()
     }
-    
-    window.addEventListener('quizCompleted', handleQuizCompleted)
-    
-    return () => {
-      window.removeEventListener('quizCompleted', handleQuizCompleted)
-      if (refreshTimeout) {
-        clearTimeout(refreshTimeout)
-      }
-    }
-  }, [fetchRecentBattles])
+  }, [propRecentGames, fetchRecentBattles])
 
   if (loading) {
     return (

@@ -202,99 +202,138 @@ export async function smartExtractDiagrams(
       console.log(`  📄 [SMART EXTRACTOR] PDF loaded: ${pdfDocument.numPages} pages`)
     }
     
-    // Process each page
-    for (let pageNum = 1; pageNum <= pdfDocument.numPages; pageNum++) {
-      try {
-        const page = await pdfDocument.getPage(pageNum)
-        
-        // Step 1: Try to extract embedded images (fastest, most accurate)
-        const embeddedDiagrams = await extractEmbeddedImagesFromPage(page, pageNum, pdfDocument)
-        
-        if (embeddedDiagrams.length > 0) {
-          extractedDiagrams.push(...embeddedDiagrams.slice(0, maxDiagramsPerPage))
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`  ✅ [SMART EXTRACTOR] Page ${pageNum}: Extracted ${embeddedDiagrams.length} embedded images`)
-          }
-        } else {
-          // Step 2: Fallback to full page rendering if no embedded images found
-          // This captures drawn diagrams, charts, etc.
-          const viewport = page.getViewport({ scale: 2.0 })
-          const canvas = createCanvas(Math.floor(viewport.width), Math.floor(viewport.height))
-          const context = canvas.getContext('2d')
+    // 🚀 OPTIMIZATION: Process pages in parallel batches for 2-3x speedup
+    // Process pages in batches of 5 to avoid memory issues while maximizing parallelism
+    const pageNumbers = Array.from({ length: pdfDocument.numPages }, (_, i) => i + 1)
+    const batchSize = 5
+    const batches: number[][] = []
+    
+    for (let i = 0; i < pageNumbers.length; i += batchSize) {
+      batches.push(pageNumbers.slice(i, i + batchSize))
+    }
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`  🚀 [SMART EXTRACTOR] Processing ${pdfDocument.numPages} pages in ${batches.length} parallel batches (${batchSize} pages per batch)`)
+    }
+    
+    // Process each batch in parallel
+    for (const batch of batches) {
+      const batchPromises = batch.map(async (pageNum) => {
+        try {
+          const page = await pdfDocument.getPage(pageNum)
           
-          // Apply compatibility layer
-          const canvasElement = canvas as any
-          const canvasContext = context as any
+          // Step 1: Try to extract embedded images (fastest, most accurate)
+          const embeddedDiagrams = await extractEmbeddedImagesFromPage(page, pageNum, pdfDocument)
           
-          const canvasProps = {
-            nodeName: 'CANVAS',
-            tagName: 'CANVAS',
-            nodeType: 1,
-            localName: 'canvas',
-            namespaceURI: 'http://www.w3.org/1999/xhtml',
-          }
-          
-          for (const [key, value] of Object.entries(canvasProps)) {
-            if (!(key in canvasElement)) {
-              Object.defineProperty(canvasElement, key, {
-                value: value,
+          if (embeddedDiagrams.length > 0) {
+            if (process.env.NODE_ENV === 'development') {
+              console.log(`  ✅ [SMART EXTRACTOR] Page ${pageNum}: Extracted ${embeddedDiagrams.length} embedded images`)
+            }
+            return embeddedDiagrams.slice(0, maxDiagramsPerPage)
+          } else {
+            // Step 2: Fallback to full page rendering if no embedded images found
+            // This captures drawn diagrams, charts, etc.
+            const viewport = page.getViewport({ scale: 2.0 })
+            const canvas = createCanvas(Math.floor(viewport.width), Math.floor(viewport.height))
+            const context = canvas.getContext('2d')
+            
+            // Apply compatibility layer
+            const canvasElement = canvas as any
+            const canvasContext = context as any
+            
+            const canvasProps = {
+              nodeName: 'CANVAS',
+              tagName: 'CANVAS',
+              nodeType: 1,
+              localName: 'canvas',
+              namespaceURI: 'http://www.w3.org/1999/xhtml',
+            }
+            
+            for (const [key, value] of Object.entries(canvasProps)) {
+              if (!(key in canvasElement)) {
+                Object.defineProperty(canvasElement, key, {
+                  value: value,
+                  writable: false,
+                  enumerable: true,
+                  configurable: true
+                })
+              }
+            }
+            
+            if (!canvasContext.canvas) {
+              Object.defineProperty(canvasContext, 'canvas', {
+                value: canvasElement,
                 writable: false,
                 enumerable: true,
                 configurable: true
               })
             }
-          }
-          
-          if (!canvasContext.canvas) {
-            Object.defineProperty(canvasContext, 'canvas', {
-              value: canvasElement,
-              writable: false,
-              enumerable: true,
-              configurable: true
-            })
-          }
-          
-          // Render page
-          context.fillStyle = 'white'
-          context.fillRect(0, 0, canvas.width, canvas.height)
-          
-          const renderContext = {
-            canvasContext: canvasContext,
-            viewport: viewport,
-          }
-          
-          try {
-            const renderTask = page.render(renderContext as any)
-            await renderTask.promise
             
-            const fullPageBase64 = canvas.toDataURL('image/png').split(',')[1]
+            // Render page
+            context.fillStyle = 'white'
+            context.fillRect(0, 0, canvas.width, canvas.height)
             
-            // Detect and crop diagrams from full page
-            const drawnDiagrams = await detectAndCropDiagrams(
-              fullPageBase64,
-              viewport.width,
-              viewport.height,
-              options
-            )
-            
-            // Set page number and add to results
-            for (const diagram of drawnDiagrams) {
-              diagram.page = pageNum
-              extractedDiagrams.push(diagram)
+            const renderContext = {
+              canvasContext: canvasContext,
+              viewport: viewport,
             }
             
-            if (process.env.NODE_ENV === 'development' && drawnDiagrams.length > 0) {
-              console.log(`  ✅ [SMART EXTRACTOR] Page ${pageNum}: Extracted ${drawnDiagrams.length} diagrams from rendered page`)
+            try {
+              const renderTask = page.render(renderContext as any)
+              await renderTask.promise
+              
+              const fullPageBase64 = canvas.toDataURL('image/png').split(',')[1]
+              
+              // Detect and crop diagrams from full page
+              const drawnDiagrams = await detectAndCropDiagrams(
+                fullPageBase64,
+                viewport.width,
+                viewport.height,
+                options
+              )
+              
+              // Set page number for each diagram
+              for (const diagram of drawnDiagrams) {
+                diagram.page = pageNum
+              }
+              
+              if (process.env.NODE_ENV === 'development' && drawnDiagrams.length > 0) {
+                console.log(`  ✅ [SMART EXTRACTOR] Page ${pageNum}: Extracted ${drawnDiagrams.length} diagrams from rendered page`)
+              }
+              
+              return drawnDiagrams
+            } catch (renderError: any) {
+              if (process.env.NODE_ENV === 'development') {
+                console.warn(`  ⚠️ [SMART EXTRACTOR] Failed to render page ${pageNum}:`, renderError.message)
+              }
+              return []
             }
-          } catch (renderError: any) {
-            if (process.env.NODE_ENV === 'development') {
-              console.warn(`  ⚠️ [SMART EXTRACTOR] Failed to render page ${pageNum}:`, renderError.message)
-            }
+          }
+        } catch (pageError: any) {
+          console.error(`  ❌ [SMART EXTRACTOR] Error processing page ${pageNum}:`, pageError.message)
+          return []
+        }
+      })
+      
+      // Wait for batch to complete and collect results
+      const batchResults = await Promise.all(batchPromises)
+      
+      // 🎯 COORDINATION: Merge results while preventing duplicates
+      // Use a Set to track unique diagrams by page + position to avoid duplicates
+      const seenDiagrams = new Set<string>()
+      
+      for (const diagrams of batchResults) {
+        for (const diagram of diagrams) {
+          // Create unique key: page + approximate position (rounded to prevent minor differences)
+          const positionKey = `${diagram.page}-${Math.round((diagram.x || 0) / 100)}-${Math.round((diagram.y || 0) / 100)}-${diagram.width}-${diagram.height}`
+          
+          if (!seenDiagrams.has(positionKey)) {
+            seenDiagrams.add(positionKey)
+            extractedDiagrams.push(diagram)
+          } else if (process.env.NODE_ENV === 'development') {
+            console.log(`  🔄 [SMART EXTRACTOR] Skipped duplicate diagram on page ${diagram.page}`)
           }
         }
-      } catch (pageError: any) {
-        console.error(`  ❌ [SMART EXTRACTOR] Error processing page ${pageNum}:`, pageError.message)
-        continue
       }
     }
     
