@@ -11,6 +11,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { motion } from "framer-motion"
 import { useFeedback } from "@/hooks/useFeedback"
 import { useNavigationLoading } from "@/hooks/use-navigation-loading"
+import { useBackgroundMusic } from "@/hooks/use-background-music"
 import { NavigationLoadingOverlay } from "@/components/ui/navigation-loading-overlay"
 import { requireAuthOrRedirect } from "@/lib/utils/require-auth-redirect"
 
@@ -29,6 +30,9 @@ export function LobbySection() {
   const { playClick, burstConfetti } = useFeedback()
   const isNavigating = loadingButton !== null
   const showLoadingOverlay = useNavigationLoading(isNavigating)
+  
+  // Play lobby background music
+  useBackgroundMusic("lobby")
   
   // Clear loading state when pathname changes (navigation completed)
   useEffect(() => {

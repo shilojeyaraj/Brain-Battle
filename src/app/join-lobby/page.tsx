@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { useRequireAuth } from "@/hooks/use-require-auth"
+import { useBackgroundMusic } from "@/hooks/use-background-music"
 import { motion } from "framer-motion"
 import { Breadcrumbs, BreadcrumbSchema } from "@/components/ui/breadcrumbs"
 
@@ -30,6 +31,9 @@ function JoinLobbyContent() {
   const [roomCode, setRoomCode] = useState("")
   const [isJoining, setIsJoining] = useState(false)
   const [error, setError] = useState("")
+  
+  // Play lobby background music
+  useBackgroundMusic("lobby")
 
   // Pre-fill room code from URL if provided
   useEffect(() => {

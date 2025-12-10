@@ -14,6 +14,7 @@ import { XPProgressBar } from "@/components/ui/xp-progress-bar"
 import { LevelUpModal } from "@/components/ui/level-up-modal"
 import { QuizProgressBar } from "@/components/ui/quiz-progress-bar"
 import { useFeedback } from "@/hooks/useFeedback"
+import { useBackgroundMusic } from "@/hooks/use-background-music"
 import { RewardToast } from "@/components/feedback/GameFeedback"
 import { isAnswerCorrect } from "@/lib/quiz-evaluator"
 import { BrainBattleLoading } from "@/components/ui/brain-battle-loading"
@@ -85,6 +86,9 @@ export default function BattlePage() {
   })
 
   const { playCorrect, playWrong, playClick, burstConfetti, playSelect, playTimeUp, playPurchaseConfirm } = useFeedback()
+
+  // Play battle background music (stops when battle is complete)
+  useBackgroundMusic(battleComplete ? "none" : "battle")
 
   // Load questions from sessionStorage on component mount
   useEffect(() => {

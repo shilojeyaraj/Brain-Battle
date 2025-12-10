@@ -6,6 +6,7 @@ import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Brain, Users, Upload, Settings, ArrowLeft, Copy, Check, Crown, Lock, RefreshCw, FileText, X, AlertCircle, Loader2, Zap, BookOpen, Lightbulb, MessageSquare, Clock } from 'lucide-react'
 import Link from 'next/link'
 import { useAntiCheat, CheatEvent } from '@/hooks/use-anti-cheat'
+import { useBackgroundMusic } from '@/hooks/use-background-music'
 import { CheatAlertContainer, CheatAlertData } from '@/components/multiplayer/cheat-alert'
 import { QuizProgressBar } from '@/components/ui/quiz-progress-bar'
 import { Button } from '@/components/ui/button'
@@ -120,6 +121,9 @@ export default function RoomPage() {
   const [activeTab, setActiveTab] = useState<'materials' | 'notes'>('materials')
   const supabase = createClient()
   const channelRef = useRef<any>(null)
+
+  // Play lobby music only when room is in waiting status
+  useBackgroundMusic(room?.status === 'waiting' ? 'lobby' : 'none')
 
   // Anti-cheat functionality
   const handleCheatDetected = async (event: CheatEvent) => {

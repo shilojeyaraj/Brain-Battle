@@ -12,6 +12,7 @@ import { getCurrentUserId } from "@/lib/auth/session"
 import { createClient } from "@/lib/supabase/client"
 import { useParams, useRouter } from "next/navigation"
 import { useFeedback } from "@/hooks/useFeedback"
+import { useBackgroundMusic } from "@/hooks/use-background-music"
 import { RewardToast } from "@/components/feedback/GameFeedback"
 
 interface Question {
@@ -62,6 +63,9 @@ export default function MultiplayerBattlePage() {
   const supabase = createClient()
   const channelRef = useRef<any>(null)
   const { playCorrect, playWrong, burstConfetti } = useFeedback()
+
+  // Play battle background music (stops when battle is complete)
+  useBackgroundMusic(battleComplete ? "none" : "battle")
 
   // Track if battle is actively running
   const isBattleActive = !isLoading && !hasError && !battleComplete && questions.length > 0

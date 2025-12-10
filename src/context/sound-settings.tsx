@@ -3,11 +3,19 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react"
 
 type SoundSettings = {
+  // Sound effects settings
   soundEnabled: boolean
   volume: number // 0..1
+  // Music settings
+  musicEnabled: boolean
+  musicVolume: number // 0..1
+  // Motion settings
   reducedMotion: boolean
+  // Setters
   setSoundEnabled: (enabled: boolean) => void
   setVolume: (vol: number) => void
+  setMusicEnabled: (enabled: boolean) => void
+  setMusicVolume: (vol: number) => void
   setReducedMotion: (reduced: boolean) => void
 }
 
@@ -16,6 +24,8 @@ const SoundSettingsContext = createContext<SoundSettings | null>(null)
 const STORAGE_KEYS = {
   soundEnabled: "bb.soundEnabled",
   volume: "bb.soundVolume",
+  musicEnabled: "bb.musicEnabled",
+  musicVolume: "bb.musicVolume",
   reducedMotion: "bb.reducedMotion",
 }
 
@@ -31,6 +41,8 @@ function getSystemPrefersReducedMotion(): boolean {
 export function SoundSettingsProvider({ children }: { children: React.ReactNode }) {
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true)
   const [volume, setVolume] = useState<number>(0.5)
+  const [musicEnabled, setMusicEnabled] = useState<boolean>(true)
+  const [musicVolume, setMusicVolume] = useState<number>(0.3)
   const [reducedMotion, setReducedMotion] = useState<boolean>(false)
 
   // Load persisted settings on mount
@@ -38,12 +50,19 @@ export function SoundSettingsProvider({ children }: { children: React.ReactNode 
     try {
       const storedEnabled = localStorage.getItem(STORAGE_KEYS.soundEnabled)
       const storedVolume = localStorage.getItem(STORAGE_KEYS.volume)
+      const storedMusicEnabled = localStorage.getItem(STORAGE_KEYS.musicEnabled)
+      const storedMusicVolume = localStorage.getItem(STORAGE_KEYS.musicVolume)
       const storedReduced = localStorage.getItem(STORAGE_KEYS.reducedMotion)
 
       if (storedEnabled !== null) setSoundEnabled(storedEnabled === "true")
       if (storedVolume !== null) {
         const v = parseFloat(storedVolume)
         if (!Number.isNaN(v)) setVolume(Math.min(1, Math.max(0, v)))
+      }
+      if (storedMusicEnabled !== null) setMusicEnabled(storedMusicEnabled === "true")
+      if (storedMusicVolume !== null) {
+        const v = parseFloat(storedMusicVolume)
+        if (!Number.isNaN(v)) setMusicVolume(Math.min(1, Math.max(0, v)))
       }
       if (storedReduced !== null) {
         setReducedMotion(storedReduced === "true")
@@ -71,6 +90,18 @@ export function SoundSettingsProvider({ children }: { children: React.ReactNode 
 
   useEffect(() => {
     try {
+      localStorage.setItem(STORAGE_KEYS.musicEnabled, String(musicEnabled))
+    } catch {}
+  }, [musicEnabled])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.musicVolume, String(musicVolume))
+    } catch {}
+  }, [musicVolume])
+
+  useEffect(() => {
+    try {
       localStorage.setItem(STORAGE_KEYS.reducedMotion, String(reducedMotion))
     } catch {}
   }, [reducedMotion])
@@ -84,6 +115,15 @@ export function SoundSettingsProvider({ children }: { children: React.ReactNode 
     setVolume(clamped)
   }, [])
 
+  const setMusicEnabledSafe = useCallback((enabled: boolean) => {
+    setMusicEnabled(Boolean(enabled))
+  }, [])
+
+  const setMusicVolumeSafe = useCallback((vol: number) => {
+    const clamped = Math.min(1, Math.max(0, vol))
+    setMusicVolume(clamped)
+  }, [])
+
   const setReducedMotionSafe = useCallback((reduced: boolean) => {
     setReducedMotion(Boolean(reduced))
   }, [])
@@ -91,11 +131,15 @@ export function SoundSettingsProvider({ children }: { children: React.ReactNode 
   const value = useMemo<SoundSettings>(() => ({
     soundEnabled,
     volume,
+    musicEnabled,
+    musicVolume,
     reducedMotion,
     setSoundEnabled: setSoundEnabledSafe,
     setVolume: setVolumeSafe,
+    setMusicEnabled: setMusicEnabledSafe,
+    setMusicVolume: setMusicVolumeSafe,
     setReducedMotion: setReducedMotionSafe,
-  }), [soundEnabled, volume, reducedMotion, setSoundEnabledSafe, setVolumeSafe, setReducedMotionSafe])
+  }), [soundEnabled, volume, musicEnabled, musicVolume, reducedMotion, setSoundEnabledSafe, setVolumeSafe, setMusicEnabledSafe, setMusicVolumeSafe, setReducedMotionSafe])
 
   return (
     <SoundSettingsContext.Provider value={value}>
@@ -111,5 +155,3 @@ export function useSoundSettings(): SoundSettings {
   }
   return ctx
 }
-
-
