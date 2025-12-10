@@ -12,6 +12,7 @@ import { QuizProgressBar } from '@/components/ui/quiz-progress-bar'
 import { Button } from '@/components/ui/button'
 import { BrainBattleLoading } from '@/components/ui/brain-battle-loading'
 import { StudyNotesViewer } from '@/components/study-notes/study-notes-viewer'
+import { debounce } from '@/lib/utils/debounce'
 
 interface Room {
   id: string
@@ -203,7 +204,7 @@ export default function RoomPage() {
   }, [router, roomId])
 
   // Function to fetch room members (can be called from real-time updates)
-  const fetchRoomMembers = async (showLoading = false) => {
+  const fetchRoomMembers = useCallback(async (showLoading = false) => {
     try {
       if (showLoading) {
         setIsRefreshingMembers(true)
@@ -223,39 +224,37 @@ export default function RoomPage() {
         console.error('❌ [ROOM] Error fetching members:', membersError)
       } else {
         console.log('✅ [ROOM] Members fetched:', membersData?.length || 0)
-        // Fetch usernames separately for each member
-        const transformedMembers = await Promise.all(
-          (membersData || []).map(async (member: any) => {
-            let userData = { username: 'Unknown', email: '' };
-            
-            // Fetch user info directly from users table
-            try {
-              const { data: userInfo, error: userError } = await supabase
-                .from('users')
-                .select('username, email')
-                .eq('id', member.user_id)
-                .single();
-              
-              if (!userError && userInfo) {
-                userData = {
-                  username: userInfo.username || 'Unknown',
-                  email: userInfo.email || ''
-                };
-              } else {
-                console.warn(`⚠️ [ROOM] Could not fetch user info for ${member.user_id}:`, userError);
-              }
-            } catch (err) {
-              console.error('❌ [ROOM] Error fetching user info:', err);
-            }
-            
-            return {
-              ...member,
-              users: userData
-            };
-          })
-        );
         
-        setMembers(transformedMembers)
+        // 🚀 OPTIMIZATION #4: Batch all user info queries at once instead of individual fetches
+        const userIds = (membersData || []).map((m: any) => m.user_id).filter(Boolean)
+        
+        if (userIds.length > 0) {
+          // Single batch query for all user info
+          const { data: allUsers, error: usersError } = await supabase
+            .from('users')
+            .select('id, username, email')
+            .in('id', userIds)
+          
+          // Create a Map for O(1) lookups
+          const userMap = new Map(
+            (allUsers || []).map(u => [u.id, { username: u.username || 'Unknown', email: u.email || '' }])
+          )
+          
+          // Transform members using the batched user data
+          const transformedMembers = (membersData || []).map((member: any) => ({
+            ...member,
+            users: userMap.get(member.user_id) || { username: 'Unknown', email: '' }
+          }))
+          
+          setMembers(transformedMembers)
+        } else {
+          // No user IDs, transform members with default user data
+          const transformedMembers = (membersData || []).map((member: any) => ({
+            ...member,
+            users: { username: 'Unknown', email: '' }
+          }))
+          setMembers(transformedMembers)
+        }
       }
     } catch (err) {
       console.error('❌ [ROOM] Error in fetchRoomMembers:', err)
@@ -264,7 +263,15 @@ export default function RoomPage() {
         setIsRefreshingMembers(false)
       }
     }
-  }
+  }, [roomId, supabase])
+
+  // 🚀 OPTIMIZATION #6: Debounced member fetch to prevent rapid re-renders
+  const fetchRoomMembersDebounced = useMemo(
+    () => debounce(() => {
+      fetchRoomMembers(false)
+    }, 300),
+    [fetchRoomMembers]
+  )
 
   const fetchRoomData = async () => {
     try {
@@ -425,9 +432,9 @@ export default function RoomPage() {
           console.error('Error fetching username for notification:', error)
         }
         
-        // Refresh both members list and room data to update current_players count
-        fetchRoomMembers()
-        fetchRoomData()
+        // 🚀 OPTIMIZATION #6: Use debounced fetch to prevent rapid updates
+        fetchRoomMembersDebounced()
+        // Note: fetchRoomData() is not debounced as it's less frequent
       })
       .on('postgres_changes', {
         event: 'DELETE',
@@ -454,9 +461,8 @@ export default function RoomPage() {
           console.error('Error fetching username for notification:', error)
         }
         
-        // Refresh both members list and room data to update current_players count
-        fetchRoomMembers()
-        fetchRoomData()
+        // 🚀 OPTIMIZATION #6: Use debounced fetch to prevent rapid updates
+        fetchRoomMembersDebounced()
       })
       .on('postgres_changes', {
         event: 'UPDATE',
@@ -465,8 +471,8 @@ export default function RoomPage() {
         filter: `room_id=eq.${roomId}`
       }, (payload) => {
         console.log('🔄 [ROOM] Member status updated:', payload.new)
-        // Refresh members list for status changes (like ready state)
-        fetchRoomMembers()
+        // 🚀 OPTIMIZATION #6: Use debounced fetch to prevent rapid updates
+        fetchRoomMembersDebounced()
       })
       .on('postgres_changes', {
         event: 'UPDATE',

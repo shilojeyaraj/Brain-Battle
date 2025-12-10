@@ -487,66 +487,105 @@ export async function POST(request: NextRequest) {
     const verifiedScore = actualScore
     const verifiedDuration = actualDuration
 
-    // Store answer history for redo functionality (link to question_history)
+    // 🚀 OPTIMIZATION #1 & #2: Store answer history for redo functionality (parallelized and batched)
+    // Batch question history queries and parallelize answer history storage
     if (userId && questions.length > 0) {
       try {
         // Get documentId from request body if available
         const documentId = body.documentId || null
         
-        // Find question history IDs for each question
-        for (let i = 0; i < questions.length; i++) {
-          const question = questions[i]
-          const answer = answers[i]
-          
-          // Extract user answer properly
-          let userAnswer: number | string
-          if (question.type === "multiple_choice" || question.type === "mcq") {
-            const selectedIndex = answer.selectedIndex !== undefined ? answer.selectedIndex : answer.selected
-            userAnswer = typeof selectedIndex === 'number' ? selectedIndex : parseInt(String(selectedIndex)) || 0
-          } else {
-            userAnswer = answer.selectedAnswer || answer.textAnswer || answer.answer || ""
-          }
-          
-          // Use quiz evaluator for correctness
-          const fuzzyIsCorrect = isAnswerCorrect(question, userAnswer)
-          
-          // For open-ended, try LLM if fuzzy fails
-          let isCorrect = fuzzyIsCorrect
-          if (!fuzzyIsCorrect && question.type === "open_ended" && typeof userAnswer === "string" && userAnswer.trim().length > 0) {
-            try {
-              const llmEvaluation = await evaluateAnswerWithFallback(question, userAnswer, fuzzyIsCorrect)
-              isCorrect = llmEvaluation.isCorrect
-            } catch (error) {
-              // Fallback to fuzzy result
-              isCorrect = fuzzyIsCorrect
-            }
-          }
-          
-          const userAnswerText = question.options 
-            ? (question.options[typeof userAnswer === 'number' ? userAnswer : 0] || String(userAnswer))
-            : (String(userAnswer) || '')
-          
-          // Find the question in history by matching question text
-          const { data: questionHistory } = await adminClient
+        // 🚀 OPTIMIZATION #2: Batch all question history lookups at once
+        const questionTexts = questions.map((q: any) => q.question || q.q).filter(Boolean)
+        
+        if (questionTexts.length > 0) {
+          // Single batch query for all question histories
+          const { data: allQuestionHistory, error: historyError } = await adminClient
             .from('quiz_question_history')
-            .select('id')
+            .select('id, question_text, created_at')
             .eq('user_id', userId)
-            .eq('question_text', question.question || question.q)
+            .in('question_text', questionTexts)
             .order('created_at', { ascending: false })
-            .limit(1)
-            .single()
           
-          if (questionHistory?.id) {
-            await storeAnswerHistory(
-              userId,
-              questionHistory.id,
-              String(userAnswer),
-              isCorrect,
-              sessionData.id
-            )
+          // Create a Map for O(1) lookups (group by question_text, take most recent)
+          const historyMap = new Map<string, string>()
+          if (allQuestionHistory && !historyError) {
+            // Group by question_text and keep only the most recent for each
+            const groupedByText = new Map<string, any>()
+            allQuestionHistory.forEach((h: any) => {
+              const existing = groupedByText.get(h.question_text)
+              if (!existing || new Date(h.created_at) > new Date(existing.created_at)) {
+                groupedByText.set(h.question_text, h)
+              }
+            })
+            groupedByText.forEach((history: any, text: string) => {
+              historyMap.set(text, history.id)
+            })
           }
+          
+          // 🚀 OPTIMIZATION #1: Parallelize answer history processing
+          const answerHistoryPromises = questions.map(async (question: any, i: number) => {
+            const answer = answers[i]
+            const questionText = question.question || question.q
+            
+            // Skip if no question text or no history found
+            if (!questionText || !historyMap.has(questionText)) {
+              return null
+            }
+            
+            const historyId = historyMap.get(questionText)!
+            
+            // Extract user answer properly
+            let userAnswer: number | string
+            if (question.type === "multiple_choice" || question.type === "mcq") {
+              const selectedIndex = answer.selectedIndex !== undefined ? answer.selectedIndex : answer.selected
+              userAnswer = typeof selectedIndex === 'number' ? selectedIndex : parseInt(String(selectedIndex)) || 0
+            } else {
+              userAnswer = answer.selectedAnswer || answer.textAnswer || answer.answer || ""
+            }
+            
+            // Use quiz evaluator for correctness (reuse from earlier evaluation if available)
+            // Check if we already evaluated this in answersToInsert
+            const existingAnswer = answersToInsert.find((a, idx) => idx === i)
+            let isCorrect = existingAnswer?.is_correct ?? false
+            
+            // If not found, evaluate now
+            if (existingAnswer === undefined) {
+              const fuzzyIsCorrect = isAnswerCorrect(question, userAnswer)
+              isCorrect = fuzzyIsCorrect
+              
+              // For open-ended, try LLM if fuzzy fails
+              if (!fuzzyIsCorrect && question.type === "open_ended" && typeof userAnswer === "string" && userAnswer.trim().length > 0) {
+                try {
+                  const llmEvaluation = await evaluateAnswerWithFallback(question, userAnswer, fuzzyIsCorrect)
+                  isCorrect = llmEvaluation.isCorrect
+                } catch (error) {
+                  // Fallback to fuzzy result
+                  isCorrect = fuzzyIsCorrect
+                }
+              }
+            }
+            
+            // Store answer history
+            try {
+              await storeAnswerHistory(
+                userId,
+                historyId,
+                String(userAnswer),
+                isCorrect,
+                sessionData.id
+              )
+              return { success: true, questionIndex: i }
+            } catch (error) {
+              console.error(`❌ [QUIZ RESULTS] Error storing answer history for question ${i}:`, error)
+              return { success: false, questionIndex: i, error }
+            }
+          })
+          
+          // Wait for all answer histories to be stored in parallel
+          const results = await Promise.allSettled(answerHistoryPromises)
+          const successCount = results.filter(r => r.status === 'fulfilled' && r.value?.success).length
+          console.log(`✅ [QUIZ RESULTS] Stored answer history for ${successCount}/${questions.length} questions (parallelized)`)
         }
-        console.log("✅ [QUIZ RESULTS] Stored answer history for redo functionality")
       } catch (error) {
         console.error("❌ [QUIZ RESULTS] Error storing answer history:", error)
         // Don't fail the request if answer history storage fails
@@ -760,58 +799,83 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Update daily streak after quiz completion
-    try {
-      const { calculateUserStreak } = await import('@/lib/streak/streak-calculator')
-      await calculateUserStreak(userId)
-      console.log("✅ [QUIZ RESULTS] Updated daily streak")
-    } catch (error) {
-      console.error('❌ [QUIZ RESULTS] Error updating streak:', error)
-      // Don't fail the request if streak update fails
-    }
-
-    // Check and unlock achievements
-    let unlockedAchievements: any[] = []
-    try {
-      const { checkAndUnlockAchievements, checkCustomAchievements } = await import('@/lib/achievements/achievement-checker')
-      
-      // 🛡️ SECURITY: Use verified values from database
-      // Check for perfect score
-      const isPerfectScore = verifiedCorrectAnswers === verifiedTotalQuestions && verifiedTotalQuestions > 0
-      
-      // Determine if this is a multiplayer session
-      const isMultiplayer = sessionData.room_id !== null
-      const isWin = isMultiplayer && (verifiedScore >= 0.6) // 60% threshold for win
-      
-      // Check standard achievements (based on updated stats)
-      const unlockedStandard = await checkAndUnlockAchievements(userId)
-      
-      // Check custom achievements (perfect score, speed, multiplayer)
-      const unlockedCustom = await checkCustomAchievements(userId, {
-        isPerfectScore,
-        isMultiplayer,
-        isWin,
-      })
-      
-      unlockedAchievements = [...unlockedStandard, ...unlockedCustom]
-      
-      if (unlockedAchievements.length > 0) {
-        console.log(`✅ [QUIZ RESULTS] Unlocked ${unlockedAchievements.length} achievement(s)`)
-      }
-    } catch (error) {
-      console.error('❌ [QUIZ RESULTS] Error checking achievements:', error)
-      // Don't fail the request if achievement check fails
-    }
-
-    return NextResponse.json({ 
-      success: true, 
+    // 🚀 OPTIMIZATION #3: Parallelize post-quiz operations (non-blocking)
+    // Send response immediately, run post-quiz ops in background
+    const responseData = {
+      success: true,
       sessionId: sessionData.id,
       gameResultId: gameResult.id,
       xpEarned,
       oldXP: currentStats.xp || 0,
       newXP: newXP,
-      unlockedAchievements: unlockedAchievements.length > 0 ? unlockedAchievements : undefined
+      unlockedAchievements: undefined as any[] | undefined
+    }
+
+    // Run post-quiz operations in parallel (non-blocking)
+    Promise.allSettled([
+      // Update daily streak
+      (async () => {
+        try {
+          const { calculateUserStreak } = await import('@/lib/streak/streak-calculator')
+          await calculateUserStreak(userId)
+          console.log("✅ [QUIZ RESULTS] Updated daily streak (background)")
+        } catch (error) {
+          console.error('❌ [QUIZ RESULTS] Error updating streak:', error)
+        }
+      })(),
+      
+      // Check and unlock achievements
+      (async () => {
+        try {
+          const { checkAndUnlockAchievements, checkCustomAchievements } = await import('@/lib/achievements/achievement-checker')
+          
+          // 🛡️ SECURITY: Use verified values from database
+          // Check for perfect score
+          const isPerfectScore = verifiedCorrectAnswers === verifiedTotalQuestions && verifiedTotalQuestions > 0
+          
+          // Determine if this is a multiplayer session
+          const isMultiplayer = sessionData.room_id !== null
+          const isWin = isMultiplayer && (verifiedScore >= 0.6) // 60% threshold for win
+          
+          // Check standard achievements (based on updated stats) - parallel
+          const [unlockedStandard, unlockedCustom] = await Promise.all([
+            checkAndUnlockAchievements(userId),
+            checkCustomAchievements(userId, {
+              isPerfectScore,
+              isMultiplayer,
+              isWin,
+            })
+          ])
+          
+          const unlockedAchievements = [...unlockedStandard, ...unlockedCustom]
+          
+          if (unlockedAchievements.length > 0) {
+            console.log(`✅ [QUIZ RESULTS] Unlocked ${unlockedAchievements.length} achievement(s) (background)`)
+            // Note: Achievements won't be in initial response, but will be updated via real-time or next fetch
+          }
+          
+          return unlockedAchievements
+        } catch (error) {
+          console.error('❌ [QUIZ RESULTS] Error checking achievements:', error)
+          return []
+        }
+      })()
+    ]).then((results) => {
+      // Try to get achievements from the second result if available
+      const achievementResult = results[1]
+      if (achievementResult.status === 'fulfilled' && achievementResult.value) {
+        const achievements = achievementResult.value as any[]
+        if (achievements.length > 0) {
+          // Could dispatch event or update via WebSocket if needed
+          console.log(`✅ [QUIZ RESULTS] Background achievement check completed: ${achievements.length} achievements`)
+        }
+      }
+    }).catch((error) => {
+      console.error('❌ [QUIZ RESULTS] Background post-quiz operations error:', error)
     })
+
+    // Return response immediately (post-quiz ops run in background)
+    return NextResponse.json(responseData)
 
   } catch (error) {
     console.error("❌ [QUIZ RESULTS] Error saving quiz results:", error)

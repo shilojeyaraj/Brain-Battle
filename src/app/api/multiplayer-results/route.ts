@@ -45,19 +45,51 @@ export async function POST(request: NextRequest) {
 
     console.log('🏆 [MULTIPLAYER RESULTS] Processing results for session:', session_id)
 
-    // Verify the session exists and get quiz details
-    const { data: session, error: sessionError } = await supabase
-      .from('quiz_sessions')
-      .select(`
-        id,
-        room_id,
-        total_questions,
-        time_limit,
-        rooms!inner(id, difficulty)
-      `)
-      .eq('id', session_id)
-      .single()
+    const userIds = player_results.map(p => p.user_id)
 
+    // 🚀 OPTIMIZATION #5: Parallelize initial database queries
+    const [sessionResult, profilesResult, statsResult, duplicateResult, answersResult] = await Promise.all([
+      // Verify the session exists and get quiz details
+      supabase
+        .from('quiz_sessions')
+        .select(`
+          id,
+          room_id,
+          total_questions,
+          time_limit,
+          rooms!inner(id, difficulty)
+        `)
+        .eq('id', session_id)
+        .single(),
+      
+      // Get user profiles for display names
+      supabase
+        .from('profiles')
+        .select('user_id, display_name')
+        .in('user_id', userIds),
+      
+      // Fetch all player stats at once (fix N+1 query)
+      supabase
+        .from('player_stats')
+        .select('user_id, win_streak')
+        .in('user_id', userIds),
+      
+      // Check for duplicate session completions
+      supabase
+        .from('game_results')
+        .select('user_id, session_id, xp_earned, completed_at')
+        .eq('session_id', session_id)
+        .in('user_id', userIds),
+      
+      // Fetch all quiz_answers for this session to verify player results
+      supabase
+        .from('quiz_answers')
+        .select('user_id, question_id, is_correct, submitted_at')
+        .eq('session_id', session_id)
+    ])
+
+    // Handle session result
+    const { data: session, error: sessionError } = sessionResult
     if (sessionError || !session) {
       console.error('❌ [MULTIPLAYER RESULTS] Session not found:', sessionError)
       return NextResponse.json(
@@ -66,33 +98,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Sort players by score to determine rankings
-    const sortedResults = [...player_results].sort((a, b) => b.score - a.score)
-    
-    // Create rankings (handle ties)
-    const rankings = new Map<string, number>()
-    let currentRank = 1
-    
-    for (let i = 0; i < sortedResults.length; i++) {
-      const player = sortedResults[i]
-      
-      // Check if this score is tied with previous players
-      if (i > 0 && sortedResults[i-1].score !== player.score) {
-        currentRank = i + 1
-      }
-      
-      rankings.set(player.user_id, currentRank)
-    }
-
-    console.log('📊 [MULTIPLAYER RESULTS] Rankings determined:', rankings)
-
-    // Get user profiles for display names
-    const userIds = player_results.map(p => p.user_id)
-    const { data: profiles, error: profilesError } = await supabase
-      .from('profiles')
-      .select('user_id, display_name')
-      .in('user_id', userIds)
-
+    // Handle profiles result
+    const { data: profiles, error: profilesError } = profilesResult
     if (profilesError) {
       console.error('❌ [MULTIPLAYER RESULTS] Error fetching profiles:', profilesError)
       return NextResponse.json(
@@ -100,31 +107,17 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       )
     }
-
     const profileMap = new Map(profiles?.map(p => [p.user_id, p.display_name]) || [])
 
-    // 🚀 OPTIMIZATION: Fetch all player stats at once (fix N+1 query)
-    const { data: allPlayerStats, error: statsError } = await supabase
-      .from('player_stats')
-      .select('user_id, win_streak')
-      .in('user_id', userIds)
-
+    // Handle stats result
+    const { data: allPlayerStats, error: statsError } = statsResult
     if (statsError) {
       console.error('❌ [MULTIPLAYER RESULTS] Error fetching player stats:', statsError)
     }
-
     const statsMap = new Map(allPlayerStats?.map(s => [s.user_id, s.win_streak]) || [])
 
-    // Import XP calculator once (not in loop)
-    const { calculateXP } = await import('@/lib/xp-calculator')
-
-    // 🛡️ XP FARMING PREVENTION: Check for duplicate session completions
-    const { data: existingResults, error: duplicateCheckError } = await supabase
-      .from('game_results')
-      .select('user_id, session_id, xp_earned, completed_at')
-      .eq('session_id', session_id)
-      .in('user_id', userIds)
-
+    // Handle duplicate check result
+    const { data: existingResults } = duplicateResult
     const duplicateMap = new Map<string, any>()
     if (existingResults && existingResults.length > 0) {
       existingResults.forEach((result: any) => {
@@ -132,12 +125,8 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // 🛡️ SECURITY FIX #6: Validate multiplayer results from database answers
-    // Fetch all quiz_answers for this session to verify player results
-    const { data: allSessionAnswers, error: answersError } = await supabase
-      .from('quiz_answers')
-      .select('user_id, question_id, is_correct, submitted_at')
-      .eq('session_id', session_id)
+    // Handle answers result
+    const { data: allSessionAnswers, error: answersError } = answersResult
 
     if (answersError) {
       console.error('❌ [MULTIPLAYER RESULTS] Error fetching session answers:', answersError)
@@ -168,6 +157,29 @@ export async function POST(request: NextRequest) {
         }
       })
     }
+
+    // Import XP calculator once (not in loop)
+    const { calculateXP } = await import('@/lib/xp-calculator')
+
+    // Sort players by score to determine rankings
+    const sortedResults = [...player_results].sort((a, b) => b.score - a.score)
+    
+    // Create rankings (handle ties)
+    const rankings = new Map<string, number>()
+    let currentRank = 1
+    
+    for (let i = 0; i < sortedResults.length; i++) {
+      const player = sortedResults[i]
+      
+      // Check if this score is tied with previous players
+      if (i > 0 && sortedResults[i-1].score !== player.score) {
+        currentRank = i + 1
+      }
+      
+      rankings.set(player.user_id, currentRank)
+    }
+
+    console.log('📊 [MULTIPLAYER RESULTS] Rankings determined:', rankings)
 
     // Process each player's results
     const gameResults = []
