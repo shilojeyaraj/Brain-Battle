@@ -10,34 +10,25 @@ export default function AdminPage() {
   const [authenticated, setAuthenticated] = useState(false)
 
   useEffect(() => {
-    // Check if admin is authenticated
     const checkAuth = async () => {
       try {
-        const response = await fetch('/api/admin/check', {
-          credentials: 'include'
-        })
-        
+        const response = await fetch('/api/admin/check', { credentials: 'include' })
         if (!response.ok) {
           router.push('/admin/login')
           return
         }
-        
         const data = await response.json()
-        
         if (data.authenticated) {
           setAuthenticated(true)
         } else {
           router.push('/admin/login')
         }
       } catch (error) {
-        // Don't show errors, just redirect to login
-        console.error('Error checking admin auth:', error)
         router.push('/admin/login')
       } finally {
         setCheckingAuth(false)
       }
     }
-
     checkAuth()
   }, [router])
 
@@ -49,9 +40,7 @@ export default function AdminPage() {
     )
   }
 
-  if (!authenticated) {
-    return null // Will redirect to login
-  }
+  if (!authenticated) return null
 
   return <AdminDashboard />
 }

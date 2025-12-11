@@ -44,6 +44,18 @@ export async function extractPDFTextAndImages(
     const { getPdfjsLib, SERVERLESS_PDF_OPTIONS } = await import('@/lib/pdfjs-config')
     const pdfjsLib = await getPdfjsLib()
 
+    // Belt-and-suspenders: ensure worker is disabled right here too (prod-safe)
+    if (pdfjsLib?.GlobalWorkerOptions) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = ''
+    }
+    if (typeof pdfjsLib?.setWorkerFetch === 'function') {
+      try {
+        pdfjsLib.setWorkerFetch(false)
+      } catch (e) {
+        // ignore
+      }
+    }
+
     // 🚀 OPTIMIZATION: Load PDF once, extract both text and images
     const loadingTask = pdfjsLib.getDocument({
       data: new Uint8Array(buffer),

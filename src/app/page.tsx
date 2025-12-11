@@ -2,7 +2,33 @@
 
 import { Button } from "@/components/ui/button"
 import { motion } from "@/components/ui/motion"
-import { Brain, Users, Zap, Trophy, Crown, Loader2, TrendingUp, Upload, Clock, Award, BookOpen, Gamepad2, Sparkles } from "lucide-react"
+import {
+  Brain,
+  Users,
+  Zap,
+  Trophy,
+  Crown,
+  Loader2,
+  TrendingUp,
+  Upload,
+  Clock,
+  Award,
+  BookOpen,
+  Gamepad2,
+  Sparkles,
+  Play,
+  ShieldCheck,
+  Globe2,
+  Lock,
+  Flame,
+} from "lucide-react"
+import {
+  UploadSimple,
+  Sparkle,
+  UsersThree,
+  Lightning,
+  ChartLineUp,
+} from "@phosphor-icons/react"
 import Link from "next/link"
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
@@ -64,17 +90,6 @@ const features = [
   },
 ]
 
-interface LeaderboardPlayer {
-  rank: number
-  user_id: string
-  username: string
-  xp: number
-  level: number
-  wins: number
-  trend: 'up' | 'down'
-  avatar_url?: string
-}
-
 interface FeatureCard {
   title: string
   subtitle: string
@@ -88,45 +103,56 @@ const featureCards: FeatureCard[] = [
     title: "Battle your Friends",
     subtitle: "VS",
     icon: Users,
-    gradient: "from-blue-500/20 to-blue-600/10",
-    borderColor: "border-blue-400/30"
+    gradient: "from-blue-500/30 to-blue-600/20",
+    borderColor: "border-blue-400/40"
   },
   {
     title: "Level Up Your Study Game",
     subtitle: "+500 XP",
     icon: TrendingUp,
-    gradient: "from-orange-500/20 to-orange-600/10",
-    borderColor: "border-orange-400/30"
+    gradient: "from-orange-500/30 to-orange-600/20",
+    borderColor: "border-orange-400/40"
   },
   {
     title: "AI-Powered Questions",
     subtitle: "Smart",
     icon: Brain,
-    gradient: "from-purple-500/20 to-purple-600/10",
-    borderColor: "border-purple-400/30"
+    gradient: "from-purple-500/30 to-purple-600/20",
+    borderColor: "border-purple-400/40"
   },
   {
     title: "Earn Achievements",
     subtitle: "🏆",
     icon: Trophy,
-    gradient: "from-yellow-500/20 to-yellow-600/10",
-    borderColor: "border-yellow-400/30"
+    gradient: "from-yellow-500/30 to-yellow-600/20",
+    borderColor: "border-yellow-400/40"
   },
   {
     title: "Master Any Subject",
     subtitle: "Study",
     icon: BookOpen,
-    gradient: "from-green-500/20 to-green-600/10",
-    borderColor: "border-green-400/30"
+    gradient: "from-emerald-500/30 to-teal-500/20",
+    borderColor: "border-emerald-400/40"
   },
   {
     title: "Climb the Leaderboard",
     subtitle: "Rank #1",
     icon: Crown,
-    gradient: "from-pink-500/20 to-pink-600/10",
-    borderColor: "border-pink-400/30"
+    gradient: "from-pink-500/30 to-pink-600/20",
+    borderColor: "border-pink-400/40"
   }
 ]
+
+interface LeaderboardPlayer {
+  rank: number
+  user_id: string
+  username: string
+  xp: number
+  level: number
+  wins: number
+  trend: 'up' | 'down'
+  avatar_url?: string
+}
 
 export default function HomePage() {
   const router = useRouter()
@@ -169,7 +195,7 @@ export default function HomePage() {
   useEffect(() => {
     const cardInterval = setInterval(() => {
       setCurrentCardIndex((prev) => (prev + 1) % featureCards.length)
-    }, 3000) // Change card every 3 seconds
+    }, 3200)
 
     return () => clearInterval(cardInterval)
   }, [])
@@ -187,6 +213,14 @@ export default function HomePage() {
   
   // Limit to top 3 players only
   const displayPlayers = (leaderboardPlayers.length > 0 ? leaderboardPlayers : placeholderPlayers).slice(0, 3)
+  const demoProgress = {
+    level: 12,
+    currentXP: 8420,
+    nextLevelXP: 10000,
+    streak: 5,
+    winRate: 0.72,
+  }
+  const demoProgressPct = Math.min(Math.round((demoProgress.currentXP / demoProgress.nextLevelXP) * 100), 100)
   
   // FAQ data for schema markup
   const homepageFAQs = [
@@ -219,16 +253,31 @@ export default function HomePage() {
       <OrganizationSchema />
       <FAQSchema faqs={homepageFAQs} />
       
-      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-980 to-slate-900">
       {/* Animated Background Elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl animate-float" />
-        <div
-          className="absolute -bottom-40 -left-40 w-80 h-80 bg-orange-500/20 rounded-full blur-3xl animate-float"
-          style={{ animationDelay: "1s" }}
-        />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 w-96 h-96 bg-blue-400/10 rounded-full blur-3xl animate-pulse" />
-      </div>
+        <div className="absolute inset-0 overflow-hidden">
+          <div className="absolute -top-32 -right-32 w-96 h-96 bg-blue-500/15 rounded-full blur-3xl animate-float" />
+          <div
+            className="absolute -bottom-32 -left-32 w-96 h-96 bg-orange-500/12 rounded-full blur-3xl animate-float"
+            style={{ animationDelay: "1s" }}
+          />
+          <div
+            className="absolute inset-0 opacity-[0.12] mix-blend-overlay"
+            style={{
+              backgroundImage:
+                "linear-gradient(18deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.0) 35%, rgba(255,255,255,0.02) 70%, rgba(255,255,255,0.0) 100%), linear-gradient(198deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.0) 30%, rgba(255,255,255,0.015) 65%, rgba(255,255,255,0.0) 100%)",
+              backgroundSize: "220% 220%, 200% 200%",
+              backgroundPosition: "center",
+            }}
+          />
+          <div
+            className="absolute inset-0 opacity-[0.06]"
+            style={{
+              backgroundImage:
+                "repeating-linear-gradient(22deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 1px, rgba(255,255,255,0) 12px, rgba(255,255,255,0) 22px)",
+            }}
+          />
+        </div>
 
       {/* Content */}
       <div className="relative z-10">
@@ -291,7 +340,7 @@ export default function HomePage() {
         </header>
 
         {/* Hero Section */}
-        <main className="flex flex-col md:flex-row items-start md:items-center justify-between min-h-[calc(100vh-80px)] px-6 py-20 relative gap-8">
+        <main className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_400px] items-start justify-between min-h-[calc(100vh-80px)] px-6 py-20 relative gap-10 max-w-7xl mx-auto">
           <motion.div className="max-w-2xl md:max-w-3xl text-left md:text-left" variants={container} initial="hidden" animate="show">
             {/* Badge */}
             <motion.div
@@ -304,12 +353,10 @@ export default function HomePage() {
 
             {/* Main Headline */}
             <motion.h1 variants={item} className="text-5xl md:text-6xl lg:text-7xl font-black mb-6 leading-tight text-balance">
-              <span className="bg-gradient-to-r from-blue-300 via-blue-200 to-blue-100 bg-clip-text text-transparent inline-block">
-                AI-Powered Study
-              </span>
+              <span className="text-white inline-block">Upload a PDF.</span>
               <br />
-              <span className="bg-gradient-to-r from-orange-300 to-orange-400 bg-clip-text text-transparent inline-block">
-                Battles!
+              <span className="bg-gradient-to-r from-blue-300 to-orange-300 bg-clip-text text-transparent inline-block">
+                Quiz-ready in 60 seconds.
               </span>
             </motion.h1>
 
@@ -318,8 +365,7 @@ export default function HomePage() {
               variants={item}
               className="text-lg md:text-xl text-blue-100/80 mb-12 max-w-2xl leading-relaxed"
             >
-              Upload your study materials, generate personalized questions with AI, and compete with friends in
-              real-time battles. Transform any subject into an engaging learning experience!
+              AI builds the quiz, friends join with a code, and XP tracks who’s winning. No manual flashcards, no waiting.
             </motion.p>
 
             {/* CTA Buttons */}
@@ -327,209 +373,205 @@ export default function HomePage() {
               <Link href="/signup">
                 <Button
                   size="lg"
-                  className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-lg h-14 px-8 font-black border-2 border-blue-400 animate-pulse-ring"
+                  className="bg-blue-500 hover:bg-blue-600 text-white text-lg h-14 px-8 font-black border-2 border-blue-400 shadow-lg shadow-blue-900/50"
                 >
-                  <Zap className="w-5 h-5 mr-2" />
-                  Start Your Battle
+                  <Lightning className="w-5 h-5 mr-2" weight="fill" />
+                  Start free
                 </Button>
               </Link>
               <Button
                 size="lg"
                 variant="outline"
                 onClick={scrollToHowItWorks}
-                className="border-4 border-orange-400 text-orange-300 hover:bg-orange-500/10 text-lg h-14 px-8 bg-transparent font-black"
+                className="border-2 border-orange-300 text-orange-200 hover:bg-orange-500/10 text-lg h-14 px-8 bg-transparent font-black"
               >
-                How It Works
+                See how it works
               </Button>
+            </motion.div>
+
+            {/* Demo-ready credibility strip */}
+            <motion.div variants={item} className="mt-8 w-full max-w-3xl space-y-4">
+              <div className="rounded-2xl border-2 border-blue-400/25 bg-slate-900/80 p-4 shadow-lg shadow-blue-950/30">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Award className="w-5 h-5 text-blue-300" />
+                    <span className="text-sm font-black text-white">Demo Progress</span>
+                  </div>
+                  <span className="text-xs font-bold text-blue-200/80">Lv {demoProgress.level}</span>
+                </div>
+                <div className="h-3 w-full rounded-full bg-slate-700/80 border border-slate-600/60 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-blue-500 via-blue-400 to-orange-400"
+                    style={{ width: `${demoProgressPct}%` }}
+                  />
+                </div>
+                <div className="mt-3 flex items-center justify-between text-xs font-bold text-blue-100/80">
+                  <span>{demoProgress.currentXP.toLocaleString()} XP</span>
+                  <span>{demoProgressPct}% to next level</span>
+                </div>
+                <div className="mt-3 flex items-center gap-3 text-[11px] text-blue-100/70 font-bold">
+                  <span className="px-2 py-1 rounded-full bg-blue-500/20 border border-blue-400/40">Streak {demoProgress.streak}d</span>
+                  <span className="px-2 py-1 rounded-full bg-orange-500/15 border border-orange-400/40">Win rate {(demoProgress.winRate * 100).toFixed(0)}%</span>
+                </div>
+              </div>
             </motion.div>
           </motion.div>
 
-          {/* Horizontal Carousel of Feature Cards - Right side under leaderboard */}
+          {/* Right rail: demo video, leaderboard, streak, carousel */}
           <motion.div
-            className="absolute top-[calc(10%+380px)] right-4 md:right-10 opacity-90 md:opacity-100 hidden lg:block"
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 1.1 }}
+            className="w-full lg:w-[420px] xl:w-[460px] flex flex-col gap-4"
+            initial={{ opacity: 0, x: 40 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.6, delay: 0.5 }}
           >
-            <div className="relative w-64 md:w-[360px] lg:w-[420px] xl:w-[480px] h-[130px] md:h-[140px] lg:h-[170px] overflow-hidden">
-              <div className="relative w-full h-full">
+            {/* Demo video holder */}
+            <div className="rounded-2xl border-2 border-blue-400/30 bg-slate-900/80 shadow-2xl p-4 backdrop-blur overflow-hidden">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <p className="text-sm text-blue-100/70 font-semibold">Demo preview</p>
+                  <h3 className="text-lg font-black text-white">See Brain Battle in action</h3>
+                </div>
+                <div className="w-10 h-10 rounded-full bg-blue-500/20 border border-blue-400/40 flex items-center justify-center">
+                  <Play className="w-4 h-4 text-blue-200" />
+                </div>
+              </div>
+              <div className="relative w-full overflow-hidden rounded-xl border border-slate-700/60 bg-slate-800/70 aspect-video">
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/15 via-transparent to-orange-400/10 animate-pulse" />
+                <div className="absolute inset-3 rounded-lg border border-slate-600/50 bg-slate-900/60 flex items-center justify-center">
+                  <span className="text-sm font-semibold text-blue-100/80">Video placeholder</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Climb leaderboard + live leaderboard */}
+            <div className="bg-gradient-to-br from-slate-850 to-slate-900 rounded-2xl border-2 border-orange-300/40 shadow-2xl p-4 backdrop-blur space-y-3">
+              <div className="flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-orange-200" />
+                <div>
+                  <p className="text-xs text-orange-100/70 font-semibold">Climb the leaderboard</p>
+                  <h3 className="text-base font-black text-white">Battle, earn XP, rank up</h3>
+                </div>
+              </div>
+              <div className="h-3 w-full rounded-full bg-slate-800 border border-slate-700 overflow-hidden">
+                <motion.div
+                  className="h-full rounded-full bg-gradient-to-r from-blue-500 via-blue-300 to-orange-400"
+                  initial={{ width: "0%" }}
+                  animate={{ width: `${demoProgressPct}%` }}
+                  transition={{ duration: 1.2, ease: "easeOut" }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-xs text-blue-100/80 font-semibold">
+                <span>{demoProgress.currentXP.toLocaleString()} XP</span>
+                <span>{demoProgressPct}% to next level</span>
+              </div>
+              <div className="space-y-2">
+                {leaderboardLoading ? (
+                  [...Array(3)].map((_, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-3 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/50"
+                    >
+                      <div className="w-9 h-9 rounded-full bg-slate-600/50 animate-pulse" />
+                      <div className="flex-1 space-y-1">
+                        <div className="h-3 w-24 bg-slate-600/50 rounded" />
+                        <div className="h-2 w-16 bg-slate-600/50 rounded" />
+                      </div>
+                    </div>
+                  ))
+                ) : displayPlayers.length === 0 ? (
+                  <div className="text-center py-3 text-sm text-blue-100/70">No players yet. Be the first!</div>
+                ) : (
+                  displayPlayers.map((player) => (
+                    <div
+                      key={player.rank}
+                      className="flex items-center gap-3 p-2.5 rounded-xl bg-slate-800/60 border border-slate-700/50"
+                    >
+                      <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-400 to-orange-400 flex items-center justify-center text-white font-black text-sm border border-white/20">
+                        {player.rank === 1 ? <Crown className="w-4 h-4" /> : player.rank}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-bold text-white truncate">{player.username}</div>
+                        <div className="text-[11px] text-blue-200/70">{player.xp.toLocaleString()} XP</div>
+                      </div>
+                      <div className={`text-xs font-bold ${player.trend === "up" ? "text-green-400" : "text-red-400"}`}>
+                        {player.trend === "up" ? "▲" : "▼"}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="mt-2">
+                <Link href="/signup">
+                  <Button className="w-full bg-blue-500 hover:bg-blue-600 text-white text-sm h-10 font-bold border border-blue-300">
+                    Join the Battle
+                  </Button>
+                </Link>
+              </div>
+            </div>
+
+            {/* Streak card */}
+            <div className="rounded-2xl border-2 border-amber-300/40 bg-gradient-to-br from-slate-850 to-slate-900 shadow-2xl p-4 backdrop-blur">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <p className="text-xs text-amber-100/80 font-semibold">Keep your streak</p>
+                  <h3 className="text-base font-black text-white">Multiply your points daily</h3>
+                </div>
+                <div className="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-300/50 flex items-center justify-center animate-pulse">
+                  <Flame className="w-5 h-5 text-amber-200" />
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="relative w-14 h-14 rounded-full bg-gradient-to-br from-amber-500/40 to-orange-500/20 border border-amber-300/40 flex items-center justify-center shadow-inner shadow-amber-900/50">
+                  <span className="text-lg font-black text-white">5</span>
+                  <div className="absolute inset-0 rounded-full border border-amber-200/30 animate-ping" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm text-amber-100/90 font-semibold">5 day streak</p>
+                  <p className="text-xs text-amber-100/70">Stay hot to boost XP multipliers.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Feature Carousel */}
+            <div className="relative rounded-2xl border-2 border-slate-700/50 bg-slate-900/85 backdrop-blur shadow-xl overflow-hidden">
+              <div className="relative h-[170px]">
                 {featureCards.map((card, index) => {
                   const Icon = card.icon
                   const isActive = index === currentCardIndex
-                  
                   return (
                     <motion.div
-                      key={index}
-                      className={`absolute top-0 left-0 w-full h-full bg-gradient-to-br ${card.gradient} rounded-2xl border-4 ${card.borderColor} backdrop-blur`}
+                      key={card.title}
+                      className={`absolute inset-0 bg-gradient-to-br ${card.gradient} rounded-2xl border ${card.borderColor} backdrop-blur px-4 py-3 flex flex-col`}
                       initial={false}
                       animate={{
-                        x: isActive ? 0 : index > currentCardIndex ? '100%' : '-100%',
+                        x: isActive ? 0 : index > currentCardIndex ? "100%" : "-100%",
                         opacity: isActive ? 1 : 0,
+                        scale: isActive ? 1 : 0.98,
                       }}
-                      transition={{
-                        duration: 0.6,
-                        ease: "easeInOut"
-                      }}
-                      style={{
-                        zIndex: isActive ? 10 : 5 - Math.abs(index - currentCardIndex)
-                      }}
+                      transition={{ duration: 0.6, ease: "easeInOut" }}
                     >
-                      <div className="flex flex-col h-full p-3 md:p-4">
-                        <div className="text-sm md:text-base font-bold text-white mb-2">{card.title}</div>
-                        <div className="flex-1 flex flex-col items-center justify-center gap-2">
-                          {card.subtitle.includes("🏆") || card.subtitle.includes("#") ? (
-                            <div className="text-3xl md:text-4xl lg:text-5xl font-black text-transparent bg-gradient-to-r from-blue-300 to-blue-200 bg-clip-text">
-                              {card.subtitle}
-                            </div>
-                          ) : card.subtitle === "VS" ? (
-                            <div className="text-4xl md:text-5xl lg:text-6xl font-black text-transparent bg-gradient-to-r from-blue-300 to-blue-200 bg-clip-text">
-                              {card.subtitle}
-                            </div>
-                          ) : (
-                            <>
-                              <Icon className="w-8 h-8 md:w-10 md:h-10 lg:w-11 lg:h-11 text-blue-300/80" />
-                              <div className="text-2xl md:text-3xl lg:text-4xl font-black text-transparent bg-gradient-to-r from-blue-300 to-blue-200 bg-clip-text">
-                                {card.subtitle}
-                              </div>
-                            </>
-                          )}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Icon className="w-5 h-5 text-white" />
+                          <span className="text-sm font-black text-white">{card.title}</span>
                         </div>
+                        <span className="text-xs text-white/80">{index + 1}/{featureCards.length}</span>
+                      </div>
+                      <div className="flex-1 flex items-center justify-center">
+                        <div className="text-3xl md:text-4xl font-black text-white drop-shadow">{card.subtitle}</div>
                       </div>
                     </motion.div>
                   )
                 })}
               </div>
-              
-              {/* Card indicators */}
-              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5 z-50">
-                {featureCards.map((_, index) => (
-                  <motion.div
-                    key={index}
-                    className={`h-1.5 rounded-full ${
-                      index === currentCardIndex ? 'bg-blue-400 w-6' : 'bg-blue-400/30 w-1.5'
-                    }`}
-                    animate={{
-                      width: index === currentCardIndex ? 24 : 6,
-                      opacity: index === currentCardIndex ? 1 : 0.3
-                    }}
-                    transition={{ duration: 0.3 }}
+              <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                {featureCards.map((_, idx) => (
+                  <div
+                    key={idx}
+                    className={`h-1.5 rounded-full transition-all ${idx === currentCardIndex ? "bg-white w-6" : "bg-white/30 w-2"}`}
                   />
                 ))}
               </div>
-            </div>
-          </motion.div>
-
-          {/* Animated Leaderboard */}
-          <motion.div
-            className="absolute top-[10%] right-4 md:right-10 opacity-90 md:opacity-100 hidden lg:block"
-            initial={{ opacity: 0, x: 50 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.8, delay: 0.9 }}
-          >
-            <div className="w-64 md:w-[360px] lg:w-[420px] xl:w-[480px] bg-gradient-to-br from-slate-800/95 to-slate-900/95 rounded-2xl border-4 border-blue-400/30 backdrop-blur-lg p-3 md:p-4 shadow-2xl mb-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Trophy className="w-5 h-5 text-yellow-400" />
-                <h3 className="text-sm md:text-base font-black text-white">Live Leaderboard</h3>
-                {leaderboardLoading ? (
-                  <div className="ml-auto flex items-center gap-1.5">
-                    <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
-                    <span className="text-xs text-blue-300/80 font-bold">Reloading...</span>
-                  </div>
-                ) : (
-                  <TrendingUp className="w-4 h-4 text-green-400 ml-auto animate-pulse" />
-                )}
-              </div>
-              
-              <div className="space-y-2">
-                {leaderboardLoading ? (
-                  <>
-                    {/* Loading message */}
-                    <div className="text-center py-2 mb-2">
-                      <p className="text-xs text-blue-300/70 font-bold animate-pulse">Refreshing leaderboard...</p>
-                    </div>
-                    {/* Loading skeleton (top 3 only) */}
-                    {[...Array(3)].map((_, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center gap-2 p-2 rounded-lg bg-slate-700/30 border-2 border-slate-600/30"
-                      >
-                        <div className="w-8 h-8 rounded-full bg-slate-600/50 flex items-center justify-center">
-                          <Loader2 className="w-4 h-4 text-blue-300/50 animate-spin" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="h-3 bg-slate-600/50 rounded w-20 mb-1"></div>
-                          <div className="h-2 bg-slate-600/50 rounded w-16"></div>
-                        </div>
-                      </div>
-                    ))}
-                  </>
-                ) : displayPlayers.length === 0 ? (
-                  <div className="text-center py-4 text-sm text-blue-100/70">
-                    No players yet. Be the first!
-                  </div>
-                ) : (
-                  displayPlayers.map((player, idx) => {
-                    // Determine color based on rank
-                    const rankColors = [
-                      "from-yellow-400 to-yellow-500", // Rank 1
-                      "from-blue-400 to-blue-500",     // Rank 2
-                      "from-orange-400 to-orange-500", // Rank 3
-                      "from-purple-400 to-purple-500", // Rank 4
-                      "from-green-400 to-green-500",   // Rank 5
-                    ]
-                    const color = rankColors[player.rank - 1] || "from-slate-400 to-slate-500"
-
-                    return (
-                      <motion.div
-                        key={player.rank}
-                        className="flex items-center gap-3 p-2.5 rounded-lg bg-slate-700/30 border-2 border-slate-600/30"
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ duration: 0.5, delay: 1 + idx * 0.1 }}
-                        whileHover={{ scale: 1.05, borderColor: "rgba(59, 130, 246, 0.5)" }}
-                      >
-                        <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${color} flex items-center justify-center font-black text-sm text-white border-2 border-white/30`}>
-                          {player.rank === 1 ? <Crown className="w-5 h-5" /> : player.rank}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm md:text-base font-bold text-white truncate">{player.username}</div>
-                          <div className="text-xs md:text-sm text-blue-300/70">{player.xp.toLocaleString()} XP</div>
-                        </div>
-                        <motion.div
-                          className={`flex items-center gap-1 ${
-                            player.trend === "up" ? "text-green-400" : "text-red-400"
-                          }`}
-                          animate={{
-                            y: player.trend === "up" ? [-2, 0, -2] : [2, 0, 2],
-                          }}
-                          transition={{
-                            duration: 1.5,
-                            repeat: Infinity,
-                            delay: idx * 0.2,
-                          }}
-                        >
-                          <TrendingUp
-                            className={`w-5 h-5 ${player.trend === "down" ? "rotate-180" : ""}`}
-                          />
-                        </motion.div>
-                      </motion.div>
-                    )
-                  })
-                )}
-              </div>
-              
-              <motion.div
-                className="mt-4 pt-3 border-t-2 border-slate-600/30"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.5, delay: 1.5 }}
-              >
-                <Link href="/signup">
-                  <Button className="w-full bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-sm h-10 font-bold border-2 border-blue-400">
-                    Join the Battle
-                  </Button>
-                </Link>
-              </motion.div>
             </div>
           </motion.div>
 
@@ -574,32 +616,23 @@ export default function HomePage() {
                 step: "1",
                 title: "Upload Your PDF",
                 description: "Add your study materials, textbooks, or lecture notes. Our AI supports PDFs up to 5MB.",
-                icon: Upload,
-                color: "from-blue-500 to-blue-600",
               },
               {
                 step: "2",
                 title: "AI Generates Questions",
                 description: "Our AI analyzes your document and creates personalized quiz questions in seconds.",
-                icon: Sparkles,
-                color: "from-orange-500 to-orange-600",
               },
               {
                 step: "3",
                 title: "Compete with Friends",
                 description: "Create a room, invite friends, and battle in real-time quizzes. See who knows more!",
-                icon: Users,
-                color: "from-green-500 to-green-600",
               },
               {
                 step: "4",
                 title: "Level Up & Win",
                 description: "Earn XP, unlock achievements, climb leaderboards, and build your study streak!",
-                icon: TrendingUp,
-                color: "from-purple-500 to-purple-600",
               },
             ].map((step, idx) => {
-              const Icon = step.icon
               return (
                 <motion.div
                   key={idx}
@@ -615,17 +648,13 @@ export default function HomePage() {
                       damping: 10,
                     },
                   }}
-                  className="relative bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-6 border-4 border-slate-600/50 hover:border-blue-400/50 transition-colors"
+                  className="relative rounded-2xl p-6 border border-slate-700/60 bg-slate-900/85 hover:border-blue-300/50 transition-colors shadow-lg shadow-black/20"
                 >
                   {/* Step Number Badge */}
                   <div className="absolute -top-4 -left-4 w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-orange-500 border-4 border-slate-900 flex items-center justify-center font-black text-white text-lg">
                     {step.step}
                   </div>
-                  
-                  <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${step.color} flex items-center justify-center mb-4 border-2 border-white/20 mt-2`}>
-                    <Icon className="w-7 h-7 text-white" />
-                  </div>
-                  <h3 className="text-xl font-black text-white mb-2">{step.title}</h3>
+                  <h3 className="text-xl font-black text-white mb-2 mt-6">{step.title}</h3>
                   <p className="text-sm text-blue-100/70 leading-relaxed">{step.description}</p>
                   
                   {/* Arrow connector (hidden on last item) */}

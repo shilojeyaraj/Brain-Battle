@@ -68,16 +68,15 @@ export async function extractImagesFromPDF(
     // For now, we'll assign them sequentially or try to extract from pdfjs-dist
     const extractedImages: ExtractedImage[] = []
     
-    // Try to get page information from pdfjs-dist
+    // Try to get page information from pdfjs-dist (serverless-safe config)
     let pageInfo: { [key: number]: number } = {}
     try {
-      const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
-      const pdfjsLib = pdfjsModule.default || pdfjsModule
+      const { getPdfjsLib, SERVERLESS_PDF_OPTIONS } = await import('@/lib/pdfjs-config')
+      const pdfjsLib = await getPdfjsLib()
       
       const loadingTask = pdfjsLib.getDocument({
         data: new Uint8Array(buffer),
-        useSystemFonts: true,
-        verbosity: 0,
+        ...SERVERLESS_PDF_OPTIONS,
       })
       
       const pdfDocument = await loadingTask.promise
