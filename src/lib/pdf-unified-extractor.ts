@@ -47,6 +47,9 @@ export async function extractPDFTextAndImages(
     // Belt-and-suspenders: ensure worker is disabled right here too (prod-safe)
     if (pdfjsLib?.GlobalWorkerOptions) {
       pdfjsLib.GlobalWorkerOptions.workerSrc = ''
+    } else {
+      // If GlobalWorkerOptions is missing, create it so workerSrc is defined
+      ;(pdfjsLib as any).GlobalWorkerOptions = { workerSrc: '' }
     }
     if (typeof pdfjsLib?.setWorkerFetch === 'function') {
       try {

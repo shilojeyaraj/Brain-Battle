@@ -17,6 +17,9 @@ import { extractTextFromDocument } from "@/lib/document-text-extractor"
 import type { AIChatMessage } from "@/lib/ai/types"
 import { initializeBrowserPolyfills } from "@/lib/polyfills/browser-apis"
 
+// Ensure this route runs in the Node.js runtime (needed for pdfjs + Supabase client libs)
+export const runtime = 'nodejs'
+
 export async function POST(req: NextRequest) {
   // CRITICAL: Initialize browser API polyfills BEFORE any PDF parsing
   // This must happen before pdf-parse or pdfjs-dist are imported/used
