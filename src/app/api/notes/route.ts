@@ -217,24 +217,71 @@ export async function POST(req: NextRequest) {
         textContent = buffer.toString('utf-8')
       } else if (file.type === "application/pdf") {
         if (process.env.NODE_ENV === 'development') {
-          console.log(`  📄 [NOTES API] Processing ${file.name} as PDF file (unified extraction)`)
+          console.log(`  📄 [NOTES API] Processing ${file.name} as PDF file (text-only via pdfjs fallback)`)
+          console.log(`  ℹ️ [NOTES API] Skipping pdf-parse; using pdfjs-dist text extraction only (images skipped)`)
         }
         
         try {
-        // 🚀 OPTIMIZATION: Use unified extractor only (no pdf-extract-image fallbacks)
-        // This ensures workerSrc is set and worker fetch is disabled for pdfjs-dist.
-        const { extractPDFTextAndImages } = await import('@/lib/pdf-unified-extractor')
-        const pdfContent = await extractPDFTextAndImages(buffer, file.name)
-          
-          textContent = pdfContent.text
-          images = pdfContent.images
+          // Text-only extraction via pdfjs-dist with worker disabled
+          const { getPdfjsLib, SERVERLESS_PDF_OPTIONS, applyGlobalPdfjsWorkerDisable } = await import('@/lib/pdfjs-config')
+          // Absolute global guard for workerSrc/disableWorker
+          applyGlobalPdfjsWorkerDisable()
+          const pdfjsLib = await getPdfjsLib()
+          // Belt-and-suspenders: ensure instance-level GlobalWorkerOptions exist
+          if (pdfjsLib?.GlobalWorkerOptions) {
+            if (process.env.NODE_ENV === 'development') {
+              console.log('  🔧 [NOTES API] pdfjs GlobalWorkerOptions before set:', pdfjsLib.GlobalWorkerOptions)
+            }
+            try {
+              Object.defineProperty(pdfjsLib.GlobalWorkerOptions, 'workerSrc', { value: (pdfjsLib as any).GlobalWorkerOptions?.workerSrc ?? 'pdf.worker.js', writable: true, configurable: true })
+            } catch {}
+            // workerSrc already set in config to resolved path; keep it if present
+            if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+              pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.js'
+            }
+            ;(pdfjsLib.GlobalWorkerOptions as any).disableWorker = true
+            if (process.env.NODE_ENV === 'development') {
+              console.log('  🔧 [NOTES API] pdfjs GlobalWorkerOptions after set:', pdfjsLib.GlobalWorkerOptions)
+              console.log('  🔧 [NOTES API] pdfjs workerSrc value:', (pdfjsLib.GlobalWorkerOptions as any).workerSrc)
+            }
+          } else {
+            (pdfjsLib as any).GlobalWorkerOptions = { workerSrc: '', disableWorker: true }
+            if (process.env.NODE_ENV === 'development') {
+              console.log('  🔧 [NOTES API] pdfjs GlobalWorkerOptions created:', (pdfjsLib as any).GlobalWorkerOptions)
+            }
+          }
+          if (typeof pdfjsLib?.setWorkerFetch === 'function') {
+            try { pdfjsLib.setWorkerFetch(false) } catch {}
+          }
+          if (process.env.NODE_ENV === 'development') {
+            console.log('  🔍 [NOTES API] pdfjs version:', (pdfjsLib as any)?.version)
+            console.log('  🔍 [NOTES API] pdfjs GlobalWorkerOptions:', (pdfjsLib as any)?.GlobalWorkerOptions)
+          }
+          const loadingTask = pdfjsLib.getDocument({
+            data: new Uint8Array(buffer),
+            ...SERVERLESS_PDF_OPTIONS,
+            disableWorker: true,
+          })
+          const pdfDoc = await loadingTask.promise
+          const pageTexts: string[] = []
+          for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+            const page = await pdfDoc.getPage(pageNum)
+            const textContentObj = await page.getTextContent()
+            const pageText = textContentObj.items.map((item: any) => item.str).join(' ')
+            pageTexts.push(pageText)
+          }
+          textContent = pageTexts.join('\n\n')
+          images = [] // skipping images for stability
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`  ✅ [NOTES API] pdfjs text extraction length: ${textContent.length}`)
+          }
           
           if (!textContent || textContent.trim().length < 100) {
             throw new Error(`PDF parsing returned insufficient content (${textContent.length} characters).`)
           }
           
           if (process.env.NODE_ENV === 'development') {
-            console.log(`  ✅ [NOTES API] Extracted ${textContent.length} characters and ${images.length} images from ${file.name} (single scan)`)
+            console.log(`  ✅ [NOTES API] Extracted ${textContent.length} characters from ${file.name} (text-only)`)
           }
         } catch (pdfError) {
           throw new Error(`Failed to parse PDF "${file.name}". Error: ${pdfError instanceof Error ? pdfError.message : String(pdfError)}`)

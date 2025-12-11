@@ -8,6 +8,7 @@
 
 import { extractImagesFromPdf } from 'pdf-extract-image'
 import { initializeBrowserPolyfills } from '@/lib/polyfills/browser-apis'
+import { applyGlobalPdfjsWorkerDisable } from '@/lib/pdfjs-config'
 
 interface ExtractedImage {
   image_data_b64: string
@@ -25,6 +26,7 @@ export async function extractImagesFromPDF(
 ): Promise<ExtractedImage[]> {
   // CRITICAL: Initialize browser API polyfills BEFORE any PDF parsing
   initializeBrowserPolyfills()
+  applyGlobalPdfjsWorkerDisable()
 
   if (process.env.NODE_ENV === 'development') {
     console.log(`🖼️ [PDF EXTRACTOR] Starting image extraction from: ${filename}`)

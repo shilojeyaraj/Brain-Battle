@@ -11,6 +11,22 @@
 // Global flag to ensure configuration only happens once
 let pdfjsConfigured = false
 let configuredPdfjsLib: any = null
+let resolvedWorkerSrc: string | null = null
+
+function resolveWorkerSrc() {
+  if (resolvedWorkerSrc) return resolvedWorkerSrc
+  try {
+    const { createRequire } = require('module')
+    const { pathToFileURL } = require('url')
+    const req = createRequire(import.meta.url)
+    // Prefer legacy worker (matches pdf.mjs)
+    const workerPath = req.resolve('pdfjs-dist/legacy/build/pdf.worker.min.mjs')
+    resolvedWorkerSrc = pathToFileURL(workerPath).toString()
+  } catch {
+    resolvedWorkerSrc = 'pdf.worker.min.mjs'
+  }
+  return resolvedWorkerSrc
+}
 
 /**
  * Configure pdfjs-dist for serverless environments
@@ -40,7 +56,7 @@ export async function configurePdfjsForServerless() {
       
       // CRITICAL: Empty string forces fake worker (main thread execution)
       // This is the ONLY value that works reliably with pdfjs-dist@4.4.168
-      workerOptions.workerSrc = ''
+      workerOptions.workerSrc = resolveWorkerSrc()
       // Belt-and-suspenders: explicitly disable worker to skip workerSrc checks
       ;(workerOptions as any).disableWorker = true
       
@@ -95,4 +111,20 @@ export const SERVERLESS_PDF_OPTIONS = {
   disableWorker: true, // HARD DISABLE the worker so pdfjs skips workerSrc checks entirely
   // Note: We still set GlobalWorkerOptions.workerSrc = '' as a belt-and-suspenders,
   // but disableWorker=true avoids the fake-worker check that throws when workerSrc is unset.
+}
+
+/**
+ * Apply a global fake-worker disable as an absolute fallback.
+ * Some pdfjs-dist code paths may access globalThis.GlobalWorkerOptions directly.
+ */
+export function applyGlobalPdfjsWorkerDisable() {
+  const globalObj: any = globalThis as any
+  if (!globalObj.GlobalWorkerOptions) {
+    globalObj.GlobalWorkerOptions = {}
+  }
+  if (typeof globalObj.GlobalWorkerOptions !== 'object') {
+    globalObj.GlobalWorkerOptions = {}
+  }
+  globalObj.GlobalWorkerOptions.workerSrc = ''
+  ;(globalObj.GlobalWorkerOptions as any).disableWorker = true
 }

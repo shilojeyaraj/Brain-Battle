@@ -6,6 +6,7 @@
  */
 
 import { initializeBrowserPolyfills } from '@/lib/polyfills/browser-apis'
+import { applyGlobalPdfjsWorkerDisable } from '@/lib/pdfjs-config'
 
 export interface ExtractedPDFContent {
   text: string
@@ -29,6 +30,8 @@ export async function extractPDFTextAndImages(
 ): Promise<ExtractedPDFContent> {
   // CRITICAL: Initialize browser API polyfills BEFORE any PDF parsing
   initializeBrowserPolyfills()
+  // Belt-and-suspenders: apply global worker disable in case any downstream path bypasses config
+  applyGlobalPdfjsWorkerDisable()
 
   if (process.env.NODE_ENV === 'development') {
     console.log(`📄 [UNIFIED PDF EXTRACTOR] Starting unified extraction from: ${filename}`)

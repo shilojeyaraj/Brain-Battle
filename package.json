@@ -20,7 +20,8 @@
     "restore:db": "tsx scripts/restore-database.ts",
     "delete:zero-xp": "tsx scripts/delete-zero-xp-accounts.ts",
     "mcp:setup": "node .cursor/setup-mcp.js",
-    "mcp:verify": "node .cursor/setup-mcp.js"
+    "mcp:verify": "node .cursor/setup-mcp.js",
+    "test:pdf-extract": "tsx scripts/test-pdf-extraction.ts"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.82",
