@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { notesSchema } from "@/lib/schemas/notes-schema"
 import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/server-admin"
-import { extractImagesFromPDF as extractPDFImages } from "@/lib/pdf-image-extractor"
+// NOTE: For robustness we avoid pdf-extract-image fallbacks in this route.
+// All PDF parsing should go through the unified extractor, which applies
+// the serverless pdfjs config (workerSrc='' and worker fetch disabled).
 import { smartExtractDiagrams } from "@/lib/pdf-smart-extractor"
 import { DiagramAnalyzerAgent } from "@/lib/agents/diagram-analyzer-agent"
 import { 
@@ -219,9 +221,10 @@ export async function POST(req: NextRequest) {
         }
         
         try {
-          // 🚀 OPTIMIZATION: Use unified extractor - loads PDF once, extracts both text and images
-          const { extractPDFTextAndImages } = await import('@/lib/pdf-unified-extractor')
-          const pdfContent = await extractPDFTextAndImages(buffer, file.name)
+        // 🚀 OPTIMIZATION: Use unified extractor only (no pdf-extract-image fallbacks)
+        // This ensures workerSrc is set and worker fetch is disabled for pdfjs-dist.
+        const { extractPDFTextAndImages } = await import('@/lib/pdf-unified-extractor')
+        const pdfContent = await extractPDFTextAndImages(buffer, file.name)
           
           textContent = pdfContent.text
           images = pdfContent.images
