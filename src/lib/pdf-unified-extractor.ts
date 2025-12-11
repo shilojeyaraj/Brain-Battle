@@ -47,9 +47,10 @@ export async function extractPDFTextAndImages(
     // Belt-and-suspenders: ensure worker is disabled right here too (prod-safe)
     if (pdfjsLib?.GlobalWorkerOptions) {
       pdfjsLib.GlobalWorkerOptions.workerSrc = ''
+      ;(pdfjsLib.GlobalWorkerOptions as any).disableWorker = true
     } else {
       // If GlobalWorkerOptions is missing, create it so workerSrc is defined
-      ;(pdfjsLib as any).GlobalWorkerOptions = { workerSrc: '' }
+      ;(pdfjsLib as any).GlobalWorkerOptions = { workerSrc: '', disableWorker: true }
     }
     if (typeof pdfjsLib?.setWorkerFetch === 'function') {
       try {
@@ -63,6 +64,7 @@ export async function extractPDFTextAndImages(
     const loadingTask = pdfjsLib.getDocument({
       data: new Uint8Array(buffer),
       ...SERVERLESS_PDF_OPTIONS,
+      disableWorker: true, // Force main-thread parsing to bypass workerSrc requirements
     })
 
     const pdfDocument = await loadingTask.promise

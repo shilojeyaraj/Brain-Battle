@@ -74,9 +74,16 @@ export async function extractImagesFromPDF(
       const { getPdfjsLib, SERVERLESS_PDF_OPTIONS } = await import('@/lib/pdfjs-config')
       const pdfjsLib = await getPdfjsLib()
       
+      // Ensure global worker is disabled for this pdfjs instance too
+      if (pdfjsLib?.GlobalWorkerOptions) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = ''
+        ;(pdfjsLib.GlobalWorkerOptions as any).disableWorker = true
+      }
+
       const loadingTask = pdfjsLib.getDocument({
         data: new Uint8Array(buffer),
         ...SERVERLESS_PDF_OPTIONS,
+        disableWorker: true, // force main-thread parsing; bypass workerSrc checks
       })
       
       const pdfDocument = await loadingTask.promise

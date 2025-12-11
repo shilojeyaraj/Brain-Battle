@@ -41,6 +41,8 @@ export async function configurePdfjsForServerless() {
       // CRITICAL: Empty string forces fake worker (main thread execution)
       // This is the ONLY value that works reliably with pdfjs-dist@4.4.168
       workerOptions.workerSrc = ''
+      // Belt-and-suspenders: explicitly disable worker to skip workerSrc checks
+      ;(workerOptions as any).disableWorker = true
       
       if (process.env.NODE_ENV === 'development') {
         console.log('✅ [PDFJS CONFIG] Worker source set to: "" (empty - using fake worker)')
@@ -90,7 +92,7 @@ export const SERVERLESS_PDF_OPTIONS = {
   useWorkerFetch: false, // Disable worker fetch in serverless (no file system access)
   disableAutoFetch: true, // Disable auto-fetching of resources (prevents network calls)
   disableStream: false, // Keep stream enabled for better performance with large PDFs
-  // Note: The worker is disabled via GlobalWorkerOptions.workerSrc configuration
-  // We set it to an empty string ('') which tells PDF.js to use a fake worker
-  // that runs in the main thread without trying to load any worker file
+  disableWorker: true, // HARD DISABLE the worker so pdfjs skips workerSrc checks entirely
+  // Note: We still set GlobalWorkerOptions.workerSrc = '' as a belt-and-suspenders,
+  // but disableWorker=true avoids the fake-worker check that throws when workerSrc is unset.
 }
