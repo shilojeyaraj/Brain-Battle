@@ -221,54 +221,30 @@ export async function POST(req: NextRequest) {
         textContent = buffer.toString('utf-8')
       } else if (file.type === "application/pdf") {
         if (process.env.NODE_ENV === 'development') {
-          console.log(`  📄 [NOTES API] Processing ${file.name} as PDF file (text-only via pdfjs fallback)`)
-          console.log(`  ℹ️ [NOTES API] Skipping pdf-parse; using pdfjs-dist text extraction only (images skipped)`)
+          console.log(`  📄 [NOTES API] Processing ${file.name} as PDF file (using pdf-parse for text extraction)`)
         }
         
         try {
-          // Text-only extraction via pdfjs-dist with worker disabled
-          const { getPdfjsLib, SERVERLESS_PDF_OPTIONS, applyGlobalPdfjsWorkerDisable } = await import('@/lib/pdfjs-config')
-          // Absolute global guard for workerSrc/disableWorker
-          applyGlobalPdfjsWorkerDisable()
-          const pdfjsLib = await getPdfjsLib()
-          // Belt-and-suspenders: ensure instance-level GlobalWorkerOptions exist
-          // CRITICAL: Use empty string for workerSrc to prevent import errors in production
-          if (pdfjsLib?.GlobalWorkerOptions) {
-            pdfjsLib.GlobalWorkerOptions.workerSrc = ''
-            ;(pdfjsLib.GlobalWorkerOptions as any).disableWorker = true
-            if (process.env.NODE_ENV === 'development') {
-              console.log('  🔧 [NOTES API] pdfjs GlobalWorkerOptions set:', pdfjsLib.GlobalWorkerOptions)
-            }
-          } else {
-            (pdfjsLib as any).GlobalWorkerOptions = { workerSrc: '', disableWorker: true }
-            if (process.env.NODE_ENV === 'development') {
-              console.log('  🔧 [NOTES API] pdfjs GlobalWorkerOptions created:', (pdfjsLib as any).GlobalWorkerOptions)
-            }
+          // SIMPLEST: Use pdf-parse for text extraction (no workers needed, works in serverless)
+          // pdf-parse is simpler and more reliable than pdfjs-dist for text-only extraction
+          const pdfParseModule: any = await import('pdf-parse')
+          
+          // pdf-parse exports PDFParse class, handle different export formats
+          const PDFParse = pdfParseModule.PDFParse || pdfParseModule.default?.PDFParse || pdfParseModule.default
+          
+          if (!PDFParse || typeof PDFParse !== 'function') {
+            throw new Error('pdf-parse PDFParse class not found')
           }
-          if (typeof pdfjsLib?.setWorkerFetch === 'function') {
-            try { pdfjsLib.setWorkerFetch(false) } catch {}
-          }
+          
+          // Create parser instance and extract text
+          const parser = new PDFParse({ data: buffer })
+          const pdfText = await parser.getText()
+          
+          textContent = pdfText || ''
+          images = [] // pdf-parse doesn't extract images (we'll add image extraction later)
+          
           if (process.env.NODE_ENV === 'development') {
-            console.log('  🔍 [NOTES API] pdfjs version:', (pdfjsLib as any)?.version)
-            console.log('  🔍 [NOTES API] pdfjs GlobalWorkerOptions:', (pdfjsLib as any)?.GlobalWorkerOptions)
-          }
-          const loadingTask = pdfjsLib.getDocument({
-            data: new Uint8Array(buffer),
-            ...SERVERLESS_PDF_OPTIONS,
-            disableWorker: true,
-          })
-          const pdfDoc = await loadingTask.promise
-          const pageTexts: string[] = []
-          for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
-            const page = await pdfDoc.getPage(pageNum)
-            const textContentObj = await page.getTextContent()
-            const pageText = textContentObj.items.map((item: any) => item.str).join(' ')
-            pageTexts.push(pageText)
-          }
-          textContent = pageTexts.join('\n\n')
-          images = [] // skipping images for stability
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`  ✅ [NOTES API] pdfjs text extraction length: ${textContent.length}`)
+            console.log(`  ✅ [NOTES API] pdf-parse extraction: ${textContent.length} characters`)
           }
           
           if (!textContent || textContent.trim().length < 100) {
