@@ -26,16 +26,15 @@ export const runtime = 'nodejs'
 // CRITICAL: Configure global pdfjs worker options BEFORE any PDF parsing code runs
 // This must be at module level (top of file) so it runs before pdf-parse imports pdfjs-dist
 // pdf-parse internally uses pdfjs-dist, and pdfjs-dist checks for workers during import
-// Use CDN worker URL instead of empty string - more reliable in serverless
+// Use empty string to force fake worker mode (no worker file needed, works in serverless)
 if (typeof globalThis !== 'undefined') {
   const globalObj: any = globalThis as any
   if (!globalObj.GlobalWorkerOptions) {
     globalObj.GlobalWorkerOptions = {}
   }
-  // Use CDN worker URL - works in serverless without bundling worker files
-  // This prevents "Cannot find module" errors
-  globalObj.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs'
-  // Also set disableWorker as backup
+  // Empty string = fake worker (no actual worker file, runs in main thread)
+  // This is the ONLY way that works in Node.js ESM loader (doesn't support https: protocol)
+  globalObj.GlobalWorkerOptions.workerSrc = ''
   globalObj.GlobalWorkerOptions.disableWorker = true
 }
 
@@ -252,9 +251,10 @@ export async function POST(req: NextRequest) {
           }
           
           // CRITICAL: Configure pdf-parse's worker BEFORE creating instance
-          // Use CDN URL - works with any pdfjs-dist version (including pdf-parse's internal 5.4.296)
+          // Use empty string to disable worker (Node.js ESM loader doesn't support https: URLs)
+          // Empty string tells pdfjs to use fake worker (runs in main thread, no worker file needed)
           if (typeof PDFParse.setWorker === 'function') {
-            PDFParse.setWorker('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs')
+            PDFParse.setWorker('') // Empty string = fake worker mode
           }
           
           // Create parser instance with serverless-optimized options
