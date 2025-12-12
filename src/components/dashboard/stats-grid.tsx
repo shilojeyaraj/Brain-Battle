@@ -11,11 +11,13 @@ import { CompactXPBar } from "@/components/ui/xp-progress-bar"
 interface StatsGridProps {
   userProfile?: UserProfile | null
   loading?: boolean
+  onRefresh?: () => void
+  refreshing?: boolean
 }
 
 // 🚀 OPTIMIZATION: Memoize component to prevent unnecessary re-renders
 // 🚀 OPTIMIZATION: Accept props to avoid redundant API calls
-export const StatsGrid = memo(function StatsGrid({ userProfile: propUserProfile, loading: propLoading }: StatsGridProps) {
+export const StatsGrid = memo(function StatsGrid({ userProfile: propUserProfile, loading: propLoading, onRefresh, refreshing }: StatsGridProps) {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(propUserProfile || null)
   const [loading, setLoading] = useState(propLoading !== undefined ? propLoading : true)
   const [error, setError] = useState<string | null>(null)
@@ -109,6 +111,16 @@ export const StatsGrid = memo(function StatsGrid({ userProfile: propUserProfile,
     }
   }, [propUserProfile, fetchUserStats])
 
+  // Refresh stats when a quiz completes (event dispatched from battle page)
+  useEffect(() => {
+    if (propUserProfile !== undefined) return
+    const handler = () => {
+      fetchUserStats()
+    }
+    window.addEventListener('quizCompleted', handler as EventListener)
+    return () => window.removeEventListener('quizCompleted', handler as EventListener)
+  }, [propUserProfile, fetchUserStats])
+
   // 🚀 OPTIMIZATION: Memoize expensive calculations
   // Must be called unconditionally (before any early returns) to follow Rules of Hooks
   const rank = useMemo(() => {
@@ -150,6 +162,17 @@ export const StatsGrid = memo(function StatsGrid({ userProfile: propUserProfile,
           <div className="text-center">
             <p className="text-sm text-white/70 font-bold">Failed to load stats</p>
             <p className="text-white">{error || "User profile not found"}</p>
+            {onRefresh && (
+              <div className="mt-3">
+                <button
+                  onClick={onRefresh}
+                  disabled={refreshing}
+                  className="px-3 py-2 rounded-lg border-2 border-blue-400 text-blue-100 hover:text-white hover:bg-blue-500/20 disabled:opacity-50 transition-colors font-bold text-sm"
+                >
+                  {refreshing ? "Refreshing..." : "Refresh"}
+                </button>
+              </div>
+            )}
           </div>
         </Card>
       </div>
@@ -160,6 +183,17 @@ export const StatsGrid = memo(function StatsGrid({ userProfile: propUserProfile,
 
   return (
     <div className="space-y-8" data-tutorial="stats-grid">
+      <div className="flex justify-end">
+        {onRefresh && (
+          <button
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="px-3 py-2 rounded-lg border-2 border-blue-400 text-blue-100 hover:text-white hover:bg-blue-500/20 disabled:opacity-50 transition-colors font-bold text-sm"
+          >
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </button>
+        )}
+      </div>
       {/* XP Progress Bar */}
       <Card className="p-8 bg-slate-700/50 border-4 border-slate-600/50 cartoon-shadow">
         <CompactXPBar xp={stats.xp} />

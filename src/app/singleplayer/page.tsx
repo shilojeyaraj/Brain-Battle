@@ -109,27 +109,27 @@ export default function SingleplayerPage() {
   const [quizConfig, setQuizConfig] = useState<QuizConfig | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const fetchLimits = useCallback(async () => {
+    try {
+      const response = await fetch('/api/subscription/limits', {
+        credentials: 'include',
+      })
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          setSubscriptionLimits(data)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching subscription limits:', error)
+    }
+  }, [])
+
   // Fetch subscription limits (only if authenticated)
   useEffect(() => {
     if (!isAuthenticated || isCheckingAuth) return
-    
-    const fetchLimits = async () => {
-      try {
-        const response = await fetch('/api/subscription/limits', {
-          credentials: 'include',
-        })
-        if (response.ok) {
-          const data = await response.json()
-          if (data.success) {
-            setSubscriptionLimits(data)
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching subscription limits:', error)
-      }
-    }
     fetchLimits()
-  }, [isAuthenticated, isCheckingAuth])
+  }, [isAuthenticated, isCheckingAuth, fetchLimits])
 
   // Check for quiz config from dashboard
   useEffect(() => {
@@ -316,6 +316,8 @@ export default function SingleplayerPage() {
         setProcessedFileNames(result.fileNames || [])
         sessionStorage.setItem('studyNotes', JSON.stringify(result.notes))
         sessionStorage.setItem('processedFileNames', JSON.stringify(result.fileNames || []))
+        // Refresh limits to reflect newly processed documents
+        fetchLimits()
         toastSuccess("Study notes generated successfully!")
         setStep(4) // Go to study notes step
       } else {

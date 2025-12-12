@@ -113,12 +113,12 @@ export default function DashboardPage() {
   }, [router])
 
   // 🚀 OPTIMIZATION: Fetch user stats once at page level and share with components
-  const fetchUserStats = useCallback(async () => {
-    if (!userId || loadingStats) return
+  const fetchUserStats = useCallback(async (opts?: { force?: boolean }) => {
+    if (!userId || (loadingStats && !opts?.force)) return
     
     setLoadingStats(true)
     try {
-      const result = await getUserStatsClient(userId)
+      const result = await getUserStatsClient(userId, opts)
       if (result.success && result.data) {
         console.log('✅ [DASHBOARD PAGE] Stats fetched successfully')
         setUserStats(result.data)
@@ -136,53 +136,26 @@ export default function DashboardPage() {
     }
   }, [userId, loadingStats])
 
-  // Fetch stats immediately after authentication
+  // Fetch stats once after authentication (force to avoid stale cache on nav)
   useEffect(() => {
     if (userId && isAuthenticated) {
-      fetchUserStats()
+      fetchUserStats({ force: true })
     }
   }, [userId, isAuthenticated, fetchUserStats])
 
-  // Dispatch login event on mount to trigger streak check (only if authenticated)
+  // Refresh once when a quiz completes (event-driven, not polling)
   useEffect(() => {
-    if (isAuthenticated && typeof window !== 'undefined') {
-      // Small delay to ensure components are mounted
-      setTimeout(() => {
-        window.dispatchEvent(new CustomEvent('userLoggedIn'))
-        // Also dispatch a refresh event to ensure stats are up-to-date
-        window.dispatchEvent(new CustomEvent('dashboardRefresh'))
-      }, 100)
-    }
-  }, [isAuthenticated])
-  
-  // Refresh stats when navigating back to dashboard
-  useEffect(() => {
-    if (isAuthenticated && typeof window !== 'undefined') {
-      const handleFocus = () => {
-        // Refresh stats when user returns to the tab
-        if (userId) {
-          fetchUserStats()
-        }
-      }
-      
-      const handleQuizComplete = () => {
-        // Refresh stats after quiz completion
-        if (userId) {
-          setTimeout(() => {
-            fetchUserStats()
-          }, 1500) // Wait for backend to process
-        }
-      }
-      
-      window.addEventListener('focus', handleFocus)
-      window.addEventListener('quizCompleted', handleQuizComplete)
-      
-      return () => {
-        window.removeEventListener('focus', handleFocus)
-        window.removeEventListener('quizCompleted', handleQuizComplete)
+    const handleQuizComplete = () => {
+      if (userId) {
+        console.log('🔄 [DASHBOARD] quizCompleted event -> refreshing stats/recent battles')
+        fetchUserStats({ force: true })
       }
     }
-  }, [isAuthenticated, userId, fetchUserStats])
+    window.addEventListener('quizCompleted', handleQuizComplete)
+    return () => window.removeEventListener('quizCompleted', handleQuizComplete)
+  }, [userId, fetchUserStats])
+
+  // No repeated auto-refresh; rely on single fetch post-auth, quizCompleted event, and manual refresh buttons
 
   // Check if tutorial is active
   useEffect(() => {
@@ -271,7 +244,16 @@ export default function DashboardPage() {
         {/* Collapsible Stats */}
         {showStats ? (
           <div className="mb-6">
-            <StatsGrid userProfile={userStats} loading={loadingStats} />
+            <StatsGrid
+              userProfile={userStats}
+              loading={loadingStats}
+              refreshing={loadingStats}
+              onRefresh={() => {
+                if (userId) {
+                  fetchUserStats()
+                }
+              }}
+            />
           </div>
         ) : null}
 
@@ -283,7 +265,16 @@ export default function DashboardPage() {
             <LobbySection />
             
             <ClansSection />
-            <RecentBattles recentGames={recentGames} loading={loadingStats} />
+            <RecentBattles
+              recentGames={recentGames}
+              loading={loadingStats}
+              refreshing={loadingStats}
+              onRefresh={() => {
+                if (userId) {
+                  fetchUserStats()
+                }
+              }}
+            />
           </div>
 
           <div>

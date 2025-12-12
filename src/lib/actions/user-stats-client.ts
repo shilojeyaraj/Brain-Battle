@@ -28,7 +28,21 @@ export interface UserProfile {
   achievements?: any[] // Optional: achievements from API
 }
 
-export async function getUserStatsClient(userId: string): Promise<{ success: boolean; data?: UserProfile; error?: string }> {
+// Throttle user-stats calls to avoid hammering the API
+let lastStatsFetch: { timestamp: number; result: { success: boolean; data?: UserProfile; error?: string } } | null = null
+let inflightStatsPromise: Promise<{ success: boolean; data?: UserProfile; error?: string }> | null = null
+const STATS_CACHE_MS = 30_000 // 30s cache window
+
+export async function getUserStatsClient(userId: string, opts?: { force?: boolean }): Promise<{ success: boolean; data?: UserProfile; error?: string }> {
+  const now = Date.now()
+  if (!opts?.force && lastStatsFetch && (now - lastStatsFetch.timestamp) < STATS_CACHE_MS) {
+    return lastStatsFetch.result
+  }
+  if (!opts?.force && inflightStatsPromise) {
+    return inflightStatsPromise
+  }
+
+  const fetchPromise = (async () => {
   try {
     const supabase = createClient()
     
@@ -276,16 +290,26 @@ export async function getUserStatsClient(userId: string): Promise<{ success: boo
       total_games: statsData.total_games
     })
     
-    return {
+    const result = {
       success: true,
       data: {
         ...userData,
         stats: statsData
       }
     }
+    return result
   } catch (error: unknown) {
     console.error('Error fetching user stats:', error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
     return { success: false, error: errorMessage }
   }
+  })()
+
+  inflightStatsPromise = fetchPromise
+  const result = await fetchPromise
+  inflightStatsPromise = null
+  if (!opts?.force && result.success) {
+    lastStatsFetch = { timestamp: Date.now(), result }
+  }
+  return result
 }

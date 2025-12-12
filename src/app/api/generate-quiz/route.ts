@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server-admin'
 import { checkQuizQuestionLimit } from '@/lib/subscription/limits'
 import { generateQuizSchema } from '@/lib/validation/schemas'
 import { sanitizeError, createSafeErrorResponse } from '@/lib/utils/error-sanitizer'
-import { checkQuizDiagramLimit, decrementQuizDiagramQuota } from '@/lib/subscription/diagram-limits'
-import { generateQuizQuestionDiagram } from '@/lib/nanobanana/client'
+// Diagram generation temporarily disabled
+// import { checkQuizDiagramLimit, decrementQuizDiagramQuota } from '@/lib/subscription/diagram-limits'
+// import { generateQuizQuestionDiagram } from '@/lib/nanobanana/client'
 import { z } from 'zod'
 import {
   getPreviousQuestions,
@@ -249,6 +251,12 @@ export async function POST(request: NextRequest) {
       }
       contextInstructions += "\nPlease tailor the quiz questions to these preferences while still basing everything on the document content.\n"
     }
+    // Trim context instructions to keep prompt lean
+    const MAX_CONTEXT_CHARS = 800
+    if (contextInstructions.length > MAX_CONTEXT_CHARS) {
+      console.warn(`⚠️ [QUIZ API] Trimming context instructions from ${contextInstructions.length} to ${MAX_CONTEXT_CHARS} chars`)
+      contextInstructions = `${contextInstructions.slice(0, MAX_CONTEXT_CHARS)}\n...[context trimmed]`
+    }
 
     // Extract text from uploaded files if available, OR use notes content
     // OPTIMIZATION: Prefer notes over file extraction if notes are available (faster, already processed)
@@ -298,6 +306,13 @@ export async function POST(request: NextRequest) {
         // Fall back to file extraction if notes parsing fails
         fileContent = ""
       }
+    }
+    
+    // Trim overly long content to keep prompt size manageable for the model
+    const MAX_CONTENT_CHARS = 6000
+    if (fileContent && fileContent.length > MAX_CONTENT_CHARS) {
+      console.warn(`⚠️ [QUIZ API] Truncating notes content from ${fileContent.length} to ${MAX_CONTENT_CHARS} characters to reduce token cost and avoid truncation.`)
+      fileContent = `${fileContent.slice(0, MAX_CONTENT_CHARS)}\n...[truncated for length]`
     }
     
     // Only extract from files if we don't have notes content
@@ -540,7 +555,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Create a comprehensive prompt for quiz generation
-    const numQuestions = totalQuestions || 5
+    let numQuestions = totalQuestions || 5
+    
+    // Fast-path clamp: for long content, cap questions to reduce latency
+    const LONG_CONTENT_THRESHOLD = 9000
+    const MAX_QUESTIONS_FOR_LONG_CONTENT = 6
+    if (fileContent.length > LONG_CONTENT_THRESHOLD && numQuestions > MAX_QUESTIONS_FOR_LONG_CONTENT) {
+      console.warn(`⚠️ [QUIZ API] Long content (${fileContent.length} chars). Capping questions from ${numQuestions} to ${MAX_QUESTIONS_FOR_LONG_CONTENT} to improve latency.`)
+      numQuestions = MAX_QUESTIONS_FOR_LONG_CONTENT
+    }
     
     // Get previous questions and wrong answers for deduplication and redo focus
     let previousQuestions: any[] = []
@@ -816,7 +839,7 @@ CRITICAL REQUIREMENTS:
       }
     ]
 
-    let response: string
+    let responseStr: string = ''
     let modelUsed: string
     const provider: 'moonshot' = 'moonshot'
 
@@ -832,259 +855,379 @@ CRITICAL REQUIREMENTS:
       console.log(`   ✅ [QUIZ API] Moonshot client created successfully`)
     }
     
-    // Add timeout wrapper to prevent hanging (2 minutes max)
-    console.log(`⏱️ [QUIZ API] Starting AI call with 2-minute timeout...`)
+    // Add timeout wrapper to prevent hanging (3 minutes max)
+    console.log(`⏱️ [QUIZ API] Starting AI call with 3-minute timeout...`)
     const startTime = Date.now()
     
-    const aiCallPromise = aiClient.chatCompletions(messages, {
-      model: process.env.MOONSHOT_MODEL || 'kimi-k2-thinking',
-      temperature: 0.3,
-      responseFormat: 'json_object',
-      maxTokens: 12000, // Increased from 3000 to handle comprehensive quiz questions with detailed explanations
-    })
+    // Model fallback list: prefer env, then stable known variants
+    // Prefer explicit OpenRouter Moonshot IDs; allow env override first
+    const modelFallbacks = [
+      process.env.MOONSHOT_MODEL,
+      'moonshotai/kimi-k2',
+      'moonshotai/kimi-1.5',
+      'moonshotai/kimi',
+      'moonshotai/moonshot-v1-8k'
+    ].filter(Boolean) as string[]
     
-    // Add 2 minute timeout to prevent hanging
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
+    let aiResponse: AIChatCompletionResponse | undefined
+    let modelUsedLocal = ''
+    let lastError: any
+    
+    for (const modelName of modelFallbacks) {
+      try {
+        console.log(`🤖 [QUIZ API] Trying model: ${modelName}`)
+        const aiCallPromise = aiClient.chatCompletions(messages, {
+          model: modelName,
+          temperature: 0.25,
+          responseFormat: 'json_object',
+          maxTokens: 9000, // keep lean
+        })
+        
+        // Add 3 minute timeout to prevent hanging (allows up to ~10 questions)
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
+            reject(new Error(`AI API call timed out after ${elapsed} seconds for model ${modelName}.`))
+          }, 180000) // 3 minutes
+        })
+        
+        aiResponse = await Promise.race([aiCallPromise, timeoutPromise])
+        modelUsedLocal = modelName
         const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
-        reject(new Error(`AI API call timed out after ${elapsed} seconds. The request may be too complex or the API is slow. Please try again with fewer questions or simpler content.`))
-      }, 120000) // 2 minutes
-    })
+        console.log(`✅ [QUIZ API] AI call completed in ${elapsed} seconds with model ${modelName}`)
+        break
+      } catch (error: any) {
+        lastError = error
+        console.error(`❌ [QUIZ API] Model ${modelName} failed:`, error?.message || error)
+        continue
+      }
+    }
     
-    let aiResponse: AIChatCompletionResponse
-    try {
-      aiResponse = await Promise.race([aiCallPromise, timeoutPromise])
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
-      console.log(`✅ [QUIZ API] AI call completed in ${elapsed} seconds`)
-    } catch (error: any) {
-      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
-      console.error(`❌ [QUIZ API] AI call failed after ${elapsed} seconds:`, error.message)
-      throw error
+    if (!aiResponse) {
+      throw new Error(`All Moonshot models failed. Last error: ${lastError?.message || lastError}`)
     }
-
-    response = aiResponse.content
-    modelUsed = aiResponse.model
-    // Provider is always 'moonshot' since we're using Moonshot client
-
-    if (!response) {
-      throw new Error(`No response from Moonshot`)
+    
+    let response: string
+    if (typeof aiResponse === 'string') {
+        responseStr = aiResponse
+    } else {
+      const rawContent = (aiResponse as any)?.content
+      const firstEntry = Array.isArray(rawContent) ? rawContent[0] : undefined
+      const textVal =
+        firstEntry?.text ??
+        firstEntry?.content?.[0]?.text?.value ??
+        firstEntry?.content?.[0]?.text
+      if (typeof textVal === 'string') {
+          responseStr = textVal.trim()
+      } else {
+          responseStr = JSON.stringify(aiResponse)
+      }
     }
-
-    // Log raw response for debugging
-    if (process.env.NODE_ENV === 'development') {
-      console.log("📄 [QUIZ API] Raw response (first 500 chars):", response.substring(0, 500))
-    }
-
+    modelUsed = modelUsedLocal
+    
     // Parse the JSON response
     // Strip markdown code blocks if present (fallback for cases where AI still wraps it)
-    let cleanedResponse = response.trim()
-    
-    // Remove markdown code block wrapper (handle both complete and incomplete blocks)
-    if (cleanedResponse.startsWith('```json')) {
-      cleanedResponse = cleanedResponse.replace(/^```json\s*\n?/, '')
-      // Remove trailing ``` if present (might be missing if truncated)
-      cleanedResponse = cleanedResponse.replace(/\n?\s*```\s*$/, '')
-    } else if (cleanedResponse.startsWith('```')) {
-      cleanedResponse = cleanedResponse.replace(/^```\s*\n?/, '')
-      // Remove trailing ``` if present (might be missing if truncated)
-      cleanedResponse = cleanedResponse.replace(/\n?\s*```\s*$/, '')
-    }
-    
-    cleanedResponse = cleanedResponse.trim()
-    
-    // Fix common JSON malformations BEFORE parsing
-    // Fix: "questions": ":[{" -> "questions": [{
-    cleanedResponse = cleanedResponse.replace(/"questions"\s*:\s*":\[{/g, '"questions": [{')
-    // Fix: "questions": ":[{" -> "questions": [{ (with space)
-    cleanedResponse = cleanedResponse.replace(/"questions"\s*:\s*":\s*\[{/g, '"questions": [{')
-    // Fix: "questions": :[{ -> "questions": [{
-    cleanedResponse = cleanedResponse.replace(/"questions"\s*:\s*:\[{/g, '"questions": [{')
-    // Fix: "questions": "[{ -> "questions": [{
-    cleanedResponse = cleanedResponse.replace(/"questions"\s*:\s*"\[{/g, '"questions": [{')
-    // Fix: "questions":":[{ -> "questions": [{
-    cleanedResponse = cleanedResponse.replace(/"questions"\s*":\s*\[{/g, '"questions": [{')
-    
-    // CRITICAL FIX: Handle the case where we have "questions": [{","type":...
-    // This happens when the AI starts the array but then outputs flat objects
-    // Pattern: "questions": [{","type" -> "questions": [{","type" (invalid) needs to become proper structure
-    // We need to find where the array should actually start and fix it
-    const brokenArrayPattern = /"questions"\s*:\s*\[\{\s*",\s*"type"/
-    if (brokenArrayPattern.test(cleanedResponse)) {
-      // Replace "questions": [{","type" with "questions": [{"type"
-      cleanedResponse = cleanedResponse.replace(/"questions"\s*:\s*\[\{\s*",\s*"type"/g, '"questions": [{"type"')
-    }
-    
-    // Log cleaned response for debugging
-    if (process.env.NODE_ENV === 'development') {
-      console.log("🔧 [QUIZ API] Cleaned response (first 500 chars):", cleanedResponse.substring(0, 500))
-    }
-    
-    // Check if response might be truncated (common signs: unterminated strings, incomplete JSON)
-    const responseLength = cleanedResponse.length
-    const lastChar = cleanedResponse[responseLength - 1]
-    const hasUnterminatedString = cleanedResponse.match(/"[^"]*$/m) // String that starts but doesn't end
-    
-    if (hasUnterminatedString && lastChar !== '}') {
-      console.warn("⚠️ [QUIZ API] Response appears truncated - last char:", lastChar)
-      console.warn("   Response length:", responseLength, "characters")
-      console.warn("   This may indicate maxTokens limit was reached")
-    }
-    
-    let quizData
-    try {
-      quizData = JSON.parse(cleanedResponse)
+    const parseAiResponse = (rawResponse: string) => {
+      let cleanedResponse = rawResponse.trim()
       
-      // Log parsed structure for debugging
-      if (process.env.NODE_ENV === 'development') {
-        console.log("✅ [QUIZ API] JSON parsed successfully")
-        console.log("📋 [QUIZ API] Parsed quiz data structure:", {
-          hasQuestions: !!quizData.questions,
-          questionsIsArray: Array.isArray(quizData.questions),
-          questionsLength: Array.isArray(quizData.questions) ? quizData.questions.length : 'N/A',
-          topLevelKeys: Object.keys(quizData),
-          sampleData: JSON.stringify(quizData).substring(0, 500)
-        })
+      // Remove markdown code block wrapper (handle both complete and incomplete blocks)
+      if (cleanedResponse.startsWith('```json')) {
+        cleanedResponse = cleanedResponse.replace(/^```json\s*\n?/, '')
+        cleanedResponse = cleanedResponse.replace(/\n?\s*```\s*$/, '')
+      } else if (cleanedResponse.startsWith('```')) {
+        cleanedResponse = cleanedResponse.replace(/^```\s*\n?/, '')
+        cleanedResponse = cleanedResponse.replace(/\n?\s*```\s*$/, '')
       }
-    } catch (error: any) {
-      console.error("❌ [QUIZ API] Failed to parse AI response as JSON:", error)
-      console.log("📄 [QUIZ API] Response length:", cleanedResponse.length, "characters")
-      console.log("📄 [QUIZ API] First 100 chars:", cleanedResponse.substring(0, 100))
-      console.log("📄 [QUIZ API] Last 200 chars:", cleanedResponse.slice(-200))
       
-      // Try to repair the JSON by extracting questions from flat structure
-      // The AI often outputs questions as flat objects at root level instead of in an array
-      // Pattern: {"questions":":[{","type":"multiple_choice","question":"...","options":[...]}
+      cleanedResponse = cleanedResponse.trim()
+      
+      // Fix common JSON malformations BEFORE parsing
+      cleanedResponse = cleanedResponse.replace(/"questions"\s*:\s*":\[{/g, '"questions": [{')
+      cleanedResponse = cleanedResponse.replace(/"questions"\s*:\s*":\s*\[{/g, '"questions": [{')
+      cleanedResponse = cleanedResponse.replace(/"questions"\s*:\s*:\[{/g, '"questions": [{')
+      cleanedResponse = cleanedResponse.replace(/"questions"\s*:\s*"\[{/g, '"questions": [{')
+      cleanedResponse = cleanedResponse.replace(/"questions"\s*":\s*\[{/g, '"questions": [{')
+      // Fix: remove orphaned numeric entries like {":1,...} and map keyless question types to "type"
+      cleanedResponse = cleanedResponse
+        .replace(/\{\s*":\s*\d+\s*,/g, '{')
+        .replace(/,\s*":\s*\d+\s*,/g, ',')
+        .replace(/\{\s*":\s*"(multiple_choice|open_ended)"\s*,/g, '{"type":"$1",')
+        .replace(/,\s*":\s*"(multiple_choice|open_ended)"\s*/g, ',"type":"$1"')
+      // Fix: trailing commas before closing braces/brackets and stray ," }]}
+      cleanedResponse = cleanedResponse
+        .replace(/,\s*(\}|\])/g, '$1')
+        .replace(/,"\s*\}\s*\]\s*\}/g, ' }]}') // remove stray comma before closing array/object
+        .replace(/\}\s*,\s*\]/g, '}]') // handle },] -> }]
+        .replace(/\]\s*,\s*\}/g, ']}') // handle ],} -> ]}
+        .replace(/,\s*}\s*$/g, '}') // trailing comma before final }
+      
+      // Trim to the outermost JSON object to avoid trailing garbage
+      const firstBrace = cleanedResponse.indexOf('{')
+      const lastBrace = cleanedResponse.lastIndexOf('}')
+      if (firstBrace !== -1 && lastBrace > firstBrace) {
+        cleanedResponse = cleanedResponse.slice(firstBrace, lastBrace + 1)
+      }
+      // Fix: AI sometimes injects orphaned keyless entries like {",": "1", "type": ...}
+      cleanedResponse = cleanedResponse.replace(/\[\s*\{\s*",\s*":\s*"?\d+"?\s*,/g, '[{')
+      cleanedResponse = cleanedResponse.replace(/\{\s*",\s*":\s*"?\d+"?\s*,/g, '{')
+      cleanedResponse = cleanedResponse.replace(/,\s*",\s*":\s*"?\d+"?\s*,?/g, ',')
+      
+      const brokenArrayPattern = /"questions"\s*:\s*\[\{\s*",\s*"type"/
+      if (brokenArrayPattern.test(cleanedResponse)) {
+        cleanedResponse = cleanedResponse.replace(/"questions"\s*:\s*\[\{\s*",\s*"type"/g, '"questions": [{"type"')
+      }
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log("🔧 [QUIZ API] Cleaned response (first 500 chars):", cleanedResponse.substring(0, 500))
+      }
+      
+      const responseLength = cleanedResponse.length
+      const lastChar = cleanedResponse[responseLength - 1]
+      const hasUnterminatedString = cleanedResponse.match(/"[^"]*$/m)
+      
+      if (hasUnterminatedString && lastChar !== '}') {
+        console.warn("⚠️ [QUIZ API] Response appears truncated - last char:", lastChar)
+        console.warn("   Response length:", responseLength, "characters")
+        console.warn("   This may indicate maxTokens limit was reached")
+      }
+      
+      let quizDataLocal: any
       try {
-        console.log("🔧 [QUIZ API] Attempting to repair malformed JSON by extracting questions...")
+        quizDataLocal = JSON.parse(cleanedResponse)
         
-        // Strategy: Parse what we can, then extract question objects from the flat structure
-        // The response has questions as flat objects mixed with the broken "questions" field
+        if (process.env.NODE_ENV === 'development') {
+          console.log("✅ [QUIZ API] JSON parsed successfully")
+          console.log("📋 [QUIZ API] Parsed quiz data structure:", {
+            hasQuestions: !!quizDataLocal.questions,
+            questionsIsArray: Array.isArray(quizDataLocal.questions),
+            questionsLength: Array.isArray(quizDataLocal.questions) ? quizDataLocal.questions.length : 'N/A',
+            topLevelKeys: Object.keys(quizDataLocal),
+            sampleData: JSON.stringify(quizDataLocal).substring(0, 500)
+          })
+        }
         
-        // Strategy: The AI outputs questions as flat objects at root level
-        // Pattern: {"questions":":[{","type":"multiple_choice","question":"...","options":[...]}
-        // We need to extract all question objects and reconstruct the array
-        
-        // Step 1: Remove the broken "questions" field to make the rest parseable
-        let repairableJson = cleanedResponse
-          .replace(/"questions"\s*:\s*":\[{/g, '') // Remove broken questions field
-          .replace(/^\{,\s*/, '{') // Fix leading comma after removal
-          .trim()
-        
-        // Step 2: Try to parse what remains - it should be question objects
-        // But first, we need to wrap them properly or extract them individually
-        
-        // Step 3: Extract all complete JSON objects that look like questions
-        const questionObjects: any[] = []
-        let braceDepth = 0
-        let inString = false
-        let escapeNext = false
-        let currentObject = ''
-        
-        // Parse character by character to extract complete objects
-        for (let i = 0; i < repairableJson.length; i++) {
-          const char = repairableJson[i]
-          
-          if (escapeNext) {
-            currentObject += char
-            escapeNext = false
-            continue
-          }
-          
-          if (char === '\\') {
-            escapeNext = true
-            currentObject += char
-            continue
-          }
-          
-          if (char === '"') {
-            inString = !inString
-            currentObject += char
-            continue
-          }
-          
-          if (!inString) {
-            if (char === '{') {
-              if (braceDepth === 0) {
-                currentObject = '{'
-              } else {
-                currentObject += char
+        // Some providers wrap the JSON in a "content" field as a string. Unwrap if needed.
+        if ((!quizDataLocal.questions || !Array.isArray(quizDataLocal.questions)) && typeof quizDataLocal.content === 'string') {
+          try {
+            const inner = JSON.parse(quizDataLocal.content)
+            if (inner?.questions && Array.isArray(inner.questions)) {
+              quizDataLocal = inner
+              if (process.env.NODE_ENV === 'development') {
+                console.log("🔄 [QUIZ API] Unwrapped questions from top-level content string")
               }
-              braceDepth++
-            } else if (char === '}') {
+            }
+          } catch (unwrapErr) {
+            console.warn("⚠️ [QUIZ API] Failed to parse content wrapper as JSON:", unwrapErr instanceof Error ? unwrapErr.message : unwrapErr)
+          }
+        }
+      } catch (error: any) {
+        console.error("❌ [QUIZ API] Failed to parse AI response as JSON:", error)
+        console.log("📄 [QUIZ API] Response length:", cleanedResponse.length, "characters")
+        console.log("📄 [QUIZ API] First 100 chars:", cleanedResponse.substring(0, 100))
+        console.log("📄 [QUIZ API] Last 200 chars:", cleanedResponse.slice(-200))
+        
+        try {
+          console.log("🔧 [QUIZ API] Attempting to repair malformed JSON by extracting questions...")
+          
+          let repairableJson = cleanedResponse
+            .replace(/"questions"\s*:\s*":\[{/g, '')
+            .replace(/^\{,\s*/, '{')
+            .trim()
+          
+          const questionObjects: any[] = []
+          let braceDepth = 0
+          let inString = false
+          let escapeNext = false
+          let currentObject = ''
+          
+          for (let i = 0; i < repairableJson.length; i++) {
+            const char = repairableJson[i]
+            
+            if (escapeNext) {
               currentObject += char
-              braceDepth--
-              if (braceDepth === 0 && currentObject.trim()) {
-                // Complete object found
-                try {
-                  const parsed = JSON.parse(currentObject)
-                  // Check if it looks like a question object
-                  if (parsed.type && parsed.question) {
-                    questionObjects.push(parsed)
-                  }
-                } catch (e) {
-                  // Not valid JSON, skip
+              escapeNext = false
+              continue
+            }
+            
+            if (char === '\\') {
+              escapeNext = true
+              currentObject += char
+              continue
+            }
+            
+            if (char === '"') {
+              inString = !inString
+              currentObject += char
+              continue
+            }
+            
+            if (!inString) {
+              if (char === '{') {
+                if (braceDepth === 0) {
+                  currentObject = '{'
+                } else {
+                  currentObject += char
                 }
-                currentObject = ''
+                braceDepth++
+              } else if (char === '}') {
+                currentObject += char
+                braceDepth--
+                if (braceDepth === 0 && currentObject.trim()) {
+                  try {
+                    const parsed = JSON.parse(currentObject)
+                    if (parsed.type && parsed.question) {
+                      questionObjects.push(parsed)
+                    }
+                  } catch (e) {
+                    // skip
+                  }
+                  currentObject = ''
+                }
+              } else {
+                if (braceDepth > 0) {
+                  currentObject += char
+                }
               }
             } else {
-              if (braceDepth > 0) {
-                currentObject += char
+              currentObject += char
+            }
+          }
+          
+          if (questionObjects.length > 0) {
+            console.log(`✅ [QUIZ API] Successfully extracted ${questionObjects.length} questions from malformed JSON`)
+            quizDataLocal = { questions: questionObjects.map((q, idx) => ({ id: idx + 1, ...q })) }
+          } else {
+            const questionPattern = /\{[^{}]*(?:\{[^{}]*\}[^{}]*)*"type"\s*:\s*"[^"]+"[^{}]*(?:\{[^{}]*\}[^{}]*)*"question"\s*:\s*"[^"]+"[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g
+            const matches = cleanedResponse.match(questionPattern) || []
+            
+            const extractedQuestions: any[] = []
+            for (const match of matches) {
+              try {
+                const parsed = JSON.parse(match)
+                if (parsed.type && parsed.question) {
+                  extractedQuestions.push(parsed)
+                }
+              } catch {
+                // skip
               }
             }
-          } else {
-            currentObject += char
+            
+            if (extractedQuestions.length > 0) {
+              console.log(`✅ [QUIZ API] Extracted ${extractedQuestions.length} questions using regex fallback`)
+              quizDataLocal = { questions: extractedQuestions.map((q, idx) => ({ id: idx + 1, ...q })) }
+            } else {
+              throw new Error("Could not extract questions from malformed JSON")
+            }
           }
+        } catch (repairError) {
+          if (error instanceof SyntaxError && (error.message.includes('Unterminated') || error.message.includes('Unexpected end'))) {
+            console.error("⚠️ [QUIZ API] JSON appears to be truncated - likely hit maxTokens limit")
+            console.error("   Current maxTokens: 12000")
+            console.error("   Consider increasing maxTokens or reducing question complexity")
+            throw new Error(`Response was truncated (likely hit token limit). JSON parsing failed at position ${error.message.match(/position (\d+)/)?.[1] || 'unknown'}. Try reducing the number of questions or question complexity.`)
+          }
+          
+          console.log("📄 [QUIZ API] Full cleaned response (first 2000 chars):", cleanedResponse.substring(0, 2000))
+          throw new Error(`Failed to parse quiz data from AI provider: ${error.message}`)
         }
-        
-        // If we found question objects, use them
-        if (questionObjects.length > 0) {
-          console.log(`✅ [QUIZ API] Successfully extracted ${questionObjects.length} questions from malformed JSON`)
-          quizData = { questions: questionObjects.map((q, idx) => ({ id: idx + 1, ...q })) }
+      }
+      
+      return { quizData: quizDataLocal, cleanedResponse }
+    }
+    
+    let didRetryEmpty = false
+    let didRetryParse = false
+    let parseResult: { quizData: any; cleanedResponse: string }
+    let quizData: any
+    let cleanedResponse: string = ''
+    const tryParse = () => {
+      parseResult = parseAiResponse(responseStr)
+      quizData = parseResult.quizData
+      cleanedResponse = parseResult.cleanedResponse
+    }
+    
+    try {
+      tryParse()
+    } catch (err: any) {
+      // If initial parse failed, attempt a minimal fallback call with simpler prompt
+      if (!didRetryParse) {
+        console.warn("⚠️ [QUIZ API] Parse failed; retrying with minimal prompt to force valid JSON...")
+        didRetryParse = true
+        const fallbackMessages: AIChatMessage[] = [
+          {
+            role: "system",
+            content: `You MUST return valid JSON with a "questions" array. Only output JSON, no prose.`
+          },
+          {
+            role: "user",
+            content: `Create ${Math.min(numQuestions, 4)} multiple_choice questions strictly from the provided document. Respond exactly in JSON: { "questions": [ { "type": "multiple_choice", "question": "...", "options": ["A","B","C","D"], "correct": 0, "explanation": "...", "source_document": "Document content", "requires_image": false } ] }`
+          }
+        ]
+        const fallbackResp = await aiClient.chatCompletions(fallbackMessages, {
+          model: process.env.MOONSHOT_MODEL || 'kimi-k2',
+          temperature: 0.15,
+          responseFormat: 'json_object',
+          maxTokens: 3000,
+        })
+
+        if (typeof fallbackResp === 'string') {
+          responseStr = fallbackResp
         } else {
-          // Fallback: Try simpler approach - remove broken questions field and try to parse the rest
-          // The remaining structure should be question objects at root level
-          const withoutBrokenQuestions = cleanedResponse.replace(/"questions"\s*:\s*":\[{/g, '').trim()
-          
-          // Try wrapping in array: [ {...}, {...} ]
-          // But first, we need to find where objects start and end
-          // Simple regex approach: find objects with "type" and "question"
-          const questionPattern = /\{[^{}]*(?:\{[^{}]*\}[^{}]*)*"type"\s*:\s*"[^"]+"[^{}]*(?:\{[^{}]*\}[^{}]*)*"question"\s*:\s*"[^"]+"[^{}]*(?:\{[^{}]*\}[^{}]*)*\}/g
-          const matches = cleanedResponse.match(questionPattern) || []
-          
-          const extractedQuestions: any[] = []
-          for (const match of matches) {
-            try {
-              const parsed = JSON.parse(match)
-              if (parsed.type && parsed.question) {
-                extractedQuestions.push(parsed)
-              }
-            } catch (e) {
-              // Skip invalid
-            }
-          }
-          
-          if (extractedQuestions.length > 0) {
-            console.log(`✅ [QUIZ API] Extracted ${extractedQuestions.length} questions using regex fallback`)
-            quizData = { questions: extractedQuestions.map((q, idx) => ({ id: idx + 1, ...q })) }
-          } else {
-            throw new Error("Could not extract questions from malformed JSON")
-          }
+          const rawContent = (fallbackResp as any)?.content
+          const firstEntry = Array.isArray(rawContent) ? rawContent[0] : undefined
+          const textVal =
+            firstEntry?.text ??
+            firstEntry?.content?.[0]?.text?.value ??
+            firstEntry?.content?.[0]?.text
+          responseStr = typeof textVal === 'string' ? textVal.trim() : JSON.stringify(fallbackResp)
         }
-      } catch (repairError) {
-        // If it's a syntax error and response seems truncated, provide helpful error
-        if (error instanceof SyntaxError && (error.message.includes('Unterminated') || error.message.includes('Unexpected end'))) {
-          console.error("⚠️ [QUIZ API] JSON appears to be truncated - likely hit maxTokens limit")
-          console.error("   Current maxTokens: 12000")
-          console.error("   Consider increasing maxTokens or reducing question complexity")
-          throw new Error(`Response was truncated (likely hit token limit). JSON parsing failed at position ${error.message.match(/position (\d+)/)?.[1] || 'unknown'}. Try reducing the number of questions or question complexity.`)
-        }
-        
-        console.log("📄 [QUIZ API] Full cleaned response (first 2000 chars):", cleanedResponse.substring(0, 2000))
-        throw new Error(`Failed to parse quiz data from AI provider: ${error.message}`)
+        tryParse()
+      } else {
+        throw err
       }
     }
     
-    // Validate the response structure
+    const handleEmptyQuestionsRetry = async () => {
+      console.warn("⚠️ [QUIZ API] Retrying AI call with fallback prompt because questions array was empty...")
+      const fallbackMessages: AIChatMessage[] = [
+        {
+          role: "system",
+          content: `You MUST return a non-empty "questions" array. Generate at least ${numQuestions} multiple_choice questions strictly from the provided document text. Do NOT return an empty array.`
+        },
+        {
+          role: "user",
+          content: `Create ${numQuestions} multiple_choice questions with 4 options each. Use only the provided document content. Return JSON: { "questions": [ { "type": "multiple_choice", "question": "...", "options": ["A","B","C","D"], "correct": 0, "explanation": "...", "source_document": "Document content", "requires_image": false } ] }`
+        }
+      ]
+      
+      const fallbackStart = Date.now()
+      const retryResp = await aiClient.chatCompletions(fallbackMessages, {
+        model: process.env.MOONSHOT_MODEL || 'kimi-k2',
+        temperature: 0.1,
+        responseFormat: 'json_object',
+        maxTokens: 4000,
+      })
+      const fallbackElapsed = ((Date.now() - fallbackStart) / 1000).toFixed(1)
+      console.log(`✅ [QUIZ API] Fallback AI call completed in ${fallbackElapsed} seconds`)
+      
+      let retryRaw: string
+      if (typeof retryResp === 'string') {
+        retryRaw = retryResp
+      } else {
+        const rawContent = (retryResp as any)?.content
+        const firstEntry = Array.isArray(rawContent) ? rawContent[0] : undefined
+        const textVal =
+          firstEntry?.text ??
+          firstEntry?.content?.[0]?.text?.value ??
+          firstEntry?.content?.[0]?.text
+        retryRaw = typeof textVal === 'string' ? textVal.trim() : JSON.stringify(retryResp)
+      }
+      
+      const retryParsed = parseAiResponse(retryRaw)
+      quizData = retryParsed.quizData
+      cleanedResponse = retryParsed.cleanedResponse
+    }
+    
     if (!quizData.questions || !Array.isArray(quizData.questions)) {
       console.error("❌ [QUIZ API] Invalid response structure:")
       console.error("   Expected: { questions: [...] }")
@@ -1093,8 +1236,8 @@ CRITICAL REQUIREMENTS:
       console.error("   quizData.questions value:", quizData.questions)
       console.error("   Full response (first 2000 chars):", JSON.stringify(quizData, null, 2).substring(0, 2000))
       console.error("   Cleaned response (first 1000 chars):", cleanedResponse.substring(0, 1000))
+      throw new Error("Parsed AI response did not contain a questions array. Provider returned meta wrapper without questions.")
     } else if (quizData.questions.length === 0) {
-      // CRITICAL: Empty questions array - AI didn't generate any questions
       console.error("❌ [QUIZ API] AI returned empty questions array!")
       console.error("   Expected: At least 1 question")
       console.error("   Received: 0 questions")
@@ -1103,52 +1246,16 @@ CRITICAL REQUIREMENTS:
       console.error("   2. The document content wasn't sufficient")
       console.error("   3. The AI model failed to generate questions")
       console.error("   Raw response:", cleanedResponse.substring(0, 500))
-      throw new Error(`AI failed to generate any questions. The response was valid JSON but contained an empty questions array. Please check that document content was provided and try again.`)
       
-      // Try to handle alternative response formats
-      if (Array.isArray(quizData)) {
-        console.warn("⚠️ [QUIZ API] Response is an array, not an object. Wrapping in questions property.")
-        quizData = { questions: quizData }
-      } else if (quizData.quiz && Array.isArray(quizData.quiz)) {
-        console.warn("⚠️ [QUIZ API] Response has 'quiz' property instead of 'questions'. Using 'quiz'.")
-        quizData.questions = quizData.quiz
-      } else if (quizData.items && Array.isArray(quizData.items)) {
-        console.warn("⚠️ [QUIZ API] Response has 'items' property instead of 'questions'. Using 'items'.")
-        quizData.questions = quizData.items
-      } else if (typeof quizData.questions === 'string' && quizData.questions.startsWith(':[{')) {
-        // Handle malformed JSON where questions is a string like ":[{"
-        console.warn("⚠️ [QUIZ API] 'questions' is a malformed string. Attempting to extract questions from broken structure.")
+      if (!didRetryEmpty) {
+        didRetryEmpty = true
+        await handleEmptyQuestionsRetry()
         
-        // Try to reconstruct questions array from the broken object structure
-        // The broken structure has question fields at the top level mixed with the questions string
-        const reconstructedQuestions: any[] = []
-        
-        // Check if we have question-like fields at the top level
-        if (quizData.question || quizData.type) {
-          // Extract first question from top-level fields
-          const firstQuestion: any = {}
-          if (quizData.type) firstQuestion.type = quizData.type
-          if (quizData.question) firstQuestion.question = quizData.question
-          if (quizData.options) firstQuestion.options = quizData.options
-          if (quizData.correct !== undefined) firstQuestion.correct = quizData.correct
-          if (quizData.explanation) firstQuestion.explanation = quizData.explanation
-          if (quizData.source_document) firstQuestion.source_document = quizData.source_document
-          if (quizData.requires_image !== undefined) firstQuestion.requires_image = quizData.requires_image
-          if (quizData.image_reference) firstQuestion.image_reference = quizData.image_reference
-          if (quizData.expected_answer) firstQuestion.expected_answer = quizData.expected_answer
-          if (quizData.answer_format_hints) firstQuestion.answer_format_hints = quizData.answer_format_hints
-          
-          reconstructedQuestions.push(firstQuestion)
-        }
-        
-        if (reconstructedQuestions.length > 0) {
-          console.warn(`⚠️ [QUIZ API] Reconstructed ${reconstructedQuestions.length} question(s) from broken structure`)
-          quizData.questions = reconstructedQuestions
-        } else {
-          throw new Error(`Invalid response format from AI provider. Expected 'questions' array, but got keys: ${Object.keys(quizData).join(', ')}. The 'questions' field is malformed: "${quizData.questions}". This suggests the AI response was truncated or improperly formatted.`)
+        if (!quizData.questions || !Array.isArray(quizData.questions) || quizData.questions.length === 0) {
+          throw new Error(`AI failed twice to generate any questions. The response was valid JSON but contained an empty questions array.`)
         }
       } else {
-        throw new Error(`Invalid response format from AI provider. Expected 'questions' array, but got keys: ${Object.keys(quizData).join(', ')}. Full response preview: ${JSON.stringify(quizData).substring(0, 500)}`)
+        throw new Error(`AI failed to generate any questions. The response was valid JSON but contained an empty questions array. Please check that document content was provided and try again.`)
       }
     }
 
@@ -1186,127 +1293,62 @@ CRITICAL REQUIREMENTS:
       }
     }
 
-    // Generate diagrams for questions that require them (only if includeDiagrams is true)
-    const questionsNeedingDiagrams = includeDiagrams 
-      ? validatedQuestions.filter((q: any) => q.requires_image && !q.image_data_b64)
-      : []
-    
-    if (questionsNeedingDiagrams.length > 0 && userId) {
-      console.log(`🖼️ [QUIZ API] ${questionsNeedingDiagrams.length} questions need diagrams, checking quota...`)
-      
+    // Diagrams temporarily disabled: force all questions to text-only
+    validatedQuestions = validatedQuestions.map((q: any) => ({
+      ...q,
+      requires_image: false,
+      image_reference: null,
+      image_data_b64: null,
+      diagramQuota: undefined
+    }))
+
+    console.log(`ℹ️ [QUIZ API] Prepared ${validatedQuestions.length} validated questions for storage`)
+    console.log('ℹ️ [QUIZ API] Question type breakdown:', validatedQuestions.reduce((acc: Record<string, number>, q: any) => {
+      const t = q.type || 'unknown'
+      acc[t] = (acc[t] || 0) + 1
+      return acc
+    }, {}))
+
+    // Ensure we have a session to attach stored questions (singleplayer or multiplayer)
+    const supabase = await createClient()
+    let sessionIdToUse = sessionId
+
+    if (!sessionIdToUse) {
       try {
-        // Admin mode: Bypass quota limits
-        let diagramLimit
-        if (isAdminMode) {
-          console.log(`🔧 [QUIZ API] Admin mode: Bypassing diagram quota limits`)
-          diagramLimit = {
-            allowed: true,
-            remaining: Infinity,
-            limit: Infinity,
-            isTrial: false,
-            requiresPro: false,
-            cost: 0.003 * questionsNeedingDiagrams.length
-          }
-        } else {
-          diagramLimit = await checkQuizDiagramLimit(userId, questionsNeedingDiagrams.length)
+        console.log('ℹ️ [QUIZ API] No sessionId provided; creating singleplayer quiz_session...')
+        const { data: newSession, error: sessionError } = await supabase
+          .from('quiz_sessions')
+          .insert({
+            user_id: userId,
+            session_name: topic ? `Singleplayer: ${topic}` : 'Singleplayer Quiz',
+            total_questions: validatedQuestions.length,
+            time_limit: 30,
+            is_active: true,
+            room_id: null,
+            started_at: new Date().toISOString()
+          })
+          .select('id')
+          .single()
+
+        if (sessionError) {
+          console.error('❌ [QUIZ API] Failed to create quiz session for question storage:', sessionError)
+        } else if (newSession?.id) {
+          sessionIdToUse = newSession.id
+          console.log('✅ [QUIZ API] Created quiz session for singleplayer question storage:', sessionIdToUse)
         }
-        
-        if (diagramLimit.allowed && (diagramLimit.remaining > 0 || isAdminMode)) {
-          const diagramsToGenerate = Math.min(
-            questionsNeedingDiagrams.length,
-            diagramLimit.remaining
-          )
-          
-          console.log(`✅ [QUIZ API] Generating ${diagramsToGenerate} diagrams (quota: ${diagramLimit.remaining} remaining)`)
-          
-          // Extract subject from topic or document context
-          const subject = topic?.toLowerCase().includes('physics') ? 'physics' :
-                         topic?.toLowerCase().includes('chemistry') ? 'chemistry' :
-                         topic?.toLowerCase().includes('biology') ? 'biology' :
-                         topic?.toLowerCase().includes('math') ? 'mathematics' : undefined
-          
-          // Generate diagrams for first N questions
-          const diagramPromises = questionsNeedingDiagrams.slice(0, diagramsToGenerate).map(async (question: any, idx: number) => {
-            try {
-              console.log(`  🎨 [QUIZ API] Generating diagram ${idx + 1}/${diagramsToGenerate} for question: "${question.question.substring(0, 50)}..."`)
-              
-              const documentContext = relevantChunks.length > 0
-                ? relevantChunks.map((chunk: any) => chunk.chunk_text).join('\n').substring(0, 2000)
-                : (notes ? notes.substring(0, 2000) : '')
-              
-              const diagram = await generateQuizQuestionDiagram(
-                question,
-                documentContext,
-                subject
-              )
-              
-              // Find and update the question in validatedQuestions
-              const questionIndex = validatedQuestions.findIndex((q: any) => q.id === question.id)
-              if (questionIndex !== -1) {
-                validatedQuestions[questionIndex].image_data_b64 = diagram.image_data_b64
-                console.log(`  ✅ [QUIZ API] Diagram generated for question ${question.id}`)
-              }
-              
-              return { success: true, questionId: question.id }
-            } catch (error) {
-              console.error(`  ❌ [QUIZ API] Failed to generate diagram for question ${question.id}:`, error)
-              return { success: false, questionId: question.id, error }
-            }
-          })
-          
-          const results = await Promise.allSettled(diagramPromises)
-          const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length
-          
-          console.log(`✅ [QUIZ API] Successfully generated ${successful}/${diagramsToGenerate} diagrams`)
-          
-          // Decrement quota (only if not admin mode)
-          if (!isAdminMode) {
-            await decrementQuizDiagramQuota(userId, successful, diagramLimit.isTrial)
-          } else {
-            console.log(`🔧 [QUIZ API] Admin mode: Skipping quota decrement`)
-          }
-          
-          // Add quota info to response
-          validatedQuestions.forEach((q: any) => {
-            if (q.requires_image && q.image_data_b64) {
-              q.diagramQuota = {
-                remaining: diagramLimit.remaining - successful,
-                limit: diagramLimit.limit,
-                isTrial: diagramLimit.isTrial,
-                message: diagramLimit.message
-              }
-            }
-          })
-        } else {
-          console.log(`⚠️ [QUIZ API] Diagram quota limit reached: ${diagramLimit.message}`)
-          
-          // Add quota info to questions that need diagrams but couldn't get them
-          questionsNeedingDiagrams.forEach((q: any) => {
-            const questionIndex = validatedQuestions.findIndex((validated: any) => validated.id === q.id)
-            if (questionIndex !== -1) {
-              validatedQuestions[questionIndex].diagramQuota = {
-                remaining: 0,
-                limit: diagramLimit.limit,
-                requiresPro: true,
-                message: diagramLimit.message
-              }
-            }
-          })
-        }
-      } catch (error) {
-        console.error('❌ [QUIZ API] Error checking/generating diagrams:', error)
-        // Continue without diagrams - don't fail the entire quiz generation
+      } catch (sessionCreateError) {
+        console.error('❌ [QUIZ API] Exception while creating quiz session:', sessionCreateError)
       }
+    } else {
+      console.log('ℹ️ [QUIZ API] Using existing session for question storage:', sessionIdToUse)
     }
 
-    // If this is a multiplayer session, store questions in database
-    if (sessionId) {
-      const supabase = await createClient()
-      
+    // Store questions in quiz_questions when a session is available
+    if (sessionIdToUse) {
       try {
-        // Insert questions into quiz_questions table
+        console.log(`ℹ️ [QUIZ API] Inserting ${validatedQuestions.length} questions into quiz_questions for session ${sessionIdToUse}`)
         const questionsToInsert = validatedQuestions.map((q: any, index: number) => ({
-          session_id: sessionId,
+          session_id: sessionIdToUse,
           idx: index,
           type: q.type === "multiple_choice" ? "mcq" : "short",
           prompt: q.question,
@@ -1329,11 +1371,42 @@ CRITICAL REQUIREMENTS:
           throw new Error('Failed to store questions in database')
         }
 
-        console.log('✅ [QUIZ API] Questions stored in database for session:', sessionId)
+        console.log('✅ [QUIZ API] Questions stored in database for session:', sessionIdToUse)
       } catch (error) {
         console.error('❌ [QUIZ API] Error storing questions:', error)
         throw error
       }
+
+      // Mirror into legacy/questions table for gameplay consumers that read from it
+      try {
+        const adminClient = createAdminClient()
+        const questionsLegacy = validatedQuestions.map((q: any, index: number) => ({
+          session_id: sessionIdToUse,
+          question_text: q.question,
+          question_type: q.type === "multiple_choice" ? "mcq" : "short",
+          correct_answer: q.type === "multiple_choice" ? (q.options?.[q.correct] || "") : (q.expected_answers?.[0] || ""),
+          options: q.options || [],
+          explanation: q.explanation || '',
+          difficulty: difficulty || 'medium',
+          points: 10,
+          time_limit: 30,
+          order_index: index
+        }))
+
+        const { error: legacyError } = await adminClient
+          .from('questions')
+          .insert(questionsLegacy)
+
+        if (legacyError) {
+          console.error('⚠️ [QUIZ API] Failed to mirror questions into questions table:', legacyError)
+        } else {
+          console.log('✅ [QUIZ API] Mirrored questions into questions table for session:', sessionIdToUse)
+        }
+      } catch (mirrorErr) {
+        console.error('⚠️ [QUIZ API] Exception while mirroring questions into questions table:', mirrorErr)
+      }
+    } else {
+      console.warn('⚠️ [QUIZ API] No session available; skipping quiz_questions insert')
     }
 
     // Store questions in history for deduplication (for both singleplayer and multiplayer)
@@ -1353,7 +1426,7 @@ CRITICAL REQUIREMENTS:
             explanation: q.explanation,
             source_document: q.source_document
           })),
-          sessionId || undefined
+          sessionIdToUse || undefined
         )
       } catch (error) {
         console.error('❌ [QUIZ API] Error storing question history:', error)
@@ -1364,6 +1437,7 @@ CRITICAL REQUIREMENTS:
     return NextResponse.json({
       success: true,
       questions: validatedQuestions,
+      sessionId: sessionIdToUse || sessionId || null,
       isRedo: isRedo,
       documentId: documentId
     })

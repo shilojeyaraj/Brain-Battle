@@ -1103,18 +1103,18 @@ function BattleResultsScreen({
                   {rank && getRankIcon(rank, "h-5 w-5")}
                   Your Progress
                 </h3>
-                <div className="space-y-3">
+                <div className="space-y-3 text-white">
                   <div className="flex justify-between">
-                    <span className="text-blue-100/70 font-bold">Current Level:</span>
-                    <span className="font-black text-orange-300">Level {userProfile.stats?.level || 1}</span>
+                    <span className="font-bold text-white">Current Level:</span>
+                    <span className="font-black text-orange-200">Level {userProfile.stats?.level || 1}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-blue-100/70 font-bold">Total XP:</span>
-                    <span className="font-black text-orange-300">{formatXP(userProfile.stats?.xp || 0)}</span>
+                    <span className="font-bold text-white">Total XP:</span>
+                    <span className="font-black text-orange-200">{formatXP(userProfile.stats?.xp || 0)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-blue-100/70 font-bold">Total Wins:</span>
-                    <span className="font-black text-orange-300">{userProfile.stats?.total_wins || 0}</span>
+                    <span className="font-bold text-white">Total Wins:</span>
+                    <span className="font-black text-orange-200">{userProfile.stats?.total_wins || 0}</span>
                   </div>
                 </div>
               </div>

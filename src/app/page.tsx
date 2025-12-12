@@ -21,6 +21,7 @@ import {
   Globe2,
   Lock,
   Flame,
+  RefreshCw,
 } from "lucide-react"
 import {
   UploadSimple,
@@ -158,12 +159,17 @@ export default function HomePage() {
   const router = useRouter()
   const [leaderboardPlayers, setLeaderboardPlayers] = useState<LeaderboardPlayer[]>([])
   const [leaderboardLoading, setLeaderboardLoading] = useState(true)
+  const [leaderboardRefreshing, setLeaderboardRefreshing] = useState(false)
   const [currentCardIndex, setCurrentCardIndex] = useState(0)
   const [loadingButton, setLoadingButton] = useState<string | null>(null)
 
-  const fetchLeaderboard = async () => {
+  const fetchLeaderboard = async (isRefresh = false) => {
     try {
-      setLeaderboardLoading(true)
+      if (isRefresh) {
+        setLeaderboardRefreshing(true)
+      } else {
+        setLeaderboardLoading(true)
+      }
       const response = await fetch('/api/leaderboard-preview')
       
       if (response.ok) {
@@ -180,15 +186,12 @@ export default function HomePage() {
       // Keep placeholder data on error
     } finally {
       setLeaderboardLoading(false)
+      setLeaderboardRefreshing(false)
     }
   }
 
   useEffect(() => {
     fetchLeaderboard()
-    
-    // Refresh every 30 seconds
-    const interval = setInterval(fetchLeaderboard, 30000)
-    return () => clearInterval(interval)
   }, [])
 
   // Auto-rotate feature cards
@@ -445,12 +448,28 @@ export default function HomePage() {
 
             {/* Climb leaderboard + live leaderboard */}
             <div className="bg-gradient-to-br from-slate-850 to-slate-900 rounded-2xl border-2 border-orange-300/40 shadow-2xl p-4 backdrop-blur space-y-3">
-              <div className="flex items-center gap-2">
-                <Trophy className="w-5 h-5 text-orange-200" />
-                <div>
-                  <p className="text-xs text-orange-100/70 font-semibold">Climb the leaderboard</p>
-                  <h3 className="text-base font-black text-white">Battle, earn XP, rank up</h3>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-orange-200" />
+                  <div>
+                    <p className="text-xs text-orange-100/70 font-semibold">Climb the leaderboard</p>
+                    <h3 className="text-base font-black text-white">Battle, earn XP, rank up</h3>
+                  </div>
                 </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchLeaderboard(true)}
+                  disabled={leaderboardRefreshing}
+                  className="border-2 border-blue-400 text-blue-100 hover:text-white hover:bg-blue-500/20 disabled:opacity-60"
+                >
+                  {leaderboardRefreshing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  <span className="ml-2">Refresh</span>
+                </Button>
               </div>
               <div className="h-3 w-full rounded-full bg-slate-800 border border-slate-700 overflow-hidden">
                 <motion.div

@@ -18,6 +18,7 @@ import { createAIClient } from "@/lib/ai/client-factory"
 import { extractTextFromDocument } from "@/lib/document-text-extractor"
 import type { AIChatMessage } from "@/lib/ai/types"
 import { initializeBrowserPolyfills } from "@/lib/polyfills/browser-apis"
+import { createHash } from "crypto"
 
 // Ensure this route runs in the Node.js runtime (needed for pdfjs + Supabase client libs)
 export const runtime = 'nodejs'
@@ -197,6 +198,9 @@ export async function POST(req: NextRequest) {
 
     // 1) Process files in parallel - extract text and images simultaneously
     const fileContents: string[] = []
+    const documentMetadata: { fileName: string; contentHash?: string; fileSize: number; fileType: string }[] = []
+    const documentIds: string[] = []
+    // Temporarily disable image/diagram extraction for quiz generation stability
     const extractedImages: { image_data_b64: string; page: number; width?: number; height?: number }[] = []
     const fileNames: string[] = []
     
@@ -351,6 +355,8 @@ export async function POST(req: NextRequest) {
       }
       
       const buffer = Buffer.from(await file.arrayBuffer())
+      // Compute hash early for document tracking
+      const contentHash = createHash('sha256').update(buffer).digest('hex')
       
       // Extract text and images together (for PDFs, this is a single scan)
       const result = await extractTextAndImagesFromFile(file, buffer)
@@ -358,7 +364,12 @@ export async function POST(req: NextRequest) {
       return {
         textContent: result.textContent,
         fileName: result.fileName,
-        images: result.images
+        images: result.images,
+        meta: {
+          contentHash,
+          fileSize: file.size,
+          fileType: file.type
+        }
       }
     })
     
@@ -369,7 +380,7 @@ export async function POST(req: NextRequest) {
     let hasValidContent = false
     for (const result of fileResults) {
       if (result.status === 'fulfilled') {
-        const { textContent, fileName, images } = result.value
+        const { textContent, fileName, images, meta } = result.value
         
         if (textContent && textContent.trim().length > 0) {
           fileContents.push(textContent)
@@ -377,6 +388,21 @@ export async function POST(req: NextRequest) {
           if (textContent.trim().length >= 100) {
             hasValidContent = true
           }
+        }
+        
+        if (meta?.contentHash) {
+          documentMetadata.push({
+            fileName,
+            contentHash: meta.contentHash,
+            fileSize: meta.fileSize ?? 0,
+            fileType: meta.fileType ?? ''
+          })
+        } else {
+          documentMetadata.push({
+            fileName,
+            fileSize: meta?.fileSize ?? 0,
+            fileType: meta?.fileType ?? ''
+          })
         }
         
         if (images && images.length > 0) {
@@ -420,6 +446,79 @@ export async function POST(req: NextRequest) {
     console.log(`  - File contents extracted: ${fileContents.length}`)
     console.log(`  - Images extracted: ${extractedImages.length}`)
     console.log(`  - Total content length: ${totalContentLength} characters`)
+
+    // 2b) Track documents in database for auditing and reuse
+    if (documentMetadata.length > 0) {
+      const adminClient = createAdminClient()
+      const payloadStoragePath = '' // placeholder; actual storage path not available in notes flow
+      const payloadFileUrl = '' // placeholder; actual storage URL not available in notes flow
+      for (const meta of documentMetadata) {
+        if (!meta.contentHash) {
+          console.warn(`  ⚠️ [NOTES API] Skipping document upsert for ${meta.fileName} (missing content hash)`)
+          continue
+        }
+
+        // Ensure user exists to satisfy FK
+        try {
+          const { ensureUserExists } = await import('@/lib/utils/ensure-user-exists')
+          const ensured = await ensureUserExists(userId)
+          if (!ensured) {
+            console.warn(`  ⚠️ [NOTES API] Unable to ensure user exists for documents upsert (userId=${userId})`)
+            // Attempt direct creation via admin client as a fallback
+            const { error: createUserError } = await adminClient
+              .from('users')
+              .insert({ id: userId })
+            if (createUserError) {
+              console.error(`  ❌ [NOTES API] Direct user create failed for ${userId}:`, createUserError)
+              // Continue; upsert may still fail, but we log and try
+            } else {
+              console.log(`  ✅ [NOTES API] Fallback created user row for ${userId}`)
+            }
+          }
+        } catch (ensureErr) {
+          console.error(`  ⚠️ [NOTES API] ensureUserExists failed for ${userId}:`, ensureErr)
+          // Attempt direct creation via admin client as a fallback
+          try {
+            const { error: createUserError } = await adminClient
+              .from('users')
+              .insert({ id: userId })
+            if (createUserError) {
+              console.error(`  ❌ [NOTES API] Direct user create failed for ${userId}:`, createUserError)
+            } else {
+              console.log(`  ✅ [NOTES API] Fallback created user row for ${userId}`)
+            }
+          } catch (createErr) {
+            console.error(`  ❌ [NOTES API] Exception creating user row for ${userId}:`, createErr)
+          }
+        }
+
+        const payload = {
+          user_id: userId,
+          original_name: meta.fileName,
+          filename: meta.fileName, // satisfy not-null filename column (legacy schema)
+          storage_path: payloadStoragePath ?? '', // best-effort placeholder
+          file_url: payloadFileUrl ?? '', // best-effort placeholder
+          uploaded_by: userId, // legacy schema compatibility
+          file_type: meta.fileType || 'application/octet-stream',
+          file_size: meta.fileSize || 0,
+          content_hash: meta.contentHash
+        }
+        const { data: docRow, error: docError } = await adminClient
+          .from('documents')
+          .upsert(payload, { onConflict: 'user_id,content_hash' })
+          .select('id, original_name')
+          .maybeSingle()
+
+        if (docError) {
+          console.error(`  ❌ [NOTES API] Failed to upsert document row for ${meta.fileName}:`, docError)
+        } else {
+          console.log(`  ✅ [NOTES API] Document tracked: ${meta.fileName} (id=${docRow?.id || 'unknown'})`)
+          if (docRow?.id) {
+            documentIds.push(docRow.id)
+          }
+        }
+      }
+    }
 
     // 3) Use semantic search to understand the content better (optional)
     // Note: Semantic search requires userId and searches stored documents.
@@ -1177,6 +1276,19 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
       }
     }
 
+    // Validate that the AI response is non-empty / meaningful
+    const hasMeaningfulContent =
+      Boolean(notesData?.title && String(notesData.title).trim().length > 1 && notesData.title !== ':') ||
+      (Array.isArray(notesData?.outline) && notesData.outline.length > 0) ||
+      (Array.isArray(notesData?.key_terms) && notesData.key_terms.length > 0) ||
+      (Array.isArray(notesData?.concepts) && notesData.concepts.length > 0) ||
+      (Array.isArray(notesData?.formulas) && notesData.formulas.length > 0)
+
+    if (!hasMeaningfulContent) {
+      console.error('❌ [NOTES API] AI returned empty/meaningless notes payload; failing fast')
+      throw new Error('Notes generation returned empty content. Please retry with a clearer document.')
+    }
+
     // 5) Parallel enrichment: diagrams, videos, and embeddings
     // Run all enrichment operations in parallel for maximum speed
     const enrichmentStart = Date.now()
@@ -1350,6 +1462,56 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
     }).catch((dbError: any) => {
       console.error('⚠️ [NOTES API] Background database save error:', dbError)
     })
+
+    // Persist study_notes_cache for reuse (best-effort)
+    try {
+      const adminClient = createAdminClient()
+      const instructionsHash = createHash('sha256')
+        .update(JSON.stringify({
+          topic,
+          difficulty,
+          instructions,
+          studyContext,
+          fileNames,
+        }))
+        .digest('hex')
+      
+      const primaryDocumentId = documentIds[0] || null
+      const cachePayload = {
+        user_id: userId,
+        document_id: primaryDocumentId,
+        topic: topic || null,
+        education_level: studyContext?.educationLevel || null,
+        content_focus: studyContext?.contentFocus || null,
+        instructions_hash: instructionsHash,
+        notes_json: enrichedNotes
+      }
+      
+      // Attempt upsert; fallback to insert if unique constraint is missing (42P10)
+      const { error: cacheError } = await adminClient
+        .from('study_notes_cache')
+        .upsert(cachePayload, { onConflict: 'user_id,document_id,instructions_hash' })
+      
+      if (cacheError) {
+        if ((cacheError as any)?.code === '42P10') {
+          console.warn('⚠️ [NOTES API] study_notes_cache upsert failed (missing unique constraint); retrying with insert')
+          const { error: insertError } = await adminClient
+            .from('study_notes_cache')
+            .insert(cachePayload)
+          if (insertError) {
+            console.error('❌ [NOTES API] Failed to insert study_notes_cache:', insertError)
+          } else {
+            console.log('✅ [NOTES API] Cached notes in study_notes_cache (insert fallback)')
+          }
+        } else {
+          console.error('⚠️ [NOTES API] Failed to upsert study_notes_cache:', cacheError)
+        }
+      } else {
+        console.log('✅ [NOTES API] Cached notes in study_notes_cache')
+      }
+    } catch (cacheErr) {
+      console.error('⚠️ [NOTES API] Exception while caching notes:', cacheErr)
+    }
 
     return NextResponse.json({ 
       success: true, 

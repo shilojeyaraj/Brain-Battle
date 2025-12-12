@@ -10,10 +10,12 @@ import Link from "next/link"
 interface RecentBattlesProps {
   recentGames?: any[]
   loading?: boolean
+  onRefresh?: () => void
+  refreshing?: boolean
 }
 
 // 🚀 OPTIMIZATION: Accept props to avoid redundant API calls
-export const RecentBattles = memo(function RecentBattles({ recentGames: propRecentGames, loading: propLoading }: RecentBattlesProps) {
+export const RecentBattles = memo(function RecentBattles({ recentGames: propRecentGames, loading: propLoading, onRefresh, refreshing }: RecentBattlesProps) {
   const [recentBattles, setRecentBattles] = useState<any[]>(propRecentGames || [])
   const [loading, setLoading] = useState(propLoading !== undefined ? propLoading : true)
 
@@ -97,11 +99,22 @@ export const RecentBattles = memo(function RecentBattles({ recentGames: propRece
 
   return (
     <Card className="p-8 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg">
-      <div className="mb-8">
-        <h2 className="text-4xl font-black text-white mb-2" style={{ fontFamily: "var(--font-display)" }}>
-          Recent Battles
-        </h2>
-        <p className="text-base text-blue-100/70 font-bold">Your latest showdowns</p>
+      <div className="mb-8 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-4xl font-black text-white mb-2" style={{ fontFamily: "var(--font-display)" }}>
+            Recent Battles
+          </h2>
+          <p className="text-base text-blue-100/70 font-bold">Your latest showdowns</p>
+        </div>
+        {onRefresh && (
+          <button
+            onClick={onRefresh}
+            disabled={refreshing}
+            className="px-3 py-2 rounded-lg border-2 border-blue-400 text-blue-100 hover:text-white hover:bg-blue-500/20 disabled:opacity-50 transition-colors font-bold text-sm"
+          >
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </button>
+        )}
       </div>
 
       <div className="space-y-6">

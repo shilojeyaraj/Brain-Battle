@@ -34,7 +34,7 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
 
   useEffect(() => {
     const fetchUserId = async () => {
-      // Try to get userId from session cookie first (more reliable)
+      // Try session cookie first
       let userId: string | null = null
       try {
         const response = await fetch('/api/user/current')
@@ -45,37 +45,35 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
             console.log('✅ [DASHBOARD] User ID from session cookie:', userId)
           }
         }
-      } catch (e) {
-        console.warn('⚠️ [DASHBOARD] Failed to get userId from API, falling back to localStorage')
+      } catch {
+        // ignore
       }
-      
-      // Fallback to localStorage if API call failed (for backwards compatibility)
+
+      // Fallback to local storage
       if (!userId) {
         userId = await getCurrentUserId()
-        if (userId) {
-          console.log('✅ [DASHBOARD] User ID from localStorage:', userId)
-        }
       }
-      
-      // Check for userId in URL params (legacy support - should not happen with secure cookies)
+
+      // One-time legacy URL param check
       const userIdFromUrl = searchParams.get('userId')
       if (userIdFromUrl && !userId) {
         userId = userIdFromUrl
-        // Clear the URL parameter without causing a page reload
         const url = new URL(window.location.href)
         url.searchParams.delete('userId')
         window.history.replaceState({}, '', url.toString())
       }
-      
+
       if (userId) {
         setCurrentUserId(userId)
       } else {
         console.log('❌ [DASHBOARD] No user session found')
       }
     }
-    
+
     fetchUserId()
-  }, [searchParams])
+    // Run only once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Memoize user profile fetching to prevent unnecessary API calls
   const fetchUserProfile = useCallback(async () => {
@@ -145,28 +143,12 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
     }
   }, [currentUserId, fetchStreak])
 
-  // Listen for quiz completion events to refresh stats
+  // Fetch user profile once when userId becomes available
   useEffect(() => {
-    if (currentUserId) {
+    if (currentUserId && !userProfile) {
       fetchUserProfile()
     }
-    
-    // Listen for quiz completion events to refresh stats
-    const handleQuizComplete = () => {
-      console.log('🔄 [DASHBOARD HEADER] Quiz completed, refreshing stats...')
-      if (currentUserId) {
-        fetchUserProfile()
-        fetchStreak()
-        fetchUsageLimits()
-      }
-    }
-    
-    window.addEventListener('quizCompleted', handleQuizComplete)
-    
-    return () => {
-      window.removeEventListener('quizCompleted', handleQuizComplete)
-    }
-  }, [currentUserId, fetchUserProfile, fetchStreak, fetchUsageLimits])
+  }, [currentUserId, userProfile, fetchUserProfile])
 
   // Fetch usage limits when menu opens (only fetch once per menu open)
   useEffect(() => {
@@ -208,15 +190,14 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Achievements Button */}
-            <Link href="/dashboard/achievements">
-              <Button
-                className="font-black border-4 border-orange-400/50 bg-gradient-to-r from-orange-500 to-orange-600 text-white hover:from-orange-600 hover:to-orange-700 cartoon-border cartoon-shadow"
-              >
-                <Trophy className="h-5 w-5 mr-2" strokeWidth={3} />
-                Achievements
-              </Button>
-            </Link>
+            {/* Achievements Button (opens modal) */}
+            <Button
+              onClick={() => setIsAchievementsOpen(true)}
+              className="font-black border-4 border-orange-400/50 bg-gradient-to-r from-orange-500 to-orange-600 text-white hover:from-orange-600 hover:to-orange-700 cartoon-border cartoon-shadow"
+            >
+              <Trophy className="h-5 w-5 mr-2" strokeWidth={3} />
+              Achievements
+            </Button>
 
             <div className="hidden md:flex items-center gap-4 text-sm">
               <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/60 border border-slate-700/50 backdrop-blur-sm">

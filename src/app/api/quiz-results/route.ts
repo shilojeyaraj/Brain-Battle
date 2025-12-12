@@ -634,74 +634,90 @@ export async function POST(request: NextRequest) {
 
     console.log("✅ [QUIZ RESULTS] Created game result:", gameResult.id)
 
-    // 6. Get current player stats (use admin client to bypass RLS)
-    const { data: currentStats, error: statsFetchError } = await adminClient
-      .from('player_stats')
-      .select('*')
-      .eq('user_id', userId)
-      .single()
+    // 6. Ensure user row exists, then get/create player stats (admin client bypasses RLS)
+    const { data: existingUser } = await adminClient
+      .from('users')
+      .select('id')
+      .eq('id', userId)
+      .maybeSingle()
 
-    if (statsFetchError || !currentStats) {
-      console.error("❌ [QUIZ RESULTS] Error fetching current stats:", statsFetchError)
-      // Try to create stats if they don't exist
-      // IMPORTANT: Check if this is singleplayer before creating stats
-      const isSingleplayerForNewStats = sessionData?.room_id === null || sessionData?.room_id === undefined
-      
-      if (statsFetchError?.code === 'PGRST116' || !currentStats) {
-        console.log("📝 [QUIZ RESULTS] Creating initial player stats for user:", userId, "isSingleplayer:", isSingleplayerForNewStats)
-        
-        // 🛡️ SECURITY: Use verified values (these should be defined by now)
-        // If for some reason they're not defined, use safe defaults
-        const safeCorrectAnswers = typeof verifiedCorrectAnswers !== 'undefined' ? verifiedCorrectAnswers : 0
-        const safeTotalQuestions = typeof verifiedTotalQuestions !== 'undefined' ? verifiedTotalQuestions : 0
-        const safeAverageTime = typeof averageResponseTime !== 'undefined' ? averageResponseTime : 30
-        
-        const { data: newStats, error: createError } = await adminClient
-          .from('player_stats')
-          .insert({
-            user_id: userId,
-            level: 1,
-            xp: xpEarned,
-            total_games: isSingleplayerForNewStats ? 0 : 1,
-            total_wins: isSingleplayerForNewStats ? 0 : 1,
-            total_losses: 0,
-            win_streak: isSingleplayerForNewStats ? 0 : 1,
-            best_streak: isSingleplayerForNewStats ? 0 : 1,
-            total_questions_answered: safeTotalQuestions,
-            correct_answers: safeCorrectAnswers,
-            accuracy: safeTotalQuestions > 0 ? (safeCorrectAnswers / safeTotalQuestions) * 100 : 0,
-            average_response_time: safeAverageTime,
-            favorite_subject: topic,
-            // Initialize free trial: 3 trial quiz diagrams
-            trial_quiz_diagrams_remaining: 3,
-            quiz_diagrams_this_month: 0,
-            has_used_trial_quiz_diagrams: false,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .select()
-          .single()
-        
-        if (createError) {
-          console.error("❌ [QUIZ RESULTS] Error creating player stats:", createError)
-          return NextResponse.json({ error: "Failed to create player stats" }, { status: 500 })
-        }
-        
-        console.log("✅ [QUIZ RESULTS] Created initial player stats")
-        return NextResponse.json({ 
-          success: true, 
-          sessionId: sessionData.id,
-          gameResultId: gameResult.id,
-          xpEarned,
-          oldXP: 0,
-          newXP: xpEarned
-        })
+    if (!existingUser) {
+      try {
+        await adminClient.from('users').insert({ id: userId }).select('id').single()
+        console.log(`🔧 [QUIZ RESULTS] Created missing user row for ${userId}`)
+      } catch (userCreateErr) {
+        console.error('❌ [QUIZ RESULTS] Failed to ensure user exists:', userCreateErr)
       }
-      return NextResponse.json({ error: "Failed to fetch current stats" }, { status: 500 })
+    }
+
+    const isSingleplayerForNewStats = sessionData?.room_id === null || sessionData?.room_id === undefined
+
+    const createDefaultStats = async () => {
+      const safeCorrectAnswers = typeof verifiedCorrectAnswers !== 'undefined' ? verifiedCorrectAnswers : 0
+      const safeTotalQuestions = typeof verifiedTotalQuestions !== 'undefined' ? verifiedTotalQuestions : 0
+      const safeAverageTime = typeof averageResponseTime !== 'undefined' ? averageResponseTime : 30
+      const safeAccuracy = safeTotalQuestions > 0 ? (safeCorrectAnswers / safeTotalQuestions) * 100 : 0
+      const totals = {
+        total_games: 1,
+        total_wins: 1,
+        total_losses: 0,
+        win_streak: 1,
+        best_streak: 1
+      }
+      const { data: newStats, error: createError } = await adminClient
+        .from('player_stats')
+        .insert({
+          user_id: userId,
+          level: 1,
+          xp: xpEarned,
+          ...totals,
+          total_questions_answered: safeTotalQuestions,
+          correct_answers: safeCorrectAnswers,
+          accuracy: safeAccuracy,
+          average_response_time: safeAverageTime,
+          favorite_subject: topic,
+          trial_quiz_diagrams_remaining: 3,
+          quiz_diagrams_this_month: 0,
+          has_used_trial_quiz_diagrams: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single()
+      
+      if (createError || !newStats) {
+        console.error("❌ [QUIZ RESULTS] Error creating player stats:", createError)
+        return null
+      }
+      return newStats
+    }
+
+    let currentStats
+    try {
+      const { data: statsRow, error: statsFetchError } = await adminClient
+        .from('player_stats')
+        .select('*')
+        .eq('user_id', userId)
+        .single()
+
+      if (statsFetchError || !statsRow) {
+        console.warn("⚠️ [QUIZ RESULTS] Missing player_stats, creating default row...")
+        currentStats = await createDefaultStats()
+        if (!currentStats) {
+          return NextResponse.json({ error: "Failed to initialize stats" }, { status: 500 })
+        }
+      } else {
+        currentStats = statsRow
+      }
+    } catch (statsFetchError) {
+      console.warn("⚠️ [QUIZ RESULTS] Stats fetch error, creating default row...", statsFetchError)
+      currentStats = await createDefaultStats()
+      if (!currentStats) {
+        return NextResponse.json({ error: "Failed to initialize stats" }, { status: 500 })
+      }
     }
 
     // 7. Update player stats manually (ensure it works even if trigger doesn't exist)
-    // IMPORTANT: Singleplayer battles (room_id IS NULL or undefined) should NOT count as wins/games
     // Determine if this is singleplayer (sessionData is already set)
     const isSingleplayer = !sessionData.room_id || sessionData.room_id === null || sessionData.room_id === undefined
     
@@ -717,12 +733,10 @@ export async function POST(request: NextRequest) {
     // Update games count for both singleplayer and multiplayer (for achievements)
     // But only count multiplayer games for win/loss stats
     const newTotalGames = (currentStats.total_games || 0) + 1
-    const newTotalWins = isSingleplayer
-      ? (currentStats.total_wins || 0)
-      : (currentStats.total_wins || 0) + 1 // Only multiplayer wins count
-    const newWinStreak = isSingleplayer
-      ? (currentStats.win_streak || 0) // Don't update streak for singleplayer
-      : (currentStats.win_streak || 0) + 1
+    // Singleplayer: do NOT count wins/streaks; only multiplayer increases wins/streaks
+    const isMultiplayer = !!sessionData.room_id
+    const newTotalWins = isMultiplayer ? (currentStats.total_wins || 0) + 1 : (currentStats.total_wins || 0)
+    const newWinStreak = isMultiplayer ? (currentStats.win_streak || 0) + 1 : (currentStats.win_streak || 0)
     const newBestStreak = Math.max(currentStats.best_streak || 0, newWinStreak)
     // 🛡️ SECURITY: Use verified values from database
     const newTotalQuestions = (currentStats.total_questions_answered || 0) + verifiedTotalQuestions
