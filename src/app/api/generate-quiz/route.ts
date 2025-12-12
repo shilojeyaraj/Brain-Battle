@@ -327,102 +327,33 @@ export async function POST(request: NextRequest) {
             if (file.type === "text/plain") {
               return `=== ${file.name} ===\n${buffer.toString('utf-8')}\n`
             } else if (file.type === "application/pdf") {
-              // CRITICAL: Configure pdf-parse's internal pdfjs-dist BEFORE importing pdf-parse
-              // pdf-parse loads pdfjs-dist internally, and we need to configure it before it tries to load the worker
-              // We'll pre-configure the global pdfjs instance that pdf-parse will use
-              
-              // First, try to configure pdfjs-dist globally before pdf-parse imports it
+              // SIMPLEST: Use pdf-parse for text extraction (no workers needed, works in serverless)
+              // Same approach as notes route - simple and reliable
               try {
-                // Import pdfjs-dist directly and configure it
-                const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
-                const pdfjsLib = pdfjsModule.default || pdfjsModule
+                const pdfParseModule: any = await import('pdf-parse')
                 
-                // Configure worker to use fake worker (empty string)
-                if (pdfjsLib.GlobalWorkerOptions) {
-                  pdfjsLib.GlobalWorkerOptions.workerSrc = ''
-                  if (typeof pdfjsLib.setWorkerFetch === 'function') {
-                    pdfjsLib.setWorkerFetch(false)
-                  }
+                // pdf-parse exports PDFParse class, handle different export formats
+                const PDFParse = pdfParseModule.PDFParse || pdfParseModule.default?.PDFParse || pdfParseModule.default
+                
+                if (!PDFParse || typeof PDFParse !== 'function') {
+                  throw new Error('pdf-parse PDFParse class not found')
                 }
                 
-                // Store in globalThis so pdf-parse can use it
-                if (typeof globalThis !== 'undefined') {
-                  (globalThis as any).pdfjs = pdfjsLib
+                // Create parser instance and extract text
+                const parser = new PDFParse({ data: buffer })
+                const pdfText = await parser.getText()
+                
+                // Clean up
+                if (parser.destroy) {
+                  await parser.destroy()
                 }
                 
-                if (process.env.NODE_ENV === 'development') {
-                  console.log(`  🔧 [QUIZ API] Pre-configured pdfjs-dist for pdf-parse (worker disabled)`)
-                }
-              } catch (preConfigError) {
-                if (process.env.NODE_ENV === 'development') {
-                  console.warn(`  ⚠️ [QUIZ API] Pre-configuration warning:`, preConfigError)
-                }
+                const text = pdfText || ''
+                return `=== ${file.name} ===\n${text}\n`
+              } catch (pdfError) {
+                console.error(`Failed to parse PDF ${file.name}:`, pdfError)
+                return ""
               }
-              
-              // Now import pdf-parse - it should use the pre-configured pdfjs instance
-              const pdfParseModule: any = await import('pdf-parse')
-              const PDFParse = pdfParseModule.PDFParse || pdfParseModule.default?.PDFParse || pdfParseModule.default
-              
-              if (!PDFParse || typeof PDFParse !== 'function') {
-                throw new Error(`pdf-parse PDFParse class not found. Module keys: ${Object.keys(pdfParseModule).join(', ')}`)
-              }
-              
-              // CRITICAL: Use setWorker to disable worker BEFORE creating instance
-              // Empty string tells pdf-parse to use fake worker
-              if (typeof PDFParse.setWorker === 'function') {
-                PDFParse.setWorker('')
-                if (process.env.NODE_ENV === 'development') {
-                  console.log(`  🔧 [QUIZ API] pdf-parse worker set to empty string (fake worker)`)
-                }
-              }
-              
-              // Create instance with serverless options
-              const parser = new PDFParse({ 
-                data: buffer,
-                useSystemFonts: true,
-                disableAutoFetch: true,
-                useWorkerFetch: false,  // CRITICAL: Disable worker fetch completely
-                isEvalSupported: false,
-                verbosity: 0  // Reduce logging
-              })
-              
-              // CRITICAL: Patch pdf-parse's internal pdfjs to disable worker (double-check)
-              // pdf-parse may load pdfjs into globalThis.pdfjs when getText() is called
-              // Ensure it's configured before use
-              await new Promise(resolve => setImmediate(resolve))
-              
-              if (typeof globalThis !== 'undefined' && (globalThis as any).pdfjs) {
-                const internalPdfjs = (globalThis as any).pdfjs
-                if (internalPdfjs && internalPdfjs.GlobalWorkerOptions) {
-                  // Force disable worker by setting to empty string
-                  internalPdfjs.GlobalWorkerOptions.workerSrc = ''
-                  
-                  // Disable worker fetch if available
-                  if (typeof internalPdfjs.setWorkerFetch === 'function') {
-                    try {
-                      internalPdfjs.setWorkerFetch(false)
-                    } catch (e) {
-                      // Ignore if not available
-                    }
-                  }
-                  
-                  if (process.env.NODE_ENV === 'development') {
-                    console.log(`  🔧 [QUIZ API] pdf-parse internal pdfjs worker disabled for ${file.name} (workerSrc: "${internalPdfjs.GlobalWorkerOptions.workerSrc}")`)
-                  }
-                }
-              }
-              
-              // Now call getText() - this will internally call pdfjs.getDocument()
-              // The worker should be disabled now, so it will use fake worker
-              const textResult = await parser.getText()
-              const text = textResult.text || textResult.texts?.join('\n\n') || ''
-              
-              // Clean up
-              if (parser.destroy) {
-                await parser.destroy()
-              }
-              
-              return `=== ${file.name} ===\n${text}\n`
             } else if (
               file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
               file.type === 'application/msword' ||
