@@ -36,7 +36,13 @@ export async function configurePdfjsForServerless() {
     // Use the CommonJS build to avoid ESM worker imports in serverless
     const { createRequire } = require('module')
     const req = createRequire(import.meta.url)
-    const pdfjsLib = req('pdfjs-dist/legacy/build/pdf.js')
+    let pdfjsLib: any
+    try {
+      pdfjsLib = req('pdfjs-dist/legacy/build/pdf.js')
+    } catch {
+      // Fallback to main CJS build path if legacy CJS is absent in prod
+      pdfjsLib = req('pdfjs-dist/build/pdf.js')
+    }
 
     if (pdfjsLib.GlobalWorkerOptions) {
       const workerOptions = pdfjsLib.GlobalWorkerOptions
