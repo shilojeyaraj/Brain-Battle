@@ -64,6 +64,15 @@ async function main() {
   // CRITICAL: Initialize browser polyfills (same as server)
   initializeBrowserPolyfills()
 
+  // CRITICAL: Set global worker options BEFORE importing pdfjs-config
+  // This must happen before ANY pdfjs module is loaded
+  const globalObj: any = globalThis as any
+  if (!globalObj.GlobalWorkerOptions) {
+    globalObj.GlobalWorkerOptions = {}
+  }
+  globalObj.GlobalWorkerOptions.workerSrc = ''
+  globalObj.GlobalWorkerOptions.disableWorker = true
+
   // Step 1: Extract text from PDF (EXACT SAME AS SERVER)
   console.log("📋 Step 1: Extracting text from PDF (using server's exact pdfjs extraction)...")
   const fileBuffer = await fs.promises.readFile(filePath)
@@ -78,15 +87,15 @@ async function main() {
     // Use the EXACT same extraction method as the server (pdfjs-dist)
     const { getPdfjsLib, SERVERLESS_PDF_OPTIONS, applyGlobalPdfjsWorkerDisable } = await import('../src/lib/pdfjs-config')
     
-    // Apply global worker disable FIRST (before any pdfjs operations) - EXACT SAME AS SERVER
+    // Apply global worker disable again (belt-and-suspenders) - EXACT SAME AS SERVER
     applyGlobalPdfjsWorkerDisable()
     
     const pdfjsLib = await getPdfjsLib()
     
     // Belt-and-suspenders: ensure worker is disabled (EXACT SAME AS SERVER - lines 235-259 in route.ts)
+    // CRITICAL: Set workerSrc to empty string to prevent import errors
     if (pdfjsLib?.GlobalWorkerOptions) {
-      // Server uses resolved workerSrc from config (which getPdfjsLib already set)
-      // Just ensure disableWorker is true
+      pdfjsLib.GlobalWorkerOptions.workerSrc = ''
       ;(pdfjsLib.GlobalWorkerOptions as any).disableWorker = true
     } else {
       (pdfjsLib as any).GlobalWorkerOptions = { workerSrc: '', disableWorker: true }

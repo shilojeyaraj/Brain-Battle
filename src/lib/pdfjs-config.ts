@@ -14,16 +14,11 @@ let configuredPdfjsLib: any = null
 let resolvedWorkerSrc: string | null = null
 
 export function resolveWorkerSrc() {
-  if (resolvedWorkerSrc) return resolvedWorkerSrc
-  try {
-    const { createRequire } = require('module')
-    const { pathToFileURL } = require('url')
-    const req = createRequire(import.meta.url)
-    const workerPath = req.resolve('pdfjs-dist/legacy/build/pdf.worker.min.mjs')
-    resolvedWorkerSrc = pathToFileURL(workerPath).toString()
-  } catch {
-    resolvedWorkerSrc = 'pdf.worker.min.mjs'
-  }
+  if (resolvedWorkerSrc !== null) return resolvedWorkerSrc
+  // CRITICAL FIX: In production serverless (Vercel), worker files don't exist
+  // Setting to empty string forces fake worker mode without trying to import the file
+  // This prevents "Cannot find package 'pdf.worker.min.mjs'" errors
+  resolvedWorkerSrc = ''
   return resolvedWorkerSrc
 }
 
@@ -31,9 +26,9 @@ export function resolveWorkerSrc() {
  * Configure pdfjs-dist for serverless environments
  * This disables the worker and uses fake worker instead
  * 
- * CRITICAL FIX: PDF.js 4.4.168 checks workerSrc during fake worker initialization
- * at api.js:2314. The check happens internally and bypasses property descriptors.
- * We must set workerSrc to a non-empty value IMMEDIATELY after import.
+ * CRITICAL FIX FOR PRODUCTION: PDF.js 4.4.168 tries to import worker file during initialization.
+ * In serverless (Vercel), worker files don't exist, causing "Cannot find package" errors.
+ * Solution: Set workerSrc to empty string BEFORE import, and disableWorker=true to skip worker entirely.
  */
 export async function configurePdfjsForServerless() {
   try {
@@ -41,34 +36,63 @@ export async function configurePdfjsForServerless() {
       return configuredPdfjsLib
     }
 
+    // CRITICAL: Set global worker options BEFORE importing pdfjs-dist
+    // This prevents pdfjs from trying to import the worker file during module load
+    applyGlobalPdfjsWorkerDisable()
+
     // Use ESM legacy build; fallback to ESM main build if legacy missing
     let pdfjsLib: any
     try {
       const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
       pdfjsLib = pdfjsModule.default || pdfjsModule
-    } catch {
-      const pdfjsModule: any = await import('pdfjs-dist/build/pdf.mjs')
-      pdfjsLib = pdfjsModule.default || pdfjsModule
-    }
-
-    if (pdfjsLib.GlobalWorkerOptions) {
-      const workerOptions = pdfjsLib.GlobalWorkerOptions
-      workerOptions.workerSrc = resolveWorkerSrc() // stub string -> fake worker
-      ;(workerOptions as any).disableWorker = true
-      if (process.env.NODE_ENV === 'development') {
-        console.log('✅ [PDFJS CONFIG] Worker source set to stub (fake worker), using ESM legacy build')
+      
+      // CRITICAL: Set worker options IMMEDIATELY after import (before any operations)
+      // Must set on the pdfjsLib instance, not just global
+      if (pdfjsLib.GlobalWorkerOptions) {
+        const workerOptions = pdfjsLib.GlobalWorkerOptions
+        // Empty string forces fake worker without trying to import the file
+        workerOptions.workerSrc = ''
+        ;(workerOptions as any).disableWorker = true
+      } else {
+        // Create GlobalWorkerOptions if it doesn't exist
+        pdfjsLib.GlobalWorkerOptions = { workerSrc: '', disableWorker: true }
       }
+    } catch (error) {
+      // If legacy build fails, try main build
+      try {
+        const pdfjsModule: any = await import('pdfjs-dist/build/pdf.mjs')
+        pdfjsLib = pdfjsModule.default || pdfjsModule
+        
+        // CRITICAL: Set worker options IMMEDIATELY after import
+        if (pdfjsLib.GlobalWorkerOptions) {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = ''
+          ;(pdfjsLib.GlobalWorkerOptions as any).disableWorker = true
+        } else {
+          pdfjsLib.GlobalWorkerOptions = { workerSrc: '', disableWorker: true }
+        }
+      } catch (fallbackError) {
+        console.error('❌ [PDFJS CONFIG] Failed to import pdfjs-dist:', fallbackError)
+        throw fallbackError
+      }
+    }
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('✅ [PDFJS CONFIG] Worker disabled, using fake worker (empty workerSrc)')
     }
 
     if (typeof pdfjsLib.setWorkerFetch === 'function') {
-      pdfjsLib.setWorkerFetch(false)
+      try {
+        pdfjsLib.setWorkerFetch(false)
+      } catch (e) {
+        // Ignore errors setting worker fetch
+      }
     }
 
     configuredPdfjsLib = pdfjsLib
     pdfjsConfigured = true
 
     if (process.env.NODE_ENV === 'development') {
-      console.log('✅ [PDFJS CONFIG] PDF.js configured for serverless environment (CJS build)')
+      console.log('✅ [PDFJS CONFIG] PDF.js configured for serverless environment')
     }
 
     return pdfjsLib

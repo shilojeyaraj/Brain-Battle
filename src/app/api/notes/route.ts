@@ -232,21 +232,12 @@ export async function POST(req: NextRequest) {
           applyGlobalPdfjsWorkerDisable()
           const pdfjsLib = await getPdfjsLib()
           // Belt-and-suspenders: ensure instance-level GlobalWorkerOptions exist
+          // CRITICAL: Use empty string for workerSrc to prevent import errors in production
           if (pdfjsLib?.GlobalWorkerOptions) {
-            if (process.env.NODE_ENV === 'development') {
-              console.log('  🔧 [NOTES API] pdfjs GlobalWorkerOptions before set:', pdfjsLib.GlobalWorkerOptions)
-            }
-            try {
-              Object.defineProperty(pdfjsLib.GlobalWorkerOptions, 'workerSrc', { value: (pdfjsLib as any).GlobalWorkerOptions?.workerSrc ?? 'pdf.worker.js', writable: true, configurable: true })
-            } catch {}
-            // workerSrc already set in config to resolved path; keep it if present
-            if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-              pdfjsLib.GlobalWorkerOptions.workerSrc = 'pdf.worker.js'
-            }
+            pdfjsLib.GlobalWorkerOptions.workerSrc = ''
             ;(pdfjsLib.GlobalWorkerOptions as any).disableWorker = true
             if (process.env.NODE_ENV === 'development') {
-              console.log('  🔧 [NOTES API] pdfjs GlobalWorkerOptions after set:', pdfjsLib.GlobalWorkerOptions)
-              console.log('  🔧 [NOTES API] pdfjs workerSrc value:', (pdfjsLib.GlobalWorkerOptions as any).workerSrc)
+              console.log('  🔧 [NOTES API] pdfjs GlobalWorkerOptions set:', pdfjsLib.GlobalWorkerOptions)
             }
           } else {
             (pdfjsLib as any).GlobalWorkerOptions = { workerSrc: '', disableWorker: true }
