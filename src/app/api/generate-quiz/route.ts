@@ -343,95 +343,11 @@ export async function POST(request: NextRequest) {
               return `=== ${file.name} ===\n${buffer.toString('utf-8')}\n`
             } else if (file.type === "application/pdf") {
               try {
-                // CRITICAL: Import and configure pdfjs-dist BEFORE pdf-parse loads it
-                // pdf-parse uses pdfjs-dist internally, and we need to configure it first
-                try {
-                  const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
-                  const pdfjsLib = pdfjsModule.default || pdfjsModule
-                  // Configure worker options on pdfjs-dist instance
-                  if (pdfjsLib.GlobalWorkerOptions) {
-                    pdfjsLib.GlobalWorkerOptions.workerSrc = ''
-                    ;(pdfjsLib.GlobalWorkerOptions as any).disableWorker = true
-                  } else {
-                    pdfjsLib.GlobalWorkerOptions = { workerSrc: '', disableWorker: true }
-                  }
-                  if (typeof pdfjsLib.setWorkerFetch === 'function') {
-                    pdfjsLib.setWorkerFetch(false)
-                  }
-                } catch (pdfjsError) {
-                  // If legacy build fails, try main build
-                  try {
-                    const pdfjsModule: any = await import('pdfjs-dist/build/pdf.mjs')
-                    const pdfjsLib = pdfjsModule.default || pdfjsModule
-                    if (pdfjsLib.GlobalWorkerOptions) {
-                      pdfjsLib.GlobalWorkerOptions.workerSrc = ''
-                      ;(pdfjsLib.GlobalWorkerOptions as any).disableWorker = true
-                    } else {
-                      pdfjsLib.GlobalWorkerOptions = { workerSrc: '', disableWorker: true }
-                    }
-                    if (typeof pdfjsLib.setWorkerFetch === 'function') {
-                      pdfjsLib.setWorkerFetch(false)
-                    }
-                  } catch (e) {
-                    // Continue anyway - pdf-parse might handle it
-                  }
-                }
+                // Use pdf-parse - simple API, works on Vercel without any worker configuration
+                const { extractPDFText } = await import('@/lib/pdf-parser')
+                const pdfData = await extractPDFText(buffer)
                 
-                // Now import pdf-parse (it will use the configured pdfjs-dist)
-                const pdfParseModule: any = await import('pdf-parse')
-                
-                // pdf-parse exports PDFParse class, handle different export formats
-                const PDFParse = pdfParseModule.PDFParse || pdfParseModule.default?.PDFParse || pdfParseModule.default
-                
-                if (!PDFParse || typeof PDFParse !== 'function') {
-                  throw new Error('pdf-parse PDFParse class not found')
-                }
-                
-                // CRITICAL: Configure pdf-parse's worker BEFORE creating instance
-                if (typeof PDFParse.setWorker === 'function') {
-                  PDFParse.setWorker('') // Empty string = fake worker mode
-                }
-                
-                // Wait for pdf-parse to load its internal pdfjs into globalThis.pdfjs
-                await new Promise(resolve => setImmediate(resolve))
-                
-                // CRITICAL: Patch pdf-parse's internal pdfjs instance (it stores it in globalThis.pdfjs)
-                if (typeof globalThis !== 'undefined' && (globalThis as any).pdfjs) {
-                  const internalPdfjs = (globalThis as any).pdfjs
-                  if (internalPdfjs.GlobalWorkerOptions) {
-                    internalPdfjs.GlobalWorkerOptions.workerSrc = ''
-                    ;(internalPdfjs.GlobalWorkerOptions as any).disableWorker = true
-                    if (typeof internalPdfjs.setWorkerFetch === 'function') {
-                      try {
-                        internalPdfjs.setWorkerFetch(false)
-                      } catch (e) {
-                        // Ignore if not available
-                      }
-                    }
-                  } else {
-                    internalPdfjs.GlobalWorkerOptions = { workerSrc: '', disableWorker: true }
-                  }
-                }
-                
-                // Create parser instance with serverless-optimized options
-                const parser = new PDFParse({ 
-                  data: buffer,
-                  useSystemFonts: true,
-                  disableAutoFetch: true,
-                  useWorkerFetch: false,  // Disable worker fetch
-                  isEvalSupported: false,
-                  verbosity: 0
-                })
-                
-                // Extract text
-                const pdfText = await parser.getText()
-                
-                // Clean up
-                if (parser.destroy) {
-                  await parser.destroy()
-                }
-                
-                const text = pdfText || ''
+                const text = pdfData.text || ''
                 return `=== ${file.name} ===\n${text}\n`
               } catch (pdfError) {
                 console.error(`Failed to parse PDF ${file.name}:`, pdfError)

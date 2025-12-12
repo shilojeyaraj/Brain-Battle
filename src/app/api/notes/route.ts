@@ -236,111 +236,23 @@ export async function POST(req: NextRequest) {
         textContent = buffer.toString('utf-8')
       } else if (file.type === "application/pdf") {
         if (process.env.NODE_ENV === 'development') {
-          console.log(`  📄 [NOTES API] Processing ${file.name} as PDF file (using pdf-parse for text extraction)`)
+          console.log(`  📄 [NOTES API] Processing ${file.name} as PDF file (using pdf-parse)`)
         }
         
         try {
-          // CRITICAL: Import and configure pdfjs-dist BEFORE pdf-parse loads it
-          // pdf-parse uses pdfjs-dist internally, and we need to configure it first
-          try {
-            const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
-            const pdfjsLib = pdfjsModule.default || pdfjsModule
-            // Configure worker options on pdfjs-dist instance
-            if (pdfjsLib.GlobalWorkerOptions) {
-              pdfjsLib.GlobalWorkerOptions.workerSrc = ''
-              ;(pdfjsLib.GlobalWorkerOptions as any).disableWorker = true
-            } else {
-              pdfjsLib.GlobalWorkerOptions = { workerSrc: '', disableWorker: true }
-            }
-            if (typeof pdfjsLib.setWorkerFetch === 'function') {
-              pdfjsLib.setWorkerFetch(false)
-            }
-          } catch (pdfjsError) {
-            // If legacy build fails, try main build
-            try {
-              const pdfjsModule: any = await import('pdfjs-dist/build/pdf.mjs')
-              const pdfjsLib = pdfjsModule.default || pdfjsModule
-              if (pdfjsLib.GlobalWorkerOptions) {
-                pdfjsLib.GlobalWorkerOptions.workerSrc = ''
-                ;(pdfjsLib.GlobalWorkerOptions as any).disableWorker = true
-              } else {
-                pdfjsLib.GlobalWorkerOptions = { workerSrc: '', disableWorker: true }
-              }
-              if (typeof pdfjsLib.setWorkerFetch === 'function') {
-                pdfjsLib.setWorkerFetch(false)
-              }
-            } catch (e) {
-              // Continue anyway - pdf-parse might handle it
-            }
-          }
+          // Use pdf-parse - simple API, works on Vercel without any worker configuration
+          const { extractPDFText } = await import('@/lib/pdf-parser')
+          const pdfData = await extractPDFText(buffer)
           
-          // Now import pdf-parse (it will use the configured pdfjs-dist)
-          const pdfParseModule: any = await import('pdf-parse')
-          
-          // pdf-parse exports PDFParse class, handle different export formats
-          const PDFParse = pdfParseModule.PDFParse || pdfParseModule.default?.PDFParse || pdfParseModule.default
-          
-          if (!PDFParse || typeof PDFParse !== 'function') {
-            throw new Error('pdf-parse PDFParse class not found')
-          }
-          
-          // CRITICAL: Configure pdf-parse's worker BEFORE creating instance
-          if (typeof PDFParse.setWorker === 'function') {
-            PDFParse.setWorker('') // Empty string = fake worker mode
-          }
-          
-          // Wait for pdf-parse to load its internal pdfjs into globalThis.pdfjs
-          await new Promise(resolve => setImmediate(resolve))
-          
-          // CRITICAL: Patch pdf-parse's internal pdfjs instance (it stores it in globalThis.pdfjs)
-          if (typeof globalThis !== 'undefined' && (globalThis as any).pdfjs) {
-            const internalPdfjs = (globalThis as any).pdfjs
-            if (internalPdfjs.GlobalWorkerOptions) {
-              internalPdfjs.GlobalWorkerOptions.workerSrc = ''
-              ;(internalPdfjs.GlobalWorkerOptions as any).disableWorker = true
-              if (typeof internalPdfjs.setWorkerFetch === 'function') {
-                try {
-                  internalPdfjs.setWorkerFetch(false)
-                } catch (e) {
-                  // Ignore if not available
-                }
-              }
-            } else {
-              internalPdfjs.GlobalWorkerOptions = { workerSrc: '', disableWorker: true }
-            }
-          }
-          
-          // Create parser instance with serverless-optimized options
-          const parser = new PDFParse({ 
-            data: buffer,
-            useSystemFonts: true,
-            disableAutoFetch: true,
-            useWorkerFetch: false,  // Disable worker fetch
-            isEvalSupported: false,
-            verbosity: 0
-          })
-          
-          // Extract text
-          const pdfText = await parser.getText()
-          
-          textContent = pdfText || ''
+          textContent = pdfData.text || ''
           images = [] // pdf-parse doesn't extract images (we'll add image extraction later)
           
-          // Clean up
-          if (parser.destroy) {
-            await parser.destroy()
-          }
-          
           if (process.env.NODE_ENV === 'development') {
-            console.log(`  ✅ [NOTES API] pdf-parse extraction: ${textContent.length} characters`)
+            console.log(`  ✅ [NOTES API] Extracted ${textContent.length} characters from ${file.name} (${pdfData.pages} pages)`)
           }
           
           if (!textContent || textContent.trim().length < 100) {
             throw new Error(`PDF parsing returned insufficient content (${textContent.length} characters).`)
-          }
-          
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`  ✅ [NOTES API] Extracted ${textContent.length} characters from ${file.name} (text-only)`)
           }
         } catch (pdfError) {
           throw new Error(`Failed to parse PDF "${file.name}". Error: ${pdfError instanceof Error ? pdfError.message : String(pdfError)}`)
