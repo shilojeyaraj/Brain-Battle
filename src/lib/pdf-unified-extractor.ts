@@ -48,12 +48,13 @@ export async function extractPDFTextAndImages(
     const pdfjsLib = await getPdfjsLib()
 
     // Belt-and-suspenders: ensure worker is disabled right here too (prod-safe)
+    const { resolveWorkerSrc } = await import('@/lib/pdfjs-config')
+    const workerSrc = resolveWorkerSrc()
     if (pdfjsLib?.GlobalWorkerOptions) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = ''
+      pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc
       ;(pdfjsLib.GlobalWorkerOptions as any).disableWorker = true
     } else {
-      // If GlobalWorkerOptions is missing, create it so workerSrc is defined
-      ;(pdfjsLib as any).GlobalWorkerOptions = { workerSrc: '', disableWorker: true }
+      ;(pdfjsLib as any).GlobalWorkerOptions = { workerSrc, disableWorker: true }
     }
     if (typeof pdfjsLib?.setWorkerFetch === 'function') {
       try {

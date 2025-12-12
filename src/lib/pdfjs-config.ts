@@ -13,9 +13,17 @@ let pdfjsConfigured = false
 let configuredPdfjsLib: any = null
 let resolvedWorkerSrc: string | null = null
 
-function resolveWorkerSrc() {
-  // In serverless we force fake worker; an empty string avoids loading the worker file.
-  if (!resolvedWorkerSrc) resolvedWorkerSrc = ''
+export function resolveWorkerSrc() {
+  if (resolvedWorkerSrc) return resolvedWorkerSrc
+  try {
+    const { createRequire } = require('module')
+    const { pathToFileURL } = require('url')
+    const req = createRequire(import.meta.url)
+    const workerPath = req.resolve('pdfjs-dist/legacy/build/pdf.worker.min.mjs')
+    resolvedWorkerSrc = pathToFileURL(workerPath).toString()
+  } catch {
+    resolvedWorkerSrc = 'pdf.worker.min.mjs'
+  }
   return resolvedWorkerSrc
 }
 
@@ -33,16 +41,22 @@ export async function configurePdfjsForServerless() {
       return configuredPdfjsLib
     }
 
-    // Use the ESM legacy build (always present) and force fake worker
-    const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
-    const pdfjsLib = pdfjsModule.default || pdfjsModule
+    // Use ESM legacy build; fallback to ESM main build if legacy missing
+    let pdfjsLib: any
+    try {
+      const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
+      pdfjsLib = pdfjsModule.default || pdfjsModule
+    } catch {
+      const pdfjsModule: any = await import('pdfjs-dist/build/pdf.mjs')
+      pdfjsLib = pdfjsModule.default || pdfjsModule
+    }
 
     if (pdfjsLib.GlobalWorkerOptions) {
       const workerOptions = pdfjsLib.GlobalWorkerOptions
-      workerOptions.workerSrc = resolveWorkerSrc() // empty string -> fake worker
+      workerOptions.workerSrc = resolveWorkerSrc() // stub string -> fake worker
       ;(workerOptions as any).disableWorker = true
       if (process.env.NODE_ENV === 'development') {
-        console.log('✅ [PDFJS CONFIG] Worker source set to empty (fake worker), using ESM legacy build')
+        console.log('✅ [PDFJS CONFIG] Worker source set to stub (fake worker), using ESM legacy build')
       }
     }
 
