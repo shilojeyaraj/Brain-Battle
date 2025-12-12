@@ -36,6 +36,7 @@ export const StatsGrid = memo(function StatsGrid({ userProfile: propUserProfile,
   }, [propLoading])
 
   // Fallback: Only fetch if props not provided (for backwards compatibility)
+  // FIXED: Remove propUserProfile from dependencies to prevent infinite loop
   const fetchUserStats = useCallback(async () => {
     if (propUserProfile !== undefined) {
       // Props provided, don't fetch
@@ -102,16 +103,20 @@ export const StatsGrid = memo(function StatsGrid({ userProfile: propUserProfile,
     } finally {
       setLoading(false)
     }
-  }, [propUserProfile])
+  // FIXED: Remove propUserProfile from deps - check it inside the function instead
+  }, [])
 
   // Only fetch if props not provided
+  // FIXED: Only depend on propUserProfile, not fetchUserStats (prevents infinite loop)
   useEffect(() => {
     if (propUserProfile === undefined) {
       fetchUserStats()
     }
-  }, [propUserProfile, fetchUserStats])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propUserProfile])
 
   // Refresh stats when a quiz completes (event dispatched from battle page)
+  // FIXED: Remove fetchUserStats from deps to prevent infinite loop
   useEffect(() => {
     if (propUserProfile !== undefined) return
     const handler = () => {
@@ -119,7 +124,8 @@ export const StatsGrid = memo(function StatsGrid({ userProfile: propUserProfile,
     }
     window.addEventListener('quizCompleted', handler as EventListener)
     return () => window.removeEventListener('quizCompleted', handler as EventListener)
-  }, [propUserProfile, fetchUserStats])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propUserProfile])
 
   // 🚀 OPTIMIZATION: Memoize expensive calculations
   // Must be called unconditionally (before any early returns) to follow Rules of Hooks

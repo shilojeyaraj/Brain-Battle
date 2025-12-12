@@ -113,8 +113,12 @@ export default function DashboardPage() {
   }, [router])
 
   // 🚀 OPTIMIZATION: Fetch user stats once at page level and share with components
+  // FIXED: Remove loadingStats from deps to prevent infinite loop
   const fetchUserStats = useCallback(async (opts?: { force?: boolean }) => {
-    if (!userId || (loadingStats && !opts?.force)) return
+    if (!userId) return
+    
+    // Prevent concurrent fetches unless forced
+    if (loadingStats && !opts?.force) return
     
     setLoadingStats(true)
     try {
@@ -134,7 +138,7 @@ export default function DashboardPage() {
     } finally {
       setLoadingStats(false)
     }
-  }, [userId, loadingStats])
+  }, [userId]) // FIXED: Removed loadingStats from deps
 
   // Fetch stats once after authentication (force to avoid stale cache on nav)
   useEffect(() => {

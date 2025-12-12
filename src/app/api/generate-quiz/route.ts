@@ -20,6 +20,22 @@ import { createAIClient } from '@/lib/ai/client-factory'
 import type { AIChatMessage, AIChatCompletionResponse } from '@/lib/ai/types'
 import { initializeBrowserPolyfills } from '@/lib/polyfills/browser-apis'
 
+// CRITICAL: Configure global pdfjs worker options BEFORE any PDF parsing code runs
+// This must be at module level (top of file) so it runs before pdf-parse imports pdfjs-dist
+// pdf-parse internally uses pdfjs-dist, and pdfjs-dist checks for workers during import
+// Use CDN worker URL instead of empty string - more reliable in serverless
+if (typeof globalThis !== 'undefined') {
+  const globalObj: any = globalThis as any
+  if (!globalObj.GlobalWorkerOptions) {
+    globalObj.GlobalWorkerOptions = {}
+  }
+  // Use CDN worker URL - works in serverless without bundling worker files
+  // This prevents "Cannot find module" errors
+  globalObj.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs'
+  // Also set disableWorker as backup
+  globalObj.GlobalWorkerOptions.disableWorker = true
+}
+
 export async function POST(request: NextRequest) {
   // CRITICAL: Initialize browser API polyfills BEFORE any PDF parsing
   // This must happen before pdf-parse or pdfjs-dist are imported/used
@@ -327,9 +343,8 @@ export async function POST(request: NextRequest) {
             if (file.type === "text/plain") {
               return `=== ${file.name} ===\n${buffer.toString('utf-8')}\n`
             } else if (file.type === "application/pdf") {
-              // SIMPLEST: Use pdf-parse for text extraction (no workers needed, works in serverless)
-              // Same approach as notes route - simple and reliable
               try {
+                // Import pdf-parse (global worker options already set at module level)
                 const pdfParseModule: any = await import('pdf-parse')
                 
                 // pdf-parse exports PDFParse class, handle different export formats
@@ -339,8 +354,23 @@ export async function POST(request: NextRequest) {
                   throw new Error('pdf-parse PDFParse class not found')
                 }
                 
-                // Create parser instance and extract text
-                const parser = new PDFParse({ data: buffer })
+                // CRITICAL: Configure pdf-parse's worker BEFORE creating instance
+                // Use CDN URL - works with any pdfjs-dist version (including pdf-parse's internal 5.4.296)
+                if (typeof PDFParse.setWorker === 'function') {
+                  PDFParse.setWorker('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.4.168/pdf.worker.min.mjs')
+                }
+                
+                // Create parser instance with serverless-optimized options
+                const parser = new PDFParse({ 
+                  data: buffer,
+                  useSystemFonts: true,
+                  disableAutoFetch: true,
+                  useWorkerFetch: false,  // Disable worker fetch
+                  isEvalSupported: false,
+                  verbosity: 0
+                })
+                
+                // Extract text
                 const pdfText = await parser.getText()
                 
                 // Clean up
