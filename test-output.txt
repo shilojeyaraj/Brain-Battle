@@ -1,0 +1,84 @@
+﻿
+> brain-brawl@0.1.0 test:notes-gen C:\Users\shilo\Brain-Brawl\Brain-Brawl
+> tsx scripts/test-notes-generation.ts "--file" "Slides - Ch.6.4-6.10-A-2024.pdf" "--topic" "Mechanics" "--difficulty" "medium"
+
+[dotenv@17.2.3] injecting env (25) from .env.local -- tip: ≡ƒöÉ prevent building .env in docker: https://dotenvx.com/prebuild
+≡ƒº¬ Testing Notes Generation (EXACT SERVER FLOW)
+============================================================
+≡ƒôä PDF File: C:\Users\shilo\Brain-Brawl\Brain-Brawl\Slides - Ch.6.4-6.10-A-2024.pdf
+≡ƒô¥ Topic: Mechanics
+≡ƒôè Difficulty: medium
+============================================================
+
+Γ£à [POLYFILLS] Using @napi-rs/canvas ImageData
+Γ£à [POLYFILLS] Using @napi-rs/canvas Path2D
+Γ£à [POLYFILLS] Browser API polyfills initialized
+≡ƒôï Step 1: Extracting text from PDF (using server's exact pdfjs extraction)...
+Γ£à [PDFJS CONFIG] Worker source set to stub (fake worker), using ESM legacy build
+Γ£à [PDFJS CONFIG] PDF.js configured for serverless environment (CJS build)
+  Γ£à Extracted 14000 characters from 9 pages
+  ≡ƒº⌐ Snippet: The Science and Engineering of Materials, SI, 7e Askeland/Wright Ch.6.4 Properties Obtained from the Tensile Test (Part 2) The Science and Engineering of Materials, SI, 7e Askeland/Wright ΓÇó...
+
+≡ƒôï Step 2: Building AI prompts (using server's exact prompt structure)...
+  Γ£à System prompt: 15508 characters
+  Γ£à User prompt: 14683 characters
+
+≡ƒñû Step 3: Calling AI API (using server's exact configuration)...
+Γ£à [OPENROUTER] Client initialized with API key (length: 73 characters)
+   Default model: moonshotai/kimi-k2-thinking
+Γ£à [MOONSHOT] Client initialized via OpenRouter
+   ≡ƒöä [OPENROUTER] Mapped "kimi-k2-thinking" to OpenRouter format: "moonshotai/kimi-k2-thinking"
+≡ƒöì [OPENROUTER] Response structure:
+   Choices count: 1
+   Usage: {"prompt_tokens":7029,"completion_tokens":20735,"total_tokens":27764,"cost":0.0560549,"is_byok":false,"prompt_tokens_details":{"cached_tokens":5,"audio_tokens":0,"video_tokens":0},"cost_details":{"upstream_inference_cost":null,"upstream_inference_prompt_cost":0.0042174,"upstream_inference_completions_cost":0.0518375},"completion_tokens_details":{"reasoning_tokens":0,"image_tokens":0}}
+   Finish reason: stop
+   Message keys: role, content, refusal, reasoning
+   Content length: 38981
+   Content preview: {
+"title": "Mechanical Properties of Materials: Tensile Testing, Hardness, and Impact Behavior",
+"subject": "Mechanics",
+"education_level": "college",
+"difficulty_level": "intermediate",
+"complexity_a
+Γ£à [OPENROUTER] Extracted content: 38981 characters
+  Γ£à AI API call completed in 179.7 seconds
+  ≡ƒôè Usage: {"prompt_tokens":7029,"completion_tokens":20735,"total_tokens":27764}
+
+≡ƒô¥ Step 4: Extracting content from AI response...
+  ≡ƒôÅ Content length: 38981 characters
+  ≡ƒæÇ Content preview: {
+"title": "Mechanical Properties of Materials: Tensile Testing, Hardness, and Impact Behavior",
+"subject": "Mechanics",
+"education_level": "college",
+"difficulty_level": "intermediate",
+"complexity_a...
+
+≡ƒöì Step 5: Parsing JSON response...
+  Γ£à Successfully parsed JSON response
+  - Title: Mechanical Properties of Materials: Tensile Testing, Hardness, and Impact Behavior
+  - Outline items: 10
+  - Key terms: 12
+  - Concepts: 7
+  - Formulas: 10
+  - Diagrams: 6
+  - Practice questions: 12
+
+Γ£à Step 6: Validating content (using server's validation logic)...
+  Γ£à Content validation passed
+
+============================================================
+≡ƒôè Test Results:
+   Γ£à PDF Extraction: 14000 characters
+   Γ£à AI API Call: 27764 tokens
+   Γ£à Content Extraction: 38981 characters
+   Γ£à JSON Parsing: Success
+   Γ£à Content Validation: Passed
+   ≡ƒô¥ Title: Mechanical Properties of Materials: Tensile Testing, Hardness, and Impact Behavior
+   ≡ƒôï Outline Items: 10
+   ≡ƒöæ Key Terms: 12
+   ≡ƒÆí Concepts: 7
+   ≡ƒôÉ Formulas: 10
+============================================================
+
+Γ£à All tests passed! Notes generation is working correctly.
+   This matches the exact server flow, so it should work in production.

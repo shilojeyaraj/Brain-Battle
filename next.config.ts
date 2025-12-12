@@ -2,6 +2,10 @@ import type { NextConfig } from "next";
 import path from "path";
 
 const nextConfig: NextConfig = {
+  // Note: Error pages (error.tsx, not-found.tsx) have been removed to allow build to succeed
+  // This prevents Html import errors during prerendering
+  // Custom error pages can be re-added later once the Html import issue is resolved
+  
   // Force Next.js to ONLY use this specific directory
   // Disable problematic features that cause -4058 errors
   experimental: {
@@ -58,6 +62,7 @@ const nextConfig: NextConfig = {
         }
       ].filter(Boolean);
     }
+    
     
     // Keep webpack cache enabled for stability (removed cache = false)
     // Only configure watch options for development

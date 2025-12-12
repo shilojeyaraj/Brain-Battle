@@ -459,25 +459,15 @@ export async function POST(req: NextRequest) {
         }
 
         // Ensure user exists to satisfy FK
+        let userEnsured = false
         try {
           const { ensureUserExists } = await import('@/lib/utils/ensure-user-exists')
-          const ensured = await ensureUserExists(userId)
-          if (!ensured) {
-            console.warn(`  ⚠️ [NOTES API] Unable to ensure user exists for documents upsert (userId=${userId})`)
-            // Attempt direct creation via admin client as a fallback
-            const { error: createUserError } = await adminClient
-              .from('users')
-              .insert({ id: userId })
-            if (createUserError) {
-              console.error(`  ❌ [NOTES API] Direct user create failed for ${userId}:`, createUserError)
-              // Continue; upsert may still fail, but we log and try
-            } else {
-              console.log(`  ✅ [NOTES API] Fallback created user row for ${userId}`)
-            }
-          }
+          userEnsured = await ensureUserExists(userId)
         } catch (ensureErr) {
           console.error(`  ⚠️ [NOTES API] ensureUserExists failed for ${userId}:`, ensureErr)
-          // Attempt direct creation via admin client as a fallback
+        }
+
+        if (!userEnsured) {
           try {
             const { error: createUserError } = await adminClient
               .from('users')
@@ -485,11 +475,17 @@ export async function POST(req: NextRequest) {
             if (createUserError) {
               console.error(`  ❌ [NOTES API] Direct user create failed for ${userId}:`, createUserError)
             } else {
+              userEnsured = true
               console.log(`  ✅ [NOTES API] Fallback created user row for ${userId}`)
             }
           } catch (createErr) {
             console.error(`  ❌ [NOTES API] Exception creating user row for ${userId}:`, createErr)
           }
+        }
+
+        if (!userEnsured) {
+          console.error(`  ❌ [NOTES API] Skipping document upsert; could not ensure user exists (userId=${userId})`)
+          continue
         }
 
         const payload = {
@@ -1050,6 +1046,7 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
       model: process.env.MOONSHOT_MODEL || 'kimi-k2-thinking',
       temperature: 0.2,
       responseFormat: 'json_object',
+      maxTokens: 32000, // Ensure complete JSON responses for notes generation
     })
 
     content = response.content
@@ -1075,7 +1072,19 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
     let notesData
     try {
       console.log(`🔍 [NOTES API] Parsing JSON response...`)
-      notesData = JSON.parse(content)
+      
+      // Strip markdown code blocks if present (AI sometimes wraps JSON in ```json ... ```)
+      let cleanedContent = content.trim()
+      if (cleanedContent.startsWith('```')) {
+        // Remove opening ```json or ```
+        cleanedContent = cleanedContent.replace(/^```(?:json)?\s*/i, '')
+        // Remove closing ```
+        cleanedContent = cleanedContent.replace(/\s*```$/i, '')
+        cleanedContent = cleanedContent.trim()
+        console.log(`  🔧 [NOTES API] Stripped markdown code blocks from response`)
+      }
+      
+      notesData = JSON.parse(cleanedContent)
       console.log(`✅ [NOTES API] Successfully parsed JSON response`)
       console.log(`  - Title: ${notesData.title || 'No title'}`)
       console.log(`  - Outline items: ${notesData.outline?.length || 0}`)
@@ -1463,54 +1472,58 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
       console.error('⚠️ [NOTES API] Background database save error:', dbError)
     })
 
-    // Persist study_notes_cache for reuse (best-effort)
-    try {
-      const adminClient = createAdminClient()
-      const instructionsHash = createHash('sha256')
-        .update(JSON.stringify({
-          topic,
-          difficulty,
-          instructions,
-          studyContext,
-          fileNames,
-        }))
-        .digest('hex')
-      
-      const primaryDocumentId = documentIds[0] || null
-      const cachePayload = {
-        user_id: userId,
-        document_id: primaryDocumentId,
-        topic: topic || null,
-        education_level: studyContext?.educationLevel || null,
-        content_focus: studyContext?.contentFocus || null,
-        instructions_hash: instructionsHash,
-        notes_json: enrichedNotes
-      }
-      
-      // Attempt upsert; fallback to insert if unique constraint is missing (42P10)
-      const { error: cacheError } = await adminClient
-        .from('study_notes_cache')
-        .upsert(cachePayload, { onConflict: 'user_id,document_id,instructions_hash' })
-      
-      if (cacheError) {
-        if ((cacheError as any)?.code === '42P10') {
-          console.warn('⚠️ [NOTES API] study_notes_cache upsert failed (missing unique constraint); retrying with insert')
-          const { error: insertError } = await adminClient
-            .from('study_notes_cache')
-            .insert(cachePayload)
-          if (insertError) {
-            console.error('❌ [NOTES API] Failed to insert study_notes_cache:', insertError)
+    // Persist study_notes_cache for reuse (best-effort) only if we have a document_id
+    if (documentIds[0]) {
+      try {
+        const adminClient = createAdminClient()
+        const instructionsHash = createHash('sha256')
+          .update(JSON.stringify({
+            topic,
+            difficulty,
+            instructions,
+            studyContext,
+            fileNames,
+          }))
+          .digest('hex')
+        
+        const primaryDocumentId = documentIds[0]
+        const cachePayload = {
+          user_id: userId,
+          document_id: primaryDocumentId,
+          topic: topic || null,
+          education_level: studyContext?.educationLevel || null,
+          content_focus: studyContext?.contentFocus || null,
+          instructions_hash: instructionsHash,
+          notes_json: enrichedNotes
+        }
+        
+        // Attempt upsert; fallback to insert if unique constraint is missing (42P10)
+        const { error: cacheError } = await adminClient
+          .from('study_notes_cache')
+          .upsert(cachePayload, { onConflict: 'user_id,document_id,instructions_hash' })
+        
+        if (cacheError) {
+          if ((cacheError as any)?.code === '42P10') {
+            console.warn('⚠️ [NOTES API] study_notes_cache upsert failed (missing unique constraint); retrying with insert')
+            const { error: insertError } = await adminClient
+              .from('study_notes_cache')
+              .insert(cachePayload)
+            if (insertError) {
+              console.error('❌ [NOTES API] Failed to insert study_notes_cache:', insertError)
+            } else {
+              console.log('✅ [NOTES API] Cached notes in study_notes_cache (insert fallback)')
+            }
           } else {
-            console.log('✅ [NOTES API] Cached notes in study_notes_cache (insert fallback)')
+            console.error('⚠️ [NOTES API] Failed to upsert study_notes_cache:', cacheError)
           }
         } else {
-          console.error('⚠️ [NOTES API] Failed to upsert study_notes_cache:', cacheError)
+          console.log('✅ [NOTES API] Cached notes in study_notes_cache')
         }
-      } else {
-        console.log('✅ [NOTES API] Cached notes in study_notes_cache')
+      } catch (cacheErr) {
+        console.error('⚠️ [NOTES API] Exception while caching notes:', cacheErr)
       }
-    } catch (cacheErr) {
-      console.error('⚠️ [NOTES API] Exception while caching notes:', cacheErr)
+    } else {
+      console.warn('⚠️ [NOTES API] Skipping study_notes_cache insert (no document_id available)')
     }
 
     return NextResponse.json({ 

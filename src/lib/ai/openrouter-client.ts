@@ -98,15 +98,90 @@ export class OpenRouterClient implements AIClient {
       }
       
       // OpenRouter/Moonshot models support up to 32,000 max_tokens for output
+      // For notes generation, we need more tokens to ensure complete JSON responses
+      if (options.responseFormat === 'json_object') {
+        requestOptions.max_tokens = options.maxTokens || 32000 // Increase for complete JSON responses
+      } else {
+        requestOptions.max_tokens = options.maxTokens || 16000
+      }
       if (options.maxTokens) {
         requestOptions.max_tokens = Math.min(options.maxTokens, 32000)
       }
       
       const response = await this.client.chat.completions.create(requestOptions)
 
-      const content = response.choices[0]?.message?.content
-      if (!content) {
+      // Log full response structure for debugging (especially for thinking models)
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`🔍 [OPENROUTER] Response structure:`)
+        console.log(`   Choices count: ${response.choices?.length || 0}`)
+        console.log(`   Usage: ${JSON.stringify(response.usage)}`)
+        if (response.choices?.[0]) {
+          const choice = response.choices[0]
+          console.log(`   Finish reason: ${choice.finish_reason}`)
+          console.log(`   Message keys: ${Object.keys(choice.message || {}).join(', ')}`)
+          console.log(`   Content length: ${choice.message?.content?.length || 0}`)
+          console.log(`   Content preview: ${choice.message?.content?.substring(0, 200) || 'N/A'}`)
+        }
+      }
+
+      // For thinking models, check multiple possible content locations
+      let content = response.choices[0]?.message?.content
+      
+      // If content is empty or very short but we have completion tokens, check for thinking content
+      if ((!content || content.length < 50) && response.usage?.completion_tokens && response.usage.completion_tokens > 100) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn(`⚠️ [OPENROUTER] Content seems truncated (${content?.length || 0} chars) but ${response.usage.completion_tokens} completion tokens used`)
+          console.warn(`   Checking response structure for thinking content...`)
+        }
+        
+        // Check if there's a thinking field or other content location
+        const message = response.choices[0]?.message as any
+        
+        // Log all message fields
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`   Message fields:`, Object.keys(message || {}))
+          for (const [key, value] of Object.entries(message || {})) {
+            if (typeof value === 'string') {
+              console.log(`     ${key}: ${value.length} chars - "${value.substring(0, 100)}..."`)
+            } else {
+              console.log(`     ${key}: ${typeof value}`)
+            }
+          }
+        }
+        
+        if (message?.thinking) {
+          content = message.thinking
+          if (process.env.NODE_ENV === 'development' && content) {
+            console.log(`   [OPENROUTER] Found content in thinking field (${content.length} chars)`)
+          }
+        } else if (message?.refusal) {
+          content = message.refusal
+          if (process.env.NODE_ENV === 'development' && content) {
+            console.log(`   [OPENROUTER] Found refusal field (${content.length} chars)`)
+          }
+        } else if (typeof message === 'object' && message !== null) {
+          // Try to find any string field that might contain the actual response
+          for (const [key, value] of Object.entries(message)) {
+            if (typeof value === 'string' && value.length > (content?.length || 0)) {
+              content = value
+              if (process.env.NODE_ENV === 'development' && content) {
+                console.log(`   [OPENROUTER] Found longer content in field "${key}" (${content.length} chars)`)
+              }
+            }
+          }
+        }
+      }
+      
+      if (!content || content.trim().length === 0) {
+        // Log full response structure for debugging
+        console.error('❌ [OPENROUTER] No content found in response')
+        console.error('   Full response:', JSON.stringify(response, null, 2))
         throw new Error('No content in OpenRouter response')
+      }
+      
+      // Log final content length
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ [OPENROUTER] Extracted content: ${content.length} characters`)
       }
 
       return {
