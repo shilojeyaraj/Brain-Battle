@@ -14,17 +14,8 @@ let configuredPdfjsLib: any = null
 let resolvedWorkerSrc: string | null = null
 
 function resolveWorkerSrc() {
-  if (resolvedWorkerSrc) return resolvedWorkerSrc
-  try {
-    const { createRequire } = require('module')
-    const { pathToFileURL } = require('url')
-    const req = createRequire(import.meta.url)
-    // Prefer legacy worker (matches pdf.mjs)
-    const workerPath = req.resolve('pdfjs-dist/legacy/build/pdf.worker.min.mjs')
-    resolvedWorkerSrc = pathToFileURL(workerPath).toString()
-  } catch {
-    resolvedWorkerSrc = 'pdf.worker.min.mjs'
-  }
+  // In serverless we force fake worker; an empty string avoids loading the worker file.
+  if (!resolvedWorkerSrc) resolvedWorkerSrc = ''
   return resolvedWorkerSrc
 }
 
@@ -38,46 +29,35 @@ function resolveWorkerSrc() {
  */
 export async function configurePdfjsForServerless() {
   try {
-    // Return cached instance if already configured
     if (pdfjsConfigured && configuredPdfjsLib) {
       return configuredPdfjsLib
     }
-    
-    // Import PDF.js library
-    const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
-    const pdfjsLib = pdfjsModule.default || pdfjsModule
-    
-    // CRITICAL: Set workerSrc IMMEDIATELY after import, before ANY other operations
-    // PDF.js 4.4.168 requires an EMPTY STRING ('') to properly use the fake worker
-    // An empty string tells PDF.js to use the fake worker (main thread) without trying to load anything
-    // Data URIs or other values cause "Setting up fake worker failed" errors
+
+    // Use the CommonJS build to avoid ESM worker imports in serverless
+    const { createRequire } = require('module')
+    const req = createRequire(import.meta.url)
+    const pdfjsLib = req('pdfjs-dist/legacy/build/pdf.js')
+
     if (pdfjsLib.GlobalWorkerOptions) {
       const workerOptions = pdfjsLib.GlobalWorkerOptions
-      
-      // CRITICAL: Empty string forces fake worker (main thread execution)
-      // This is the ONLY value that works reliably with pdfjs-dist@4.4.168
-      workerOptions.workerSrc = resolveWorkerSrc()
-      // Belt-and-suspenders: explicitly disable worker to skip workerSrc checks
+      workerOptions.workerSrc = resolveWorkerSrc() // empty string -> fake worker
       ;(workerOptions as any).disableWorker = true
-      
       if (process.env.NODE_ENV === 'development') {
-        console.log('✅ [PDFJS CONFIG] Worker source set to: "" (empty - using fake worker)')
+        console.log('✅ [PDFJS CONFIG] Worker source set to empty (fake worker), using CJS build')
       }
     }
-    
-    // Disable worker fetch if available
+
     if (typeof pdfjsLib.setWorkerFetch === 'function') {
       pdfjsLib.setWorkerFetch(false)
     }
-    
-    // Cache the configured library
+
     configuredPdfjsLib = pdfjsLib
     pdfjsConfigured = true
-    
+
     if (process.env.NODE_ENV === 'development') {
-      console.log('✅ [PDFJS CONFIG] PDF.js configured for serverless environment')
+      console.log('✅ [PDFJS CONFIG] PDF.js configured for serverless environment (CJS build)')
     }
-    
+
     return pdfjsLib
   } catch (error) {
     console.error('❌ [PDFJS CONFIG] Error configuring pdfjs-dist:', error)
