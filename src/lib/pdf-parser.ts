@@ -4,8 +4,6 @@
  * No worker configuration needed - pdf-parse handles it internally
  */
 
-import pdfParse from 'pdf-parse'
-
 /**
  * Extract text from PDF buffer
  * Works perfectly on Vercel serverless without any configuration
@@ -18,6 +16,15 @@ export async function extractPDFText(buffer: Buffer): Promise<{
   version?: string
 }> {
   try {
+    // Dynamic import to handle pdf-parse's export structure
+    const pdfParseModule: any = await import('pdf-parse')
+    // pdf-parse exports the function directly or as default, handle both
+    const pdfParse = pdfParseModule.default || pdfParseModule
+    
+    if (typeof pdfParse !== 'function') {
+      throw new Error('pdf-parse is not a function')
+    }
+    
     const data = await pdfParse(buffer)
     
     return {
@@ -32,4 +39,3 @@ export async function extractPDFText(buffer: Buffer): Promise<{
     throw new Error(`Failed to parse PDF: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
-
