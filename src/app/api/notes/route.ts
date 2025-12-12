@@ -240,7 +240,41 @@ export async function POST(req: NextRequest) {
         }
         
         try {
-          // Import pdf-parse (global worker options already set at module level)
+          // CRITICAL: Import and configure pdfjs-dist BEFORE pdf-parse loads it
+          // pdf-parse uses pdfjs-dist internally, and we need to configure it first
+          try {
+            const pdfjsModule: any = await import('pdfjs-dist/legacy/build/pdf.mjs')
+            const pdfjsLib = pdfjsModule.default || pdfjsModule
+            // Configure worker options on pdfjs-dist instance
+            if (pdfjsLib.GlobalWorkerOptions) {
+              pdfjsLib.GlobalWorkerOptions.workerSrc = ''
+              ;(pdfjsLib.GlobalWorkerOptions as any).disableWorker = true
+            } else {
+              pdfjsLib.GlobalWorkerOptions = { workerSrc: '', disableWorker: true }
+            }
+            if (typeof pdfjsLib.setWorkerFetch === 'function') {
+              pdfjsLib.setWorkerFetch(false)
+            }
+          } catch (pdfjsError) {
+            // If legacy build fails, try main build
+            try {
+              const pdfjsModule: any = await import('pdfjs-dist/build/pdf.mjs')
+              const pdfjsLib = pdfjsModule.default || pdfjsModule
+              if (pdfjsLib.GlobalWorkerOptions) {
+                pdfjsLib.GlobalWorkerOptions.workerSrc = ''
+                ;(pdfjsLib.GlobalWorkerOptions as any).disableWorker = true
+              } else {
+                pdfjsLib.GlobalWorkerOptions = { workerSrc: '', disableWorker: true }
+              }
+              if (typeof pdfjsLib.setWorkerFetch === 'function') {
+                pdfjsLib.setWorkerFetch(false)
+              }
+            } catch (e) {
+              // Continue anyway - pdf-parse might handle it
+            }
+          }
+          
+          // Now import pdf-parse (it will use the configured pdfjs-dist)
           const pdfParseModule: any = await import('pdf-parse')
           
           // pdf-parse exports PDFParse class, handle different export formats
@@ -251,10 +285,29 @@ export async function POST(req: NextRequest) {
           }
           
           // CRITICAL: Configure pdf-parse's worker BEFORE creating instance
-          // Use empty string to disable worker (Node.js ESM loader doesn't support https: URLs)
-          // Empty string tells pdfjs to use fake worker (runs in main thread, no worker file needed)
           if (typeof PDFParse.setWorker === 'function') {
             PDFParse.setWorker('') // Empty string = fake worker mode
+          }
+          
+          // Wait for pdf-parse to load its internal pdfjs into globalThis.pdfjs
+          await new Promise(resolve => setImmediate(resolve))
+          
+          // CRITICAL: Patch pdf-parse's internal pdfjs instance (it stores it in globalThis.pdfjs)
+          if (typeof globalThis !== 'undefined' && (globalThis as any).pdfjs) {
+            const internalPdfjs = (globalThis as any).pdfjs
+            if (internalPdfjs.GlobalWorkerOptions) {
+              internalPdfjs.GlobalWorkerOptions.workerSrc = ''
+              ;(internalPdfjs.GlobalWorkerOptions as any).disableWorker = true
+              if (typeof internalPdfjs.setWorkerFetch === 'function') {
+                try {
+                  internalPdfjs.setWorkerFetch(false)
+                } catch (e) {
+                  // Ignore if not available
+                }
+              }
+            } else {
+              internalPdfjs.GlobalWorkerOptions = { workerSrc: '', disableWorker: true }
+            }
           }
           
           // Create parser instance with serverless-optimized options

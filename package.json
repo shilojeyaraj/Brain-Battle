@@ -24,6 +24,7 @@
     "test:pdf-extract": "tsx scripts/test-pdf-extraction.ts",
     "test:notes-gen": "tsx scripts/test-notes-generation.ts",
     "test:quiz-gen": "tsx scripts/test-quiz-generation.ts",
+    "verify:pdf-production": "tsx scripts/verify-pdf-production.ts",
     "test:all": "pnpm test:pdf-extract -- --file \"Slides - Ch.6.4-6.10-A-2024.pdf\" && pnpm test:notes-gen -- --file \"Slides - Ch.6.4-6.10-A-2024.pdf\" --topic \"Mechanics\" --difficulty \"medium\""
   },
   "dependencies": {
