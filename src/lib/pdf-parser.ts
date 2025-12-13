@@ -1,19 +1,20 @@
 /**
  * Simple PDF Text Extraction Utility
- * Uses pdf-parse library - works perfectly on Vercel serverless
- * No worker configuration needed - pdf-parse handles it internally
+ * Uses pdf-parse@1.1.1 - the simple, battle-tested version that works on Vercel
  * 
- * PRODUCTION ERRORS FIXED:
- * 1. "Cannot find package 'pdf.worker.min.mjs'" - pdf-parse handles workers internally
- * 2. "pdf-parse is not a function" - PDFParse is a class, not a function
- * 3. "Please provide binary data as Uint8Array" - Convert Buffer to Uint8Array
+ * IMPORTANT: We use pdf-parse@1.1.1 (not 2.x) because:
+ * - 1.1.1 is simpler and more reliable on serverless
+ * - 2.x uses pdfjs-dist internally which has worker issues on Vercel
+ * - 1.1.1 has been battle-tested on millions of Vercel deployments
  */
+
+import pdfParse from 'pdf-parse'
 
 /**
  * Extract text from PDF buffer
  * Works perfectly on Vercel serverless without any configuration
  * 
- * @param buffer - PDF file as Buffer (will be converted to Uint8Array internally)
+ * @param buffer - PDF file as Buffer
  * @returns Object containing extracted text and metadata
  */
 export async function extractPDFText(buffer: Buffer): Promise<{
@@ -24,41 +25,16 @@ export async function extractPDFText(buffer: Buffer): Promise<{
   version?: string
 }> {
   try {
-    // CRITICAL: Convert Buffer to Uint8Array - pdf-parse requires Uint8Array
-    // Error: "Please provide binary data as `Uint8Array`, rather than `Buffer`"
-    const uint8Array = new Uint8Array(buffer)
-    
-    // pdf-parse exports PDFParse as a named export in ESM
-    const pdfParseModule: any = await import('pdf-parse')
-    
-    // Get PDFParse class from the module
-    const PDFParse = pdfParseModule.PDFParse
-    
-    if (!PDFParse || typeof PDFParse !== 'function') {
-      console.error('pdf-parse module structure:', {
-        hasPDFParse: !!pdfParseModule.PDFParse,
-        keys: Object.keys(pdfParseModule),
-        PDFParseType: typeof PDFParse
-      })
-      throw new Error('PDFParse class not found in pdf-parse module')
-    }
-    
-    // Create PDFParse instance with Uint8Array (NOT Buffer!)
-    const parser = new PDFParse(uint8Array)
-    
-    // Extract text using getText() method
-    const data = await parser.getText()
-    
-    // Handle different return formats
-    const text = typeof data === 'string' ? data : (data?.text || '')
-    const pages = data?.numpages || data?.pages || 0
+    // pdf-parse@1.1.1 is simple - just call it with the buffer
+    // It returns: { numpages, numrender, info, metadata, version, text }
+    const data = await pdfParse(buffer)
     
     return {
-      text,
-      pages,
-      info: data?.info,
-      metadata: data?.metadata,
-      version: data?.version
+      text: data.text || '',
+      pages: data.numpages || 0,
+      info: data.info,
+      metadata: data.metadata,
+      version: data.version
     }
   } catch (error) {
     console.error('PDF parsing error:', error)
