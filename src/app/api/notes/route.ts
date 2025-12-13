@@ -38,6 +38,113 @@ if (typeof globalThis !== 'undefined') {
   globalObj.GlobalWorkerOptions.disableWorker = true
 }
 
+/**
+ * Repair truncated JSON by closing open structures
+ * This handles cases where the AI response is cut off due to token limits
+ */
+function repairTruncatedJSON(json: string): string {
+  let repaired = json.trim()
+  
+  // Track open structures
+  const stack: string[] = []
+  let inString = false
+  let escapeNext = false
+  
+  for (let i = 0; i < repaired.length; i++) {
+    const char = repaired[i]
+    
+    if (escapeNext) {
+      escapeNext = false
+      continue
+    }
+    
+    if (char === '\\' && inString) {
+      escapeNext = true
+      continue
+    }
+    
+    if (char === '"' && !escapeNext) {
+      inString = !inString
+      continue
+    }
+    
+    if (inString) continue
+    
+    if (char === '{') stack.push('}')
+    else if (char === '[') stack.push(']')
+    else if (char === '}' || char === ']') {
+      if (stack.length > 0 && stack[stack.length - 1] === char) {
+        stack.pop()
+      }
+    }
+  }
+  
+  // If we're in a string, close it
+  if (inString) {
+    // Find the last complete key-value or array item
+    // Remove partial content after the last complete item
+    const lastGoodPoint = findLastCompletePoint(repaired)
+    if (lastGoodPoint > 0) {
+      repaired = repaired.substring(0, lastGoodPoint)
+      // Re-analyze the stack
+      stack.length = 0
+      inString = false
+      for (let i = 0; i < repaired.length; i++) {
+        const char = repaired[i]
+        if (escapeNext) { escapeNext = false; continue }
+        if (char === '\\' && inString) { escapeNext = true; continue }
+        if (char === '"' && !escapeNext) { inString = !inString; continue }
+        if (inString) continue
+        if (char === '{') stack.push('}')
+        else if (char === '[') stack.push(']')
+        else if (char === '}' || char === ']') {
+          if (stack.length > 0 && stack[stack.length - 1] === char) stack.pop()
+        }
+      }
+    } else {
+      repaired += '"'
+    }
+  }
+  
+  // Remove trailing incomplete content (partial key-value pairs)
+  repaired = repaired.replace(/,\s*"[^"]*"?\s*:?\s*"?[^"]*$/, '')
+  repaired = repaired.replace(/,\s*$/, '')
+  
+  // Close all open structures
+  while (stack.length > 0) {
+    repaired += stack.pop()
+  }
+  
+  return repaired
+}
+
+/**
+ * Find the last point where the JSON is complete (after a closing quote, bracket, or brace)
+ */
+function findLastCompletePoint(json: string): number {
+  // Look for the last complete value ending
+  const patterns = [
+    /"\s*}\s*,?\s*$/,  // End of object
+    /"\s*]\s*,?\s*$/,  // End of array
+    /"\s*,\s*$/,       // End of string value
+    /true\s*,?\s*$/,   // Boolean
+    /false\s*,?\s*$/,  // Boolean
+    /null\s*,?\s*$/,   // Null
+    /\d\s*,?\s*$/,     // Number
+  ]
+  
+  for (let i = json.length - 1; i > json.length - 500 && i > 0; i--) {
+    const substr = json.substring(0, i)
+    // Check if this is a valid ending point
+    if (patterns.some(p => p.test(substr))) {
+      // Find the actual end of the match (before trailing comma/whitespace)
+      return i
+    }
+  }
+  
+  return 0
+}
+
 export async function POST(req: NextRequest) {
   // CRITICAL: Initialize browser API polyfills BEFORE any PDF parsing
   // This must happen before pdf-parse or pdfjs-dist are imported/used
@@ -1051,7 +1158,25 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
         console.log(`  🔧 [NOTES API] Stripped markdown code blocks from response`)
       }
       
-      notesData = JSON.parse(cleanedContent)
+      // Try parsing directly first
+      try {
+        notesData = JSON.parse(cleanedContent)
+      } catch (parseError) {
+        // JSON is truncated - try to repair it
+        console.log(`  ⚠️ [NOTES API] JSON parsing failed, attempting repair...`)
+        console.log(`  - Error: ${parseError instanceof Error ? parseError.message : String(parseError)}`)
+        
+        // Repair truncated JSON by closing open structures
+        const repairedContent = repairTruncatedJSON(cleanedContent)
+        
+        try {
+          notesData = JSON.parse(repairedContent)
+          console.log(`  ✅ [NOTES API] JSON repair successful!`)
+        } catch (repairError) {
+          console.error(`  ❌ [NOTES API] JSON repair failed:`, repairError)
+          throw parseError // Throw the original error
+        }
+      }
       console.log(`✅ [NOTES API] Successfully parsed JSON response`)
       console.log(`  - Title: ${notesData.title || 'No title'}`)
       console.log(`  - Outline items: ${notesData.outline?.length || 0}`)
