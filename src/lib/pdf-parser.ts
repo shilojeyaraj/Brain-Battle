@@ -16,23 +16,37 @@ export async function extractPDFText(buffer: Buffer): Promise<{
   version?: string
 }> {
   try {
-    // Dynamic import to handle pdf-parse's export structure
+    // pdf-parse exports PDFParse as a named export in ESM
     const pdfParseModule: any = await import('pdf-parse')
-    // pdf-parse exports the function directly or as default, handle both
-    const pdfParse = pdfParseModule.default || pdfParseModule
     
-    if (typeof pdfParse !== 'function') {
-      throw new Error('pdf-parse is not a function')
+    // Get PDFParse class from the module
+    const PDFParse = pdfParseModule.PDFParse
+    
+    if (!PDFParse || typeof PDFParse !== 'function') {
+      console.error('pdf-parse module structure:', {
+        hasPDFParse: !!pdfParseModule.PDFParse,
+        keys: Object.keys(pdfParseModule),
+        PDFParseType: typeof PDFParse
+      })
+      throw new Error('PDFParse class not found in pdf-parse module')
     }
     
-    const data = await pdfParse(buffer)
+    // Create PDFParse instance with buffer
+    const parser = new PDFParse(buffer)
+    
+    // Extract text using getText() method
+    const data = await parser.getText()
+    
+    // Handle different return formats
+    const text = typeof data === 'string' ? data : (data?.text || '')
+    const pages = data?.numpages || data?.pages || 0
     
     return {
-      text: data.text || '',
-      pages: data.numpages || 0,
-      info: data.info,
-      metadata: data.metadata,
-      version: data.version
+      text,
+      pages,
+      info: data?.info,
+      metadata: data?.metadata,
+      version: data?.version
     }
   } catch (error) {
     console.error('PDF parsing error:', error)
