@@ -40,7 +40,7 @@ import dynamicImport from "next/dynamic"
 import { useEffect, useState, useCallback, useMemo, memo } from "react"
 import { useRouter } from "next/navigation"
 // 🚀 OPTIMIZATION: Import schema components normally (needed for SEO/SSR)
-import { HomePageSchema, FAQSchema, OrganizationSchema } from "@/components/seo/schema-markup"
+import { HomePageSchema, FAQSchema, OrganizationSchema, WebSiteSchema, ServiceSchema, SiteNavigationElementSchema } from "@/components/seo/schema-markup"
 // 🚀 OPTIMIZATION: Import Accordion normally (lazy loading was causing build issues)
 import { Accordion } from "@/components/ui/accordion"
 
@@ -428,9 +428,12 @@ export default function HomePage() {
       {/* Schema Markup for SEO */}
       <HomePageSchema />
       <OrganizationSchema />
+      <WebSiteSchema />
+      <ServiceSchema />
+      <SiteNavigationElementSchema />
       <FAQSchema faqs={homepageFAQs} />
       
-      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-980 to-slate-900">
+      <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-980 to-slate-900">
       {/* Animated Background Elements */}
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute -top-32 -right-32 w-96 h-96 bg-blue-500/15 rounded-full blur-3xl animate-float" />
@@ -670,7 +673,7 @@ export default function HomePage() {
                     <div className="relative w-full h-full flex items-center justify-center bg-transparent">
                       <Image
                         src={logo.src}
-                        alt={logo.alt}
+                        alt={logo.alt || `${logo.src.split('/').pop()} logo`}
                         width={logo.width || (logo.src.includes('uoftnobg') ? 300 : 200)}
                         height={logo.height || (logo.src.includes('uoftnobg') ? 120 : 80)}
                         className={`object-contain w-auto opacity-60 hover:opacity-80 transition-opacity duration-300 ${
@@ -685,7 +688,8 @@ export default function HomePage() {
                           backgroundColor: 'transparent',
                         }}
                         unoptimized
-                        priority={logo.src.includes('uoftnobg')}
+                        loading={logo.src.includes('uoftnobg') ? 'eager' : 'lazy'}
+                        fetchPriority={logo.src.includes('uoftnobg') ? 'high' : 'low'}
                       />
                     </div>
                   </div>
@@ -709,7 +713,7 @@ export default function HomePage() {
                     <div className="relative w-full h-full flex items-center justify-center bg-transparent">
                       <Image
                         src={logo.src}
-                        alt={logo.alt}
+                        alt={logo.alt || `${logo.src.split('/').pop()} logo`}
                         width={logo.width || (logo.src.includes('uoftnobg') ? 300 : 200)}
                         height={logo.height || (logo.src.includes('uoftnobg') ? 120 : 80)}
                         className={`object-contain w-auto opacity-60 hover:opacity-80 transition-opacity duration-300 ${
@@ -724,7 +728,8 @@ export default function HomePage() {
                           backgroundColor: 'transparent',
                         }}
                         unoptimized
-                        priority={logo.src.includes('uoftnobg')}
+                        loading={logo.src.includes('uoftnobg') ? 'eager' : 'lazy'}
+                        fetchPriority={logo.src.includes('uoftnobg') ? 'high' : 'low'}
                       />
                     </div>
                   </div>
@@ -1201,7 +1206,7 @@ export default function HomePage() {
           </motion.div>
         </section>
       </div>
-    </div>
+    </main>
     </>
   )
 }

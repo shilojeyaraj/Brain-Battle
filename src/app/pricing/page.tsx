@@ -6,6 +6,8 @@ import { motion } from 'framer-motion';
 import Link from 'next/link';
 import { ArrowRight, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Breadcrumbs, BreadcrumbSchema } from '@/components/ui/breadcrumbs';
+import { FAQSchema } from '@/components/seo/schema-markup';
 
 function PricingContent() {
   const [canceled, setCanceled] = useState<string | null>(null);
@@ -92,8 +94,36 @@ function PricingContent() {
 
   const isPro = subscriptionStatus?.isActive && subscriptionStatus?.tier === 'pro';
 
+  const pricingFAQs = [
+    {
+      question: "Is there a free plan available?",
+      answer: "Yes! Brain Battle offers a free plan that includes AI quiz generation from PDFs, basic study notes, and access to singleplayer quizzes. Perfect for trying out the platform."
+    },
+    {
+      question: "What's included in the Pro plan?",
+      answer: "The Pro plan includes unlimited quiz generation, multiplayer study battles, advanced study notes, priority AI processing, classroom/clan management, detailed analytics, and priority support."
+    },
+    {
+      question: "Can I cancel my subscription anytime?",
+      answer: "Yes, you can cancel your Pro subscription at any time. You'll continue to have access to Pro features until the end of your current billing period."
+    },
+    {
+      question: "Do you offer student discounts?",
+      answer: "We're working on student discount programs. Contact support@brainbattle.com for more information about educational pricing."
+    },
+    {
+      question: "What payment methods do you accept?",
+      answer: "We accept all major credit cards and debit cards through our secure Stripe payment processing."
+    }
+  ];
+
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
+    <>
+      {/* SEO Schema Markup */}
+      <BreadcrumbSchema items={[{ label: "Pricing" }]} />
+      <FAQSchema faqs={pricingFAQs} />
+      
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
       {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/20 rounded-full blur-3xl animate-float" />
@@ -106,14 +136,19 @@ function PricingContent() {
 
       <div className="relative z-10 py-16 px-4">
         <div className="max-w-7xl mx-auto">
+          {/* Breadcrumbs */}
+          <div className="mb-6">
+            <Breadcrumbs items={[{ label: "Pricing" }]} />
+          </div>
+          
           {/* Back to Dashboard Button */}
           <div className="mb-8">
-            <Link href="/dashboard">
+            <Link href="/">
               <Button
                 className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black border-2 border-orange-400 shadow-lg hover:shadow-xl hover:shadow-orange-500/50"
               >
                 <ArrowLeft className="w-4 h-4 mr-2" strokeWidth={3} />
-                Back to Dashboard
+                Back to Home
               </Button>
             </Link>
           </div>
@@ -260,6 +295,7 @@ function PricingContent() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 

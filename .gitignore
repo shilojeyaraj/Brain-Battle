@@ -60,6 +60,10 @@ jspm_packages/
 # Optional npm cache directory
 .npm
 
+# pnpm store (local package cache)
+.pnpm-store/
+.pnpm-store
+
 # Optional REPL history
 .node_repl_history
 

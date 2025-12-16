@@ -12,66 +12,91 @@
 
 "use client"
 
-import { Suspense } from "react"
-import { useRouter } from "next/navigation"
+import { Suspense, useState, useEffect } from "react"
+import { useRouter, usePathname, useSearchParams } from "next/navigation"
 import { Brain, FileText, Sparkles, ArrowRight, ArrowLeft, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
-import { useRequireAuth } from "@/hooks/use-require-auth"
 import { motion } from "framer-motion"
+import { Breadcrumbs, BreadcrumbSchema } from "@/components/ui/breadcrumbs"
+import { HowToSchema } from "@/components/seo/schema-markup"
+import { requireAuthOrRedirect } from "@/lib/utils/require-auth-redirect"
 
 function CreateQuizContent() {
   const router = useRouter()
-  const { userId, loading } = useRequireAuth()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const [isCheckingAuth, setIsCheckingAuth] = useState(false)
 
-  if (loading) {
-    return (
-      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-8 h-8 text-blue-400 animate-spin mx-auto mb-4" />
-          <p className="text-blue-200 font-bold">Loading...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!userId) {
-    return null // Redirecting to login
-  }
-
-  const handleCreateQuiz = () => {
+  const handleCreateQuiz = async () => {
+    // Check authentication before proceeding
+    setIsCheckingAuth(true)
+    const isAuthenticated = await requireAuthOrRedirect(router, pathname, searchParams)
+    setIsCheckingAuth(false)
+    
+    if (!isAuthenticated) {
+      return // Already redirected to login
+    }
+    
     router.push("/singleplayer")
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
-      {/* Background Elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
-        <div
-          className="absolute -bottom-40 -left-40 w-80 h-80 bg-orange-500/10 rounded-full blur-3xl animate-float"
-          style={{ animationDelay: "1s" }}
-        />
-      </div>
+    <>
+      {/* SEO Schema Markup */}
+      <BreadcrumbSchema items={[{ label: "Create Quiz" }]} />
+      <HowToSchema
+        name="How to Create a Quiz from PDF"
+        description="Step-by-step guide to generating AI-powered quiz questions from your PDF documents"
+        steps={[
+          {
+            name: "Upload Your PDF",
+            text: "Upload your study materials, textbooks, or lecture notes. Supported formats include PDF, DOC, DOCX, PPT, and PPTX files up to 5MB."
+          },
+          {
+            name: "AI Analyzes Content",
+            text: "Our AI extracts key concepts, definitions, and important information from your documents and generates relevant quiz questions."
+          },
+          {
+            name: "Take Your Quiz",
+            text: "Answer the AI-generated questions and get instant feedback with detailed explanations to help you master the material."
+          }
+        ]}
+      />
+      
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
+        {/* Background Elements */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
+          <div
+            className="absolute -bottom-40 -left-40 w-80 h-80 bg-orange-500/10 rounded-full blur-3xl animate-float"
+            style={{ animationDelay: "1s" }}
+          />
+        </div>
 
-      <div className="relative z-10 container mx-auto px-6 py-12">
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="max-w-2xl mx-auto"
-        >
-          <div className="mb-8">
-            <Link href="/dashboard">
-              <Button
-                className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black border-2 border-orange-400 shadow-lg hover:shadow-xl hover:shadow-orange-500/50"
-              >
-                <ArrowLeft className="w-4 h-4 mr-2" strokeWidth={3} />
-                Back to Dashboard
-              </Button>
-            </Link>
-          </div>
+        <div className="relative z-10 container mx-auto px-6 py-12">
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+            className="max-w-2xl mx-auto"
+          >
+            {/* Breadcrumbs */}
+            <div className="mb-6">
+              <Breadcrumbs items={[{ label: "Create Quiz" }]} />
+            </div>
+            
+            <div className="mb-8">
+              <Link href="/">
+                <Button
+                  className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black border-2 border-orange-400 shadow-lg hover:shadow-xl hover:shadow-orange-500/50"
+                >
+                  <ArrowLeft className="w-4 h-4 mr-2" strokeWidth={3} />
+                  Back to Home
+                </Button>
+              </Link>
+            </div>
 
           <div className="text-center mb-12">
             <div className="flex items-center justify-center gap-3 mb-4">
@@ -156,11 +181,21 @@ function CreateQuizContent() {
                 </p>
                 <Button
                   onClick={handleCreateQuiz}
-                  className="h-14 px-8 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black text-lg border-4 border-orange-400/50"
+                  disabled={isCheckingAuth}
+                  className="h-14 px-8 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black text-lg border-4 border-orange-400/50 disabled:opacity-50"
                 >
-                  <Sparkles className="w-5 h-5 mr-2" strokeWidth={3} />
-                  Start Creating Quiz
-                  <ArrowRight className="w-5 h-5 ml-2" strokeWidth={3} />
+                  {isCheckingAuth ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" strokeWidth={3} />
+                      Checking...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-5 h-5 mr-2" strokeWidth={3} />
+                      Start Creating Quiz
+                      <ArrowRight className="w-5 h-5 ml-2" strokeWidth={3} />
+                    </>
+                  )}
                 </Button>
               </div>
             </Card>
@@ -168,6 +203,7 @@ function CreateQuizContent() {
         </motion.div>
       </div>
     </div>
+    </>
   )
 }
 

@@ -198,12 +198,18 @@ export default function SingleplayerPage() {
     return { validFiles, errors }
   }, [uploadedFiles])
 
-  const handleFileUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
     if (files.length > 0) {
+      // Double-check auth before processing files
+      if (!isAuthenticated) {
+        const currentUrl = '/singleplayer'
+        router.push(`/login?redirect=${encodeURIComponent(currentUrl)}&error=${encodeURIComponent('Please log in to upload files')}`)
+        return
+      }
       processFiles(files)
     }
-  }, [])
+  }, [isAuthenticated, router])
 
   const processFiles = useCallback((files: File[]) => {
     setIsUploading(true)
@@ -251,7 +257,7 @@ export default function SingleplayerPage() {
     }
   }
 
-  const handleDrop = (event: React.DragEvent) => {
+  const handleDrop = useCallback((event: React.DragEvent) => {
     event.preventDefault()
     event.stopPropagation()
     setIsDragOver(false)
@@ -259,9 +265,15 @@ export default function SingleplayerPage() {
     
     const files = Array.from(event.dataTransfer.files)
     if (files.length > 0) {
+      // Double-check auth before processing files
+      if (!isAuthenticated) {
+        const currentUrl = '/singleplayer'
+        router.push(`/login?redirect=${encodeURIComponent(currentUrl)}&error=${encodeURIComponent('Please log in to upload files')}`)
+        return
+      }
       processFiles(files)
     }
-  }
+  }, [isAuthenticated, router, processFiles])
 
   const removeFile = (index: number) => {
     setUploadedFiles(prev => prev.filter((_, i) => i !== index))
