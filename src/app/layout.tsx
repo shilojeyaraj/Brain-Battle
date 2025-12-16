@@ -43,11 +43,11 @@ export const metadata: Metadata = {
   authors: [{ name: "Brain Battle" }],
   creator: "Brain Battle",
   publisher: "Brain Battle",
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://brainbattle.com'),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://brain-battle.app'),
   openGraph: {
     type: 'website',
     locale: 'en_US',
-    url: process.env.NEXT_PUBLIC_SITE_URL || 'https://brainbattle.com',
+    url: process.env.NEXT_PUBLIC_SITE_URL || 'https://brain-battle.app',
     siteName: 'Brain Battle',
     title: 'Brain Battle - AI-Powered Study Battles',
     description: 'Upload PDFs, generate AI quizzes, and compete with friends. Make studying fun and competitive.',
@@ -77,7 +77,7 @@ export const metadata: Metadata = {
     },
   },
   alternates: {
-    canonical: process.env.NEXT_PUBLIC_SITE_URL || 'https://brainbattle.com',
+    canonical: process.env.NEXT_PUBLIC_SITE_URL || 'https://brain-battle.app',
   },
   other: {
     "preload-image": "/brain-battle-logo.png",

@@ -513,7 +513,6 @@ export default function HomePage() {
               </a>
             </nav>
             <Button
-              variant="outline"
               className="border-4 border-blue-400 text-blue-300 hover:bg-blue-500/20 bg-transparent font-bold text-sm h-10"
               loading={loadingButton === 'login'}
               loadingText="Loading..."
@@ -583,7 +582,6 @@ export default function HomePage() {
             <motion.div variants={item} className="flex flex-col sm:flex-row gap-4 justify-start items-start">
               <Link href="/signup">
                 <Button
-                  size="lg"
                   className="bg-blue-500 hover:bg-blue-600 text-white text-lg h-14 px-8 font-black border-2 border-blue-400 shadow-lg shadow-blue-900/50"
                 >
                   <Lightning className="w-5 h-5 mr-2" weight="fill" />
@@ -591,8 +589,6 @@ export default function HomePage() {
                 </Button>
               </Link>
               <Button
-                size="lg"
-                variant="outline"
                 onClick={scrollToHowItWorks}
                 className="border-2 border-orange-300 text-orange-200 hover:bg-orange-500/10 text-lg h-14 px-8 bg-transparent font-black"
               >
@@ -752,8 +748,6 @@ export default function HomePage() {
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-xl font-black text-white">Live Leaderboard</h3>
                 <Button
-                  variant="outline"
-                  size="sm"
                   onClick={() => fetchLeaderboard(true)}
                   disabled={leaderboardRefreshing}
                   className="border-2 border-blue-400 text-blue-100 hover:text-white bg-slate-800/80 hover:bg-slate-700/80 disabled:opacity-60"

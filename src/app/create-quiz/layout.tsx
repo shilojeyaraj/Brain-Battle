@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   description: "Upload your PDF documents and instantly generate AI-powered quiz questions. Create personalized study quizzes in seconds.",
   keywords: ["create quiz", "quiz generator", "PDF to quiz", "AI quiz maker", "study quiz creator"],
   alternates: {
-    canonical: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://brainbattle.com'}/create-quiz`,
+    canonical: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://brain-battle.app'}/create-quiz`,
   },
 }
 

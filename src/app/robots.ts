@@ -9,7 +9,7 @@ import { MetadataRoute } from 'next'
  * @see https://developers.google.com/search/docs/crawling-indexing/robots/robots_txt
  */
 export default function robots(): MetadataRoute.Robots {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://brainbattle.com'
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://brain-battle.app'
 
   return {
     rules: [

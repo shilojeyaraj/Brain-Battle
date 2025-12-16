@@ -13,7 +13,7 @@ interface HomePageSchemaProps {
  * Product/SoftwareApplication Schema for Homepage
  * Tells search engines this is a software application with specific features
  */
-export function HomePageSchema({ siteUrl = 'https://brainbattle.com' }: HomePageSchemaProps) {
+export function HomePageSchema({ siteUrl = 'https://brain-battle.app' }: HomePageSchemaProps) {
   const schema = {
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
@@ -105,7 +105,7 @@ interface HowToSchemaProps {
   siteUrl?: string
 }
 
-export function HowToSchema({ name, description, steps, siteUrl = 'https://brainbattle.com' }: HowToSchemaProps) {
+export function HowToSchema({ name, description, steps, siteUrl = 'https://brain-battle.app' }: HowToSchemaProps) {
   const schema = {
     "@context": "https://schema.org",
     "@type": "HowTo",
@@ -150,7 +150,7 @@ export function ArticleSchema({
   datePublished,
   dateModified,
   author = "Brain Battle",
-  siteUrl = 'https://brainbattle.com'
+  siteUrl = 'https://brain-battle.app'
 }: ArticleSchemaProps) {
   const schema = {
     "@context": "https://schema.org",
@@ -191,7 +191,7 @@ interface OrganizationSchemaProps {
   siteUrl?: string
 }
 
-export function OrganizationSchema({ siteUrl = 'https://brainbattle.com' }: OrganizationSchemaProps) {
+export function OrganizationSchema({ siteUrl = 'https://brain-battle.app' }: OrganizationSchemaProps) {
   const schema = {
     "@context": "https://schema.org",
     "@type": "Organization",

@@ -79,7 +79,7 @@ export function BreadcrumbSchema({ items }: { items: BreadcrumbItem[] }) {
     ...items,
   ]
 
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://brainbattle.com"
+  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://brain-battle.app"
 
   const schema = {
     "@context": "https://schema.org",
