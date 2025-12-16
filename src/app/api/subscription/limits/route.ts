@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
         hasAdvancedAnalytics: limits.hasAdvancedAnalytics,
         hasCustomThemes: limits.hasCustomThemes,
         hasAdvancedStudyNotes: limits.hasAdvancedStudyNotes,
+        canAnalyzeImages: limits.canAnalyzeImages, // Pro-only: AI-powered image/diagram analysis
       },
       usage: {
         documents: {

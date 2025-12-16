@@ -6,9 +6,20 @@
 
 export type AIProvider = 'openai' | 'moonshot' | 'both'
 
+export type AIChatMessageContent = 
+  | string 
+  | Array<{
+      type: 'text' | 'image_url'
+      text?: string
+      image_url?: {
+        url: string
+        detail?: 'low' | 'high' | 'auto'
+      }
+    }>
+
 export interface AIChatMessage {
   role: 'system' | 'user' | 'assistant'
-  content: string
+  content: AIChatMessageContent
 }
 
 export interface AIChatCompletionOptions {

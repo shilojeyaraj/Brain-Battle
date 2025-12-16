@@ -37,7 +37,7 @@ export const StatsGrid = memo(function StatsGrid({ userProfile: propUserProfile,
 
   // Fallback: Only fetch if props not provided (for backwards compatibility)
   // FIXED: Remove propUserProfile from dependencies to prevent infinite loop
-  const fetchUserStats = useCallback(async () => {
+  const fetchUserStats = useCallback(async (opts?: { force?: boolean }) => {
     if (propUserProfile !== undefined) {
       // Props provided, don't fetch
       return
@@ -78,8 +78,14 @@ export const StatsGrid = memo(function StatsGrid({ userProfile: propUserProfile,
         return
       }
 
+      // If forcing, clear cache first
+      if (opts?.force) {
+        const { clearUserStatsCache } = await import('@/lib/actions/user-stats-client')
+        clearUserStatsCache()
+      }
+
       // Add timestamp to bust cache
-      const result = await getUserStatsClient(userId)
+      const result = await getUserStatsClient(userId, opts)
       if (result.success && result.data) {
         console.log('✅ [STATS GRID] Stats fetched successfully:', {
           xp: result.data.stats?.xp,
@@ -120,7 +126,8 @@ export const StatsGrid = memo(function StatsGrid({ userProfile: propUserProfile,
   useEffect(() => {
     if (propUserProfile !== undefined) return
     const handler = () => {
-      fetchUserStats()
+      console.log('🔄 [STATS GRID] quizCompleted event -> forcing stats refresh')
+      fetchUserStats({ force: true })
     }
     window.addEventListener('quizCompleted', handler as EventListener)
     return () => window.removeEventListener('quizCompleted', handler as EventListener)

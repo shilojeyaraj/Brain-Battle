@@ -149,9 +149,12 @@ export default function DashboardPage() {
 
   // Refresh once when a quiz completes (event-driven, not polling)
   useEffect(() => {
-    const handleQuizComplete = () => {
+    const handleQuizComplete = async () => {
       if (userId) {
-        console.log('🔄 [DASHBOARD] quizCompleted event -> refreshing stats/recent battles')
+        console.log('🔄 [DASHBOARD] quizCompleted event -> clearing cache and refreshing stats/recent battles')
+        // Clear cache first, then force refresh
+        const { clearUserStatsCache } = await import('@/lib/actions/user-stats-client')
+        clearUserStatsCache()
         fetchUserStats({ force: true })
       }
     }

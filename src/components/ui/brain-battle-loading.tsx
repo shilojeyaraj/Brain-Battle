@@ -76,14 +76,19 @@ export function BrainBattleLoading({ message = "Loading your Brain Battle experi
             alt="Brain Battle"
             width={850}
             height={850}
-            className={`w-full h-full object-contain transition-opacity duration-500 ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
+            className={`w-full h-full object-contain transition-opacity duration-700 ease-out ${imageLoaded ? 'opacity-100' : 'opacity-0'}`}
             style={{
               filter: 'drop-shadow(0 0 30px rgba(59, 130, 246, 0.6)) drop-shadow(0 0 60px rgba(251, 146, 60, 0.3))',
             }}
             priority
             fetchPriority="high"
             quality={100}
-            onLoad={() => setImageLoaded(true)}
+            onLoad={() => {
+              // Smooth fade-in with slight delay to prevent choppy start
+              requestAnimationFrame(() => {
+                setImageLoaded(true)
+              })
+            }}
           />
         </div>
         

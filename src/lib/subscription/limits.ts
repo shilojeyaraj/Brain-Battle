@@ -32,6 +32,8 @@ export interface FeatureLimits {
   maxQuizDiagramsPerMonth: number // Free: 2 per month (after trial), Pro: Infinity
   trialQuizDiagrams: number // Free: 3 (one-time trial), Pro: N/A
   canGenerateQuizDiagrams: boolean // Free: true (with limits), Pro: true (unlimited)
+  // IMAGE ANALYSIS LIMITS (Pro-only feature - uses GPT-4o Vision API)
+  canAnalyzeImages: boolean // Free: false, Pro: true - AI-powered image/diagram analysis from documents
 }
 
 /**
@@ -98,6 +100,8 @@ export async function getUserLimits(userId: string): Promise<FeatureLimits> {
       maxQuizDiagramsPerMonth: Infinity, // Unlimited for Pro
       trialQuizDiagrams: Infinity, // Not applicable for Pro
       canGenerateQuizDiagrams: true, // Unlimited
+      // IMAGE ANALYSIS (Pro-only)
+      canAnalyzeImages: true, // Pro users can use GPT-4o Vision API for image analysis
     }
   }
   
@@ -123,6 +127,8 @@ export async function getUserLimits(userId: string): Promise<FeatureLimits> {
     maxQuizDiagramsPerMonth: 2, // 2 per month after trial
     trialQuizDiagrams: 3, // One-time trial of 3 diagrams
     canGenerateQuizDiagrams: true, // Can use, but limited
+    // IMAGE ANALYSIS (Pro-only)
+    canAnalyzeImages: false, // Free users cannot use GPT-4o Vision API (too expensive)
   }
 }
 

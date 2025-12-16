@@ -634,7 +634,7 @@ export async function POST(request: NextRequest) {
 
     console.log("✅ [QUIZ RESULTS] Created game result:", gameResult.id)
 
-    // 6. Ensure user row exists, then get/create player stats (admin client bypasses RLS)
+    // 6. Ensure user row exists
     const { data: existingUser } = await adminClient
       .from('users')
       .select('id')
@@ -650,74 +650,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const isSingleplayerForNewStats = sessionData?.room_id === null || sessionData?.room_id === undefined
+    // 7. Ensure player stats exist (using reusable utility)
+    const { ensurePlayerStatsExists } = await import('@/lib/utils/ensure-player-stats')
+    const currentStats = await ensurePlayerStatsExists(userId, {
+      xp: 0, // Will be updated below
+      total_questions_answered: 0, // Will be updated below
+      correct_answers: 0, // Will be updated below
+      accuracy: 0, // Will be updated below
+      average_response_time: averageResponseTime,
+      favorite_subject: topic
+    })
 
-    const createDefaultStats = async () => {
-      const safeCorrectAnswers = typeof verifiedCorrectAnswers !== 'undefined' ? verifiedCorrectAnswers : 0
-      const safeTotalQuestions = typeof verifiedTotalQuestions !== 'undefined' ? verifiedTotalQuestions : 0
-      const safeAverageTime = typeof averageResponseTime !== 'undefined' ? averageResponseTime : 30
-      const safeAccuracy = safeTotalQuestions > 0 ? (safeCorrectAnswers / safeTotalQuestions) * 100 : 0
-      const totals = {
-        total_games: 1,
-        total_wins: 1,
-        total_losses: 0,
-        win_streak: 1,
-        best_streak: 1
-      }
-      const { data: newStats, error: createError } = await adminClient
-        .from('player_stats')
-        .insert({
-          user_id: userId,
-          level: 1,
-          xp: xpEarned,
-          ...totals,
-          total_questions_answered: safeTotalQuestions,
-          correct_answers: safeCorrectAnswers,
-          accuracy: safeAccuracy,
-          average_response_time: safeAverageTime,
-          favorite_subject: topic,
-          trial_quiz_diagrams_remaining: 3,
-          quiz_diagrams_this_month: 0,
-          has_used_trial_quiz_diagrams: false,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        })
-        .select()
-        .single()
-      
-      if (createError || !newStats) {
-        console.error("❌ [QUIZ RESULTS] Error creating player stats:", createError)
-        return null
-      }
-      return newStats
+    if (!currentStats) {
+      console.error("❌ [QUIZ RESULTS] Failed to ensure player stats exist")
+      return NextResponse.json({ error: "Failed to initialize stats" }, { status: 500 })
     }
 
-    let currentStats
-    try {
-      const { data: statsRow, error: statsFetchError } = await adminClient
-        .from('player_stats')
-        .select('*')
-        .eq('user_id', userId)
-        .single()
-
-      if (statsFetchError || !statsRow) {
-        console.warn("⚠️ [QUIZ RESULTS] Missing player_stats, creating default row...")
-        currentStats = await createDefaultStats()
-        if (!currentStats) {
-          return NextResponse.json({ error: "Failed to initialize stats" }, { status: 500 })
-        }
-      } else {
-        currentStats = statsRow
-      }
-    } catch (statsFetchError) {
-      console.warn("⚠️ [QUIZ RESULTS] Stats fetch error, creating default row...", statsFetchError)
-      currentStats = await createDefaultStats()
-      if (!currentStats) {
-        return NextResponse.json({ error: "Failed to initialize stats" }, { status: 500 })
-      }
-    }
-
-    // 7. Update player stats manually (ensure it works even if trigger doesn't exist)
+    // 8. Update player stats manually (ensure it works even if trigger doesn't exist)
     // Determine if this is singleplayer (sessionData is already set)
     const isSingleplayer = !sessionData.room_id || sessionData.room_id === null || sessionData.room_id === undefined
     
@@ -807,9 +756,53 @@ export async function POST(request: NextRequest) {
         correct_answers: updatedStats?.correct_answers
       })
       
-      // Verify the update was successful
-      if (updatedStats?.xp !== newXP) {
-        console.error("❌ [QUIZ RESULTS] XP mismatch! Expected:", newXP, "Got:", updatedStats?.xp)
+      // Verify the update was successful (re-fetch and compare)
+      const { data: verifyStats } = await adminClient
+        .from('player_stats')
+        .select('xp, level, total_games, total_wins, total_questions_answered, correct_answers, accuracy')
+        .eq('user_id', userId)
+        .single()
+      
+      if (verifyStats) {
+        // Check for mismatches
+        const mismatches: string[] = []
+        if (verifyStats.xp !== newXP) mismatches.push(`XP: expected ${newXP}, got ${verifyStats.xp}`)
+        if (verifyStats.level !== newLevel) mismatches.push(`Level: expected ${newLevel}, got ${verifyStats.level}`)
+        if (verifyStats.total_games !== newTotalGames) mismatches.push(`Total games: expected ${newTotalGames}, got ${verifyStats.total_games}`)
+        if (Math.abs(verifyStats.accuracy - newAccuracy) > 0.01) mismatches.push(`Accuracy: expected ${newAccuracy}, got ${verifyStats.accuracy}`)
+        
+        if (mismatches.length > 0) {
+          console.error(`❌ [QUIZ RESULTS] Stats verification failed! Mismatches:`, mismatches)
+          // Retry update once if verification failed
+          console.log(`🔄 [QUIZ RESULTS] Retrying stats update...`)
+          const { data: retryStats, error: retryError } = await adminClient
+            .from('player_stats')
+            .update({
+              total_games: newTotalGames,
+              total_wins: newTotalWins,
+              win_streak: newWinStreak,
+              best_streak: newBestStreak,
+              total_questions_answered: newTotalQuestions,
+              correct_answers: newCorrectAnswers,
+              accuracy: newAccuracy,
+              xp: newXP,
+              level: newLevel,
+              updated_at: new Date().toISOString()
+            })
+            .eq('user_id', userId)
+            .select()
+            .single()
+          
+          if (retryError) {
+            console.error(`❌ [QUIZ RESULTS] Retry update also failed:`, retryError)
+          } else if (retryStats) {
+            console.log(`✅ [QUIZ RESULTS] Retry update succeeded`)
+          }
+        } else {
+          console.log(`✅ [QUIZ RESULTS] Stats verification passed - all values match`)
+        }
+      } else {
+        console.warn(`⚠️ [QUIZ RESULTS] Could not verify stats update (stats not found)`)
       }
     }
 

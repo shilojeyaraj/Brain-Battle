@@ -207,17 +207,17 @@ export function AchievementGallery({ userId }: AchievementGalleryProps) {
                 "p-4 bg-gradient-to-br border-4 relative overflow-hidden transition-all",
                 isEarned
                   ? RARITY_GRADIENTS[achievement.rarity]
-                  : "from-slate-800/50 to-slate-900/50",
+                  : "from-slate-900/90 to-slate-950/90",
                 isEarned
                   ? RARITY_BORDER_COLORS[achievement.rarity]
-                  : "border-slate-600/30",
-                isEarned ? "opacity-100" : "opacity-60"
+                  : "border-slate-700/50",
+                isEarned ? "opacity-100" : "opacity-70"
               )}
             >
               {/* Lock overlay for unearned */}
               {!isEarned && (
-                <div className="absolute inset-0 bg-slate-900/60 flex items-center justify-center z-10">
-                  <Lock className="w-12 h-12 text-slate-500" strokeWidth={2} />
+                <div className="absolute inset-0 bg-slate-950/70 flex items-center justify-center z-10">
+                  <Lock className="w-12 h-12 text-slate-400" strokeWidth={2} />
                 </div>
               )}
 

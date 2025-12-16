@@ -33,13 +33,33 @@ let lastStatsFetch: { timestamp: number; result: { success: boolean; data?: User
 let inflightStatsPromise: Promise<{ success: boolean; data?: UserProfile; error?: string }> | null = null
 const STATS_CACHE_MS = 30_000 // 30s cache window
 
+/**
+ * Clear the stats cache - call this after quiz completion to ensure fresh data
+ */
+export function clearUserStatsCache(): void {
+  lastStatsFetch = null
+  inflightStatsPromise = null
+  if (process.env.NODE_ENV === 'development') {
+    console.log('🧹 [USER STATS] Cache cleared')
+  }
+}
+
 export async function getUserStatsClient(userId: string, opts?: { force?: boolean }): Promise<{ success: boolean; data?: UserProfile; error?: string }> {
   const now = Date.now()
-  if (!opts?.force && lastStatsFetch && (now - lastStatsFetch.timestamp) < STATS_CACHE_MS) {
-    return lastStatsFetch.result
-  }
-  if (!opts?.force && inflightStatsPromise) {
-    return inflightStatsPromise
+  
+  // If force: true, bypass ALL caching (both timestamp cache and inflight promise)
+  if (opts?.force) {
+    // Clear cache when forcing to ensure fresh data
+    lastStatsFetch = null
+    inflightStatsPromise = null
+  } else {
+    // Normal caching behavior
+    if (lastStatsFetch && (now - lastStatsFetch.timestamp) < STATS_CACHE_MS) {
+      return lastStatsFetch.result
+    }
+    if (inflightStatsPromise) {
+      return inflightStatsPromise
+    }
   }
 
   const fetchPromise = (async () => {
@@ -305,11 +325,22 @@ export async function getUserStatsClient(userId: string, opts?: { force?: boolea
   }
   })()
 
-  inflightStatsPromise = fetchPromise
+  // Only track inflight promise if not forcing
+  if (!opts?.force) {
+    inflightStatsPromise = fetchPromise
+  }
+  
   const result = await fetchPromise
-  inflightStatsPromise = null
+  
+  // Clear inflight promise after completion
+  if (inflightStatsPromise === fetchPromise) {
+    inflightStatsPromise = null
+  }
+  
+  // Only cache result if not forcing and successful
   if (!opts?.force && result.success) {
     lastStatsFetch = { timestamp: Date.now(), result }
   }
+  
   return result
 }

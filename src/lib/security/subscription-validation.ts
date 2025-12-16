@@ -116,3 +116,37 @@ export async function validateQuizQuestions(
   }
 }
 
+/**
+ * Validate image analysis feature access (Pro-only)
+ * Image analysis uses GPT-4o Vision API which is expensive, so it's restricted to Pro users
+ */
+export async function validateImageAnalysis(
+  userId: string
+): Promise<SubscriptionValidationResult> {
+  try {
+    const limits = await getUserLimits(userId)
+    
+    if (!limits.canAnalyzeImages) {
+      return {
+        allowed: false,
+        isPro: false,
+        requiresPro: true,
+        reason: 'AI-powered image and diagram analysis requires a Pro subscription. Upgrade to unlock this feature and get detailed analysis of diagrams, figures, and charts from your documents.',
+      }
+    }
+
+    return {
+      allowed: true,
+      isPro: true,
+    }
+  } catch (error) {
+    console.error('Error validating image analysis access:', error)
+    // Fail secure - deny access if we can't verify
+    return {
+      allowed: false,
+      isPro: false,
+      reason: 'Unable to verify subscription status. Please try again.',
+    }
+  }
+}
+

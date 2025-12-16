@@ -491,18 +491,6 @@ export default function HomePage() {
             {/* Navigation Links */}
             <nav className="hidden md:flex items-center gap-6">
               <a
-                href="#features"
-                className="text-blue-100 hover:text-blue-300 font-semibold text-sm transition-colors"
-                onClick={(e) => {
-                  e.preventDefault()
-                  if (typeof window !== 'undefined') {
-                    document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })
-                  }
-                }}
-              >
-                Features
-              </a>
-              <a
                 href="#how-it-works"
                 className="text-blue-100 hover:text-blue-300 font-semibold text-sm transition-colors"
                 onClick={(e) => {
@@ -513,6 +501,18 @@ export default function HomePage() {
                 }}
               >
                 How it works
+              </a>
+              <a
+                href="#features"
+                className="text-blue-100 hover:text-blue-300 font-semibold text-sm transition-colors"
+                onClick={(e) => {
+                  e.preventDefault()
+                  if (typeof window !== 'undefined') {
+                    document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })
+                  }
+                }}
+              >
+                Features
               </a>
             </nav>
             <Button
@@ -655,12 +655,12 @@ export default function HomePage() {
             <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-slate-950 via-slate-950/80 to-transparent z-10 pointer-events-none" />
             
             {/* Carousel container */}
-            <div className="flex animate-scroll-left" style={{ willChange: 'transform' }}>
+            <div className="flex animate-scroll-left" style={{ willChange: 'transform', width: 'max-content' }}>
               {/* First set of logos - using logos from logos folder with greyscale */}
               {[
-                { src: "/logos/uoftnobg.webp", alt: "University of Toronto", filter: 'brightness(0) invert(1)', width: 350, height: 140 },
+                { src: "/logos/uoftnobg.webp", alt: "University of Toronto", filter: 'brightness(0) invert(1) contrast(1.2)', width: 350, height: 140 },
                 { src: "/logos/uwaterloonobg.png", alt: "University of Waterloo", filter: 'brightness(0) invert(1) brightness(3) contrast(1.3)' },
-                { src: "/logos/McMaster-logo.png", alt: "McMaster University", filter: 'brightness(0) invert(1)' },
+                { src: "/logos/McMaster-logo.png", alt: "McMaster University", filter: 'brightness(0) invert(1) contrast(1.2)' },
                 { src: "/logos/lauriernobg.png", alt: "Wilfrid Laurier University", filter: 'brightness(0) invert(1)' },
                 { src: "/logos/brocknobg.png", alt: "Brock University", filter: 'brightness(0) invert(1)' },
                 { src: "/logos/yorklogo.png", alt: "York University", filter: 'brightness(0) invert(1)' },
@@ -698,9 +698,9 @@ export default function HomePage() {
               
               {/* Duplicate set for seamless loop */}
               {[
-                { src: "/logos/uoftnobg.webp", alt: "University of Toronto", filter: 'brightness(0) invert(1)', width: 350, height: 140 },
+                { src: "/logos/uoftnobg.webp", alt: "University of Toronto", filter: 'brightness(0) invert(1) contrast(1.2)', width: 350, height: 140 },
                 { src: "/logos/uwaterloonobg.png", alt: "University of Waterloo", filter: 'brightness(0) invert(1) brightness(3) contrast(1.3)' },
-                { src: "/logos/McMaster-logo.png", alt: "McMaster University", filter: 'brightness(0) invert(1)' },
+                { src: "/logos/McMaster-logo.png", alt: "McMaster University", filter: 'brightness(0) invert(1) contrast(1.2)' },
                 { src: "/logos/lauriernobg.png", alt: "Wilfrid Laurier University", filter: 'brightness(0) invert(1)' },
                 { src: "/logos/brocknobg.png", alt: "Brock University", filter: 'brightness(0) invert(1)' },
                 { src: "/logos/yorklogo.png", alt: "York University", filter: 'brightness(0) invert(1)' },

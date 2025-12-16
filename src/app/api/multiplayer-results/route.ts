@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/server-admin'
+import { ensurePlayerStatsExists } from '@/lib/utils/ensure-player-stats'
+import { createAdminClient } from '@/lib/supabase/server-admin'
+import { ensurePlayerStatsExists } from '@/lib/utils/ensure-player-stats'
 
 interface PlayerResult {
   user_id: string
@@ -279,6 +283,111 @@ export async function POST(request: NextRequest) {
     console.log('✅ [MULTIPLAYER RESULTS] Game results inserted successfully')
     if (skippedPlayers.length > 0) {
       console.log(`⚠️ [MULTIPLAYER RESULTS] Skipped ${skippedPlayers.length} players due to duplicate session completion`)
+    }
+
+    // Update quiz session status
+    const { error: sessionUpdateError } = await supabase
+      .from('quiz_sessions')
+      .update({ 
+        status: 'complete',
+        ended_at: new Date().toISOString()
+      })
+      .eq('id', session_id)
+
+    if (sessionUpdateError) {
+      console.error('❌ [MULTIPLAYER RESULTS] Error updating session status:', sessionUpdateError)
+    }
+
+    // Update room status
+    const { error: roomUpdateError } = await supabase
+      .from('game_rooms')
+      .update({ 
+        status: 'completed',
+        ended_at: new Date().toISOString()
+      })
+      .eq('id', room_id)
+
+    if (roomUpdateError) {
+      console.error('❌ [MULTIPLAYER RESULTS] Error updating room status:', roomUpdateError)
+    }
+
+    // Prepare response with rankings and XP breakdowns
+    const responseResults = player_results.map(player => {
+      const rank = rankings.get(player.user_id) || player_results.length
+      const displayName = profileMap.get(player.user_id) || 'Unknown Player'
+      
+      // Check if player was skipped due to duplicate
+      const wasSkipped = skippedPlayers.includes(player.user_id)
+      if (wasSkipped) {
+        const existing = duplicateMap.get(player.user_id)
+        return {
+          user_id: player.user_id,
+          display_name: displayName,
+          rank: rank,
+          score: player.score,
+          questions_answered: player.questions_answered,
+          correct_answers: player.correct_answers,
+          accuracy: player.questions_answered > 0 ? (player.correct_answers / player.questions_answered * 100) : 0,
+          total_time: player.total_time,
+          xp_earned: 0,
+          message: "You've already completed this quiz session. No XP awarded for repeats."
+        }
+      }
+      
+      // Find the corresponding inserted result for XP info
+      const insertedResult = insertedResults?.find(r => r.user_id === player.user_id)
+      
+      return {
+        user_id: player.user_id,
+        display_name: displayName,
+        rank: rank,
+        score: player.score,
+        questions_answered: player.questions_answered,
+        correct_answers: player.correct_answers,
+        accuracy: player.questions_answered > 0 ? (player.correct_answers / player.questions_answered * 100) : 0,
+        total_time: player.total_time,
+        xp_earned: insertedResult?.xp_earned || 0
+      }
+    })
+
+    // Sort by rank for response
+    responseResults.sort((a, b) => a.rank - b.rank)
+
+    console.log('🎉 [MULTIPLAYER RESULTS] Results processed successfully')
+
+    return NextResponse.json({
+      success: true,
+      results: responseResults,
+      session_id: session_id,
+      room_id: room_id
+    })
+
+  } catch (error) {
+    console.error('❌ [MULTIPLAYER RESULTS] Error in multiplayer results API:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+        return updatedStats
+      } catch (error) {
+        console.error(`❌ [MULTIPLAYER RESULTS] Exception updating stats for ${insertedResult.user_id}:`, error)
+        return null
+      }
+    }) || []
+
+    // Wait for all stats updates to complete (non-blocking - don't fail request if some fail)
+    const statsUpdateResults = await Promise.allSettled(statsUpdatePromises)
+    const successfulUpdates = statsUpdateResults.filter(r => r.status === 'fulfilled' && r.value !== null).length
+    const failedUpdates = statsUpdateResults.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && r.value === null)).length
+
+    if (successfulUpdates > 0) {
+      console.log(`✅ [MULTIPLAYER RESULTS] Successfully updated stats for ${successfulUpdates} player(s)`)
+    }
+    if (failedUpdates > 0) {
+      console.warn(`⚠️ [MULTIPLAYER RESULTS] Failed to update stats for ${failedUpdates} player(s)`)
     }
 
     // Update quiz session status

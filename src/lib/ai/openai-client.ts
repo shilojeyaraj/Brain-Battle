@@ -22,12 +22,47 @@ export class OpenAIClient implements AIClient {
     messages: AIChatMessage[],
     options: AIChatCompletionOptions = {}
   ): Promise<AIChatCompletionResponse> {
+    // Map messages to OpenAI format, handling both text and Vision API formats
+    const openAIMessages = messages.map(msg => {
+      // If content is a string, use it directly
+      if (typeof msg.content === 'string') {
+        return {
+          role: msg.role,
+          content: msg.content,
+        }
+      }
+      
+      // If content is an array (Vision API format), map it properly
+      if (Array.isArray(msg.content)) {
+        return {
+          role: msg.role,
+          content: msg.content.map(item => {
+            if (item.type === 'text') {
+              return { type: 'text', text: item.text || '' }
+            } else if (item.type === 'image_url') {
+              return {
+                type: 'image_url',
+                image_url: {
+                  url: item.image_url?.url || '',
+                  detail: item.image_url?.detail || 'auto',
+                },
+              }
+            }
+            return item
+          }),
+        }
+      }
+      
+      // Fallback to string
+      return {
+        role: msg.role,
+        content: String(msg.content),
+      }
+    })
+    
     const response = await this.client.chat.completions.create({
       model: options.model || 'gpt-4o',
-      messages: messages.map(msg => ({
-        role: msg.role,
-        content: msg.content,
-      })),
+      messages: openAIMessages as any, // OpenAI SDK types are more specific
       temperature: options.temperature ?? 0.2,
       max_tokens: options.maxTokens,
       response_format: options.responseFormat ? { type: options.responseFormat } : undefined,

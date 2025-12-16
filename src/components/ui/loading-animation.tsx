@@ -10,15 +10,17 @@ export function LoadingAnimation() {
         <motion.div
           key={index}
           className="w-3 h-3 bg-[#4A9EFF] rounded-full"
+          initial={{ y: 0, opacity: 0.3 }}
           animate={{
             y: [0, -12, 0],
-            opacity: [1, 0.5, 1],
+            opacity: [0.3, 1, 0.3],
           }}
           transition={{
             duration: 1.2,
             repeat: Infinity,
             delay: index * 0.2,
-            ease: "easeInOut",
+            ease: [0.4, 0, 0.6, 1], // Custom cubic-bezier for smooth start
+            type: "tween",
           }}
         />
       ))}

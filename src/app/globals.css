@@ -313,8 +313,15 @@
 .animate-scroll-left {
   animation: scroll-left 30s linear infinite;
   display: flex;
-  width: fit-content;
+  width: max-content;
   will-change: transform; /* Optimize animation performance */
+}
+
+/* Ensure carousel works in production */
+@media (prefers-reduced-motion: no-preference) {
+  .animate-scroll-left {
+    animation: scroll-left 30s linear infinite;
+  }
 }
 
 /* 🚀 OPTIMIZATION: Smooth scrolling and performance */

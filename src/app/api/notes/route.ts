@@ -324,11 +324,20 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
+    // 1) Check if user has Pro subscription for image analysis (Pro-only feature)
+    const { validateImageAnalysis } = await import('@/lib/security/subscription-validation')
+    const imageAnalysisValidation = await validateImageAnalysis(userId)
+    const canAnalyzeImages = imageAnalysisValidation.allowed
+    
+    if (!canAnalyzeImages && process.env.NODE_ENV === 'development') {
+      console.log(`  ℹ️ [NOTES API] Image analysis disabled for free tier user. Upgrade to Pro to enable AI-powered diagram analysis.`)
+    }
+
     // 1) Process files in parallel - extract text and images simultaneously
     const fileContents: string[] = []
     const documentMetadata: { fileName: string; contentHash?: string; fileSize: number; fileType: string }[] = []
     const documentIds: string[] = []
-    // Temporarily disable image/diagram extraction for quiz generation stability
+    // Only extract images if user has Pro subscription (uses expensive GPT-4o Vision API)
     const extractedImages: { image_data_b64: string; page: number; width?: number; height?: number }[] = []
     const fileNames: string[] = []
     
@@ -358,7 +367,29 @@ export async function POST(req: NextRequest) {
           const pdfData = await extractPDFText(buffer)
           
           textContent = pdfData.text || ''
-          images = [] // pdf-parse doesn't extract images (we'll add image extraction later)
+          
+          // Only extract images if user has Pro subscription (uses expensive GPT-4o Vision API)
+          if (canAnalyzeImages) {
+            try {
+              // Use the unified extractor to get both text and images in one pass
+              const { extractPDFTextAndImages } = await import('@/lib/pdf-unified-extractor')
+              const pdfContent = await extractPDFTextAndImages(buffer, file.name)
+              textContent = pdfContent.text || textContent // Use unified text if available
+              images = pdfContent.images || []
+              
+              if (process.env.NODE_ENV === 'development' && images.length > 0) {
+                console.log(`  🖼️ [NOTES API] Extracted ${images.length} images from ${file.name}`)
+              }
+            } catch (imageError) {
+              // If image extraction fails, continue with text-only (non-blocking)
+              if (process.env.NODE_ENV === 'development') {
+                console.warn(`  ⚠️ [NOTES API] Image extraction failed for ${file.name}, continuing with text only:`, imageError)
+              }
+              images = []
+            }
+          } else {
+            images = [] // Free tier: no image extraction
+          }
           
           if (process.env.NODE_ENV === 'development') {
             console.log(`  ✅ [NOTES API] Extracted ${textContent.length} characters from ${file.name} (${pdfData.pages} pages)`)
@@ -1054,8 +1085,9 @@ ANTI-PATTERNS TO AVOID:
 REMEMBER: Every piece of content must be directly derived from the actual document content provided above. Extract specific information, examples, and details from these documents rather than generating generic educational content. If information is not in the document, omit it—do not invent.`
 
     // Start diagram analysis early (in parallel with notes generation)
+    // Only run if user has Pro subscription and images were extracted
     const diagramAnalysisStart = Date.now()
-    const diagramAnalysisPromise = extractedImages.length > 0
+    const diagramAnalysisPromise = canAnalyzeImages && extractedImages.length > 0
       ? (async () => {
           if (process.env.NODE_ENV === 'development') {
             console.log(`\n🖼️ [NOTES API] Starting early diagram analysis (${extractedImages.length} images)...`)

@@ -59,6 +59,31 @@ export class OpenRouterClient implements AIClient {
     messages: AIChatMessage[],
     options: AIChatCompletionOptions = {}
   ): Promise<AIChatCompletionResponse> {
+    // OpenRouter/Moonshot doesn't support Vision API, so extract text only
+    // If message content is an array (Vision format), extract text parts only
+    const textOnlyMessages = messages.map(msg => {
+      if (typeof msg.content === 'string') {
+        return { role: msg.role, content: msg.content }
+      }
+      
+      // If content is an array (Vision format), extract only text parts
+      if (Array.isArray(msg.content)) {
+        const textParts = msg.content
+          .filter(item => item.type === 'text')
+          .map(item => item.text || '')
+          .join('\n')
+        
+        return {
+          role: msg.role,
+          content: textParts || '[Image content - not supported by OpenRouter]',
+        }
+      }
+      
+      return {
+        role: msg.role,
+        content: String(msg.content),
+      }
+    })
     // Map model names: if using old Moonshot model names, convert to OpenRouter format
     let model = options.model || this.defaultModel
     
@@ -89,7 +114,7 @@ export class OpenRouterClient implements AIClient {
     try {
       const requestOptions: any = {
         model,
-        messages: messages.map(msg => ({
+        messages: textOnlyMessages.map(msg => ({
           role: msg.role,
           content: msg.content,
         })),

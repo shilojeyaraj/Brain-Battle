@@ -242,6 +242,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Check if user has Pro subscription for image analysis (Pro-only feature)
+    const { validateImageAnalysis } = await import('@/lib/security/subscription-validation')
+    const imageAnalysisValidation = await validateImageAnalysis(userId)
+    const canAnalyzeImages = imageAnalysisValidation.allowed
+    
+    // Force includeDiagrams to false for free users (image analysis requires Pro)
+    if (!canAnalyzeImages && includeDiagrams) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`  ℹ️ [QUIZ API] Image analysis disabled for free tier user. Setting includeDiagrams to false.`)
+      }
+      includeDiagrams = false
+    }
+
     // Semantic search is optional and only useful if searching previously uploaded documents
     // Since we're processing new documents from files, we'll skip semantic search
     // This avoids connection errors and focuses on the uploaded file content
