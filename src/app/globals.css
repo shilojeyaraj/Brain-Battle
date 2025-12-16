@@ -300,6 +300,46 @@
   }
 }
 
+/* Scroll left animation for university logos carousel */
+@keyframes scroll-left {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-scroll-left {
+  animation: scroll-left 30s linear infinite;
+  display: flex;
+  width: fit-content;
+  will-change: transform; /* Optimize animation performance */
+}
+
+/* 🚀 OPTIMIZATION: Smooth scrolling and performance */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Optimize rendering for animations */
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Reduce motion for users who prefer it */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 .animate-float {
   animation: float 3s ease-in-out infinite;
 }

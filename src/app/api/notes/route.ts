@@ -244,21 +244,27 @@ export async function POST(req: NextRequest) {
           )
         }
 
-        // Check file type by content, not just extension
+        // Check file type by MIME type and extension (fallback for browsers that don't send correct MIME types)
         const allowedMimeTypes = [
           'application/pdf',
           'text/plain',
-          'application/msword',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          'application/vnd.ms-powerpoint',
-          'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          'application/msword', // .doc
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+          'application/vnd.ms-powerpoint', // .ppt
+          'application/vnd.openxmlformats-officedocument.presentationml.presentation', // .pptx
         ]
-        if (!file.type || !allowedMimeTypes.includes(file.type)) {
+        
+        // Also check file extension as fallback (some browsers don't send correct MIME types)
+        const fileName = file.name.toLowerCase()
+        const allowedExtensions = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.txt', '.md']
+        const hasValidExtension = allowedExtensions.some(ext => fileName.endsWith(ext))
+        
+        if ((!file.type || !allowedMimeTypes.includes(file.type)) && !hasValidExtension) {
           if (process.env.NODE_ENV === 'development') {
-            console.error(`❌ [NOTES API] File type not allowed: ${file.name} (${file.type})`)
+            console.error(`❌ [NOTES API] File type not allowed: ${file.name} (MIME: ${file.type || 'unknown'})`)
           }
           return NextResponse.json(
-            { error: `File type not allowed: ${file.name}. Supported types: PDF, DOC, DOCX, PPT, PPTX, TXT` },
+            { error: `File type not allowed: ${file.name}. Supported types: PDF, DOC, DOCX, PPT, PPTX, TXT, MD` },
             { status: 400 }
           )
         }
@@ -366,7 +372,9 @@ export async function POST(req: NextRequest) {
         }
       } else if (
         file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-        file.type === 'application/msword'
+        file.type === 'application/msword' ||
+        file.name.toLowerCase().endsWith('.doc') ||
+        file.name.toLowerCase().endsWith('.docx')
       ) {
         // Word document (.docx or .doc) - no images
         if (process.env.NODE_ENV === 'development') {
@@ -386,7 +394,9 @@ export async function POST(req: NextRequest) {
         images = [] // Word documents don't have extractable images
       } else if (
         file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
-        file.type === 'application/vnd.ms-powerpoint'
+        file.type === 'application/vnd.ms-powerpoint' ||
+        file.name.toLowerCase().endsWith('.ppt') ||
+        file.name.toLowerCase().endsWith('.pptx')
       ) {
         // PowerPoint presentation (.pptx or .ppt) - no images
         if (process.env.NODE_ENV === 'development') {
@@ -404,7 +414,7 @@ export async function POST(req: NextRequest) {
           throw new Error(`Failed to parse PowerPoint "${file.name}". Error: ${pptError instanceof Error ? pptError.message : String(pptError)}`)
         }
         images = [] // PowerPoint files don't have extractable images in our current implementation
-      } else if (file.type?.startsWith('text/')) {
+      } else if (file.type?.startsWith('text/') || file.name.toLowerCase().endsWith('.txt') || file.name.toLowerCase().endsWith('.md')) {
         if (process.env.NODE_ENV === 'development') {
           console.log(`  📝 [NOTES API] Processing ${file.name} as text file (${file.type})`)
         }

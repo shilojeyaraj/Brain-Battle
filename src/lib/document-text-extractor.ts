@@ -2,14 +2,25 @@
  * Document Text Extractor
  * 
  * Extracts text from various document formats (Word, PowerPoint, etc.)
+ * Supports: .docx, .doc, .pptx, .ppt
  */
 
 import mammoth from 'mammoth'
 import AdmZip from 'adm-zip'
 import { parseString } from 'xml2js'
 
+// Lazy import doc-extract (only when needed for .doc/.ppt files)
+let docExtractModule: any = null
+
+async function getDocExtract() {
+  if (!docExtractModule) {
+    docExtractModule = await import('doc-extract')
+  }
+  return docExtractModule
+}
+
 /**
- * Extract text from Word document (.docx)
+ * Extract text from Word document (.docx) - modern format
  */
 export async function extractTextFromWord(buffer: Buffer): Promise<string> {
   try {
@@ -21,7 +32,28 @@ export async function extractTextFromWord(buffer: Buffer): Promise<string> {
 }
 
 /**
- * Extract text from PowerPoint presentation (.pptx)
+ * Extract text from old Word document (.doc) - legacy format
+ */
+export async function extractTextFromOldWord(buffer: Buffer): Promise<string> {
+  try {
+    const docExtract = await getDocExtract()
+    const { DocumentReader } = docExtract
+    
+    const reader = new DocumentReader()
+    const result = await reader.readDocumentFromBuffer(buffer, 'document.doc', 'application/msword')
+    
+    if (!result || !result.text || result.text.trim().length < 10) {
+      throw new Error('Document appears to be empty or contains no extractable text')
+    }
+    
+    return result.text
+  } catch (error) {
+    throw new Error(`Failed to extract text from old Word document (.doc): ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
+/**
+ * Extract text from PowerPoint presentation (.pptx) - modern format
  */
 export async function extractTextFromPowerPoint(buffer: Buffer): Promise<string> {
   try {
@@ -155,6 +187,27 @@ export async function extractTextFromPowerPoint(buffer: Buffer): Promise<string>
 }
 
 /**
+ * Extract text from old PowerPoint presentation (.ppt) - legacy format
+ */
+export async function extractTextFromOldPowerPoint(buffer: Buffer): Promise<string> {
+  try {
+    const docExtract = await getDocExtract()
+    const { DocumentReader } = docExtract
+    
+    const reader = new DocumentReader()
+    const result = await reader.readDocumentFromBuffer(buffer, 'presentation.ppt', 'application/vnd.ms-powerpoint')
+    
+    if (!result || !result.text || result.text.trim().length < 10) {
+      throw new Error('Presentation appears to be empty or contains no extractable text')
+    }
+    
+    return result.text
+  } catch (error) {
+    throw new Error(`Failed to extract text from old PowerPoint (.ppt): ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
+/**
  * Extract text from any supported document format
  */
 export async function extractTextFromDocument(
@@ -162,18 +215,29 @@ export async function extractTextFromDocument(
   buffer: Buffer
 ): Promise<string> {
   const mimeType = file.type
+  const fileName = file.name.toLowerCase()
   
-  if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-    // Word document (.docx)
+  // Modern Word format (.docx)
+  if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || 
+      fileName.endsWith('.docx')) {
     return await extractTextFromWord(buffer)
-  } else if (
-    mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
-    mimeType === 'application/vnd.ms-powerpoint'
-  ) {
-    // PowerPoint presentation (.pptx or .ppt)
-    return await extractTextFromPowerPoint(buffer)
-  } else {
-    throw new Error(`Unsupported document type: ${mimeType}`)
   }
+  
+  // Old Word format (.doc)
+  if (mimeType === 'application/msword' || fileName.endsWith('.doc')) {
+    return await extractTextFromOldWord(buffer)
+  }
+  
+  // Modern PowerPoint format (.pptx)
+  if (mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+      fileName.endsWith('.pptx')) {
+    return await extractTextFromPowerPoint(buffer)
+  }
+  
+  // Old PowerPoint format (.ppt)
+  if (mimeType === 'application/vnd.ms-powerpoint' || fileName.endsWith('.ppt')) {
+    return await extractTextFromOldPowerPoint(buffer)
+  }
+  
+  throw new Error(`Unsupported document type: ${mimeType}. Supported types: .doc, .docx, .ppt, .pptx`)
 }
-

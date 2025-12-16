@@ -24,7 +24,6 @@ const Leaderboard = memo(function Leaderboard() {
   const [topPlayers, setTopPlayers] = useState<LeaderboardPlayer[]>([])
   const [allPlayers, setAllPlayers] = useState<LeaderboardPlayer[]>([]) // Store all players for search
   const [currentUserRank, setCurrentUserRank] = useState<LeaderboardPlayer | null>(null)
-  const [totalPlayers, setTotalPlayers] = useState(0)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -139,15 +138,6 @@ const Leaderboard = memo(function Leaderboard() {
         }
       }
 
-      // Get total count of all players with stats
-      const { count: totalCount, error: countError } = await supabase
-        .from('player_stats')
-        .select('*', { count: 'exact', head: true })
-
-      if (countError) {
-        console.error('Error fetching total count:', countError)
-      }
-
       // Transform data and add rank numbers
       // Join with profiles data we fetched separately
       const playersWithRank = playersData?.map((player, index) => {
@@ -206,7 +196,6 @@ const Leaderboard = memo(function Leaderboard() {
       } else {
         setCurrentUserRank(null)
       }
-      setTotalPlayers(totalCount || 0)
 
     } catch (err) {
       console.error('Error in fetchLeaderboard:', err)
@@ -465,17 +454,6 @@ const Leaderboard = memo(function Leaderboard() {
       </div>
 
 
-      <div className="mt-6 p-6 rounded-xl bg-gradient-to-br from-slate-700/50 to-slate-800/50 border-4 border-slate-600/50 shadow-lg">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-orange-400" strokeWidth={3} />
-            <span className="text-sm text-blue-100/70 font-bold">Total Players</span>
-          </div>
-          <Badge className="bg-orange-500/20 text-orange-300 border-2 border-orange-400/50 font-black">
-            {totalPlayers.toLocaleString()}
-          </Badge>
-        </div>
-      </div>
     </Card>
   )
 })

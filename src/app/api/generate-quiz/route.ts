@@ -339,9 +339,11 @@ export async function POST(request: NextRequest) {
         const fileTexts = await Promise.all(
           (files as File[]).map(async (file: File) => {
             const buffer = Buffer.from(await file.arrayBuffer())
-            if (file.type === "text/plain") {
+            const fileName = file.name.toLowerCase()
+            
+            if (file.type === "text/plain" || fileName.endsWith('.txt') || fileName.endsWith('.md')) {
               return `=== ${file.name} ===\n${buffer.toString('utf-8')}\n`
-            } else if (file.type === "application/pdf") {
+            } else if (file.type === "application/pdf" || fileName.endsWith('.pdf')) {
               try {
                 // Use pdf-parse - simple API, works on Vercel without any worker configuration
                 const { extractPDFText } = await import('@/lib/pdf-parser')
@@ -357,7 +359,11 @@ export async function POST(request: NextRequest) {
               file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
               file.type === 'application/msword' ||
               file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
-              file.type === 'application/vnd.ms-powerpoint'
+              file.type === 'application/vnd.ms-powerpoint' ||
+              fileName.endsWith('.doc') ||
+              fileName.endsWith('.docx') ||
+              fileName.endsWith('.ppt') ||
+              fileName.endsWith('.pptx')
             ) {
               // Word or PowerPoint document
               try {

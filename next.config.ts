@@ -65,9 +65,10 @@ const nextConfig: NextConfig = {
     
     
     // Keep webpack cache enabled for stability (removed cache = false)
-    // Only configure watch options for development
-    // Fix for Windows -4058 errors: Use aggregateTimeout and better file watching
-    if (dev) {
+    // Fix for Windows -4058 errors: Enhanced file system handling
+    // Apply watch options for both dev and build to prevent -4058 errors during builds
+    if (process.platform === 'win32') {
+      // Windows-specific configuration to prevent -4058 ENOENT errors
       config.watchOptions = {
         ignored: [
           '**/node_modules/**',
@@ -77,21 +78,44 @@ const nextConfig: NextConfig = {
           '**/build/**',
           '**/*.log',
           '**/.cache/**',
-          '**/prerender-manifest.json', // Ignore prerender manifest to prevent -4058 errors
+          '**/prerender-manifest.json',
+          '**/routes-manifest.json',
+          '**/.pnpm-store/**',
+          '**/pnpm-lock.yaml',
         ],
         // Use polling on Windows to prevent -4058 ENOENT errors
-        // Polling is more reliable on Windows file systems
-        poll: process.platform === 'win32' ? 1000 : false, // 1 second polling on Windows
-        aggregateTimeout: 300, // Wait 300ms before rebuilding after first change
-        followSymlinks: false, // Don't follow symlinks (can cause issues on Windows)
+        // Polling is more reliable on Windows file systems, especially with pnpm
+        poll: 1000, // 1 second polling on Windows
+        aggregateTimeout: 500, // Wait 500ms before rebuilding after first change (increased for stability)
+        followSymlinks: false, // Don't follow symlinks (pnpm uses symlinks which can cause issues)
       };
       
-      // Add stability options for Windows file system
-      if (process.platform === 'win32') {
-        config.infrastructureLogging = {
-          level: 'error', // Reduce logging noise
-        };
-      }
+      // Reduce infrastructure logging noise on Windows
+      config.infrastructureLogging = {
+        level: 'error',
+      };
+      
+      // Add better error handling for Windows file system operations
+      config.stats = {
+        ...config.stats,
+        errorDetails: false, // Reduce verbose error output
+        warnings: false, // Suppress warnings that can cause file system overhead
+      };
+    } else if (dev) {
+      // Non-Windows dev mode configuration
+      config.watchOptions = {
+        ignored: [
+          '**/node_modules/**',
+          '**/.next/**',
+          '**/.git/**',
+          '**/dist/**',
+          '**/build/**',
+          '**/*.log',
+          '**/.cache/**',
+        ],
+        aggregateTimeout: 300,
+        followSymlinks: false,
+      };
     }
     
     return config;

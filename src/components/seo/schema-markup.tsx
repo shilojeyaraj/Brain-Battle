@@ -51,6 +51,7 @@ export function HomePageSchema({ siteUrl = 'https://brainbattle.com' }: HomePage
     <script
       type="application/ld+json"
       dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+      suppressHydrationWarning
     />
   )
 }
@@ -84,6 +85,7 @@ export function FAQSchema({ faqs }: FAQSchemaProps) {
     <script
       type="application/ld+json"
       dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+      suppressHydrationWarning
     />
   )
 }
@@ -122,6 +124,7 @@ export function HowToSchema({ name, description, steps, siteUrl = 'https://brain
     <script
       type="application/ld+json"
       dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+      suppressHydrationWarning
     />
   )
 }
@@ -175,6 +178,7 @@ export function ArticleSchema({
     <script
       type="application/ld+json"
       dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+      suppressHydrationWarning
     />
   )
 }
@@ -211,6 +215,7 @@ export function OrganizationSchema({ siteUrl = 'https://brainbattle.com' }: Orga
     <script
       type="application/ld+json"
       dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
+      suppressHydrationWarning
     />
   )
 }

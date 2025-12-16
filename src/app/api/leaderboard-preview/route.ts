@@ -9,13 +9,13 @@ export async function GET(request: NextRequest) {
   try {
     const adminClient = createAdminClient()
     
-    // Fetch top 3 players by XP, including previous_rank for trend calculation
+    // 🚀 OPTIMIZATION: Fetch top players first, then fetch profiles in parallel
     const { data: playersData, error: playersError } = await adminClient
       .from('player_stats')
-      .select('user_id, level, xp, total_wins, total_games, previous_rank')
+      .select('user_id, level, xp, total_wins, total_games, previous_rank, daily_streak, longest_streak')
       .order('xp', { ascending: false })
       .order('total_games', { ascending: false }) // Secondary sort
-      .limit(3)
+      .limit(5)
 
     if (playersError) {
       console.error('❌ [LEADERBOARD PREVIEW] Error fetching players:', playersError)
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Fetch profiles for these users
+    // 🚀 OPTIMIZATION: Fetch profiles for these specific users in parallel
     const userIds = playersData.map(p => p.user_id)
     const { data: profilesData, error: profilesError } = await adminClient
       .from('profiles')
@@ -60,7 +60,9 @@ export async function GET(request: NextRequest) {
         xp: player.xp,
         level: player.level,
         wins: player.total_wins || 0,
-        avatar_url: profile?.avatar_url
+        avatar_url: profile?.avatar_url,
+        streak: player.daily_streak || 0,
+        longestStreak: player.longest_streak || 0
       }
     })
 
@@ -91,9 +93,14 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // 🚀 OPTIMIZATION: Add caching headers for better performance
     return NextResponse.json({
       success: true,
       players: playersWithTrends
+    }, {
+      headers: {
+        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300'
+      }
     })
 
   } catch (error) {
