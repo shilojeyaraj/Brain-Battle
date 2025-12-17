@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo, memo, useRef } from "react"
-import { useParams, useSearchParams } from "next/navigation"
+import { useParams, useSearchParams, useRouter } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -20,6 +20,7 @@ import { BrainBattleLoading } from "@/components/ui/brain-battle-loading"
 import { AchievementNotification } from "@/components/achievements/achievement-notification"
 import { useAchievements } from "@/hooks/use-achievements"
 import { Lightbulb, BookOpen, ExternalLink } from "lucide-react"
+import { normalizeExpectedAnswers } from "@/lib/utils/normalize-expected-answers"
 
 // Default empty questions - will be loaded from sessionStorage
 const defaultQuestions: any[] = []
@@ -27,6 +28,7 @@ const defaultQuestions: any[] = []
 export default function BattlePage() {
   const params = useParams()
   const searchParams = useSearchParams()
+  const router = useRouter()
   const sessionId = params?.sessionId as string
   const isAdminMode = searchParams?.get('admin') === 'true'
   
@@ -86,6 +88,53 @@ export default function BattlePage() {
 
   const { playCorrect, playWrong, playClick, burstConfetti, playSelect, playTimeUp, playPurchaseConfirm } = useFeedback()
 
+  // Helper to shuffle an array (Fisher-Yates algorithm)
+  const shuffleArray = <T,>(array: T[]): T[] => {
+    const shuffled = [...array]
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+    }
+    return shuffled
+  }
+
+  // Helper to normalize a question object to ensure expected_answers is always an array
+  // Also randomizes multiple choice options and updates the correct index
+  const normalizeQuestion = (q: any): any => {
+    if (!q) return q
+    
+    const normalized: any = {
+      ...q,
+      expected_answers: normalizeExpectedAnswers(q.expected_answers),
+      // Also normalize other fields that might be inconsistent
+      type: q.type || 'multiple_choice',
+      options: Array.isArray(q.options) ? q.options : [],
+      correct: typeof q.correct === 'number' ? q.correct : (q.correct_answer !== undefined ? q.correct_answer : q.correct)
+    }
+    
+    // Randomize multiple choice options and update correct index
+    if (normalized.type === 'multiple_choice' || normalized.type === 'mcq') {
+      if (normalized.options && normalized.options.length > 0 && typeof normalized.correct === 'number') {
+        const originalCorrect = normalized.correct
+        const originalOptions = [...normalized.options]
+        
+        // Shuffle the options
+        const shuffledOptions = shuffleArray(originalOptions)
+        
+        // Find the new index of the correct answer
+        const correctAnswerText = originalOptions[originalCorrect]
+        const newCorrectIndex = shuffledOptions.findIndex(opt => opt === correctAnswerText)
+        
+        // Update the question with shuffled options and new correct index
+        normalized.options = shuffledOptions
+        normalized.correct = newCorrectIndex >= 0 ? newCorrectIndex : 0
+        normalized._originalCorrect = originalCorrect // Store original for reference if needed
+      }
+    }
+    
+    return normalized
+  }
+
   // Load questions from sessionStorage on component mount
   useEffect(() => {
     // Check if we're on the client side
@@ -108,7 +157,7 @@ export default function BattlePage() {
           id: "test-2",
           question: "What is the capital of France?",
           type: "open_ended",
-          correct_answer: "Paris",
+          expected_answers: ["Paris"], // Ensure it's an array
           explanation: "Paris is the capital and largest city of France."
         },
         {
@@ -141,8 +190,10 @@ export default function BattlePage() {
         }
       ]
       
-      setQuestions(testQuestions)
-      setTimeLeft(testQuestions[0]?.type === "open_ended" ? 60 : 30)
+      // Normalize test questions
+      const normalizedTestQuestions = testQuestions.map(normalizeQuestion)
+      setQuestions(normalizedTestQuestions)
+      setTimeLeft(normalizedTestQuestions[0]?.type === "open_ended" ? 60 : 30)
       setTopic("Admin Test Quiz")
       setDifficulty("medium")
       setIsLoading(false)
@@ -165,9 +216,11 @@ export default function BattlePage() {
       try {
         const parsedQuestions = JSON.parse(storedQuestions)
         if (parsedQuestions && parsedQuestions.length > 0) {
-          setQuestions(parsedQuestions)
+          // Normalize all questions to ensure expected_answers is always an array
+          const normalizedQuestions = parsedQuestions.map(normalizeQuestion)
+          setQuestions(normalizedQuestions)
           // Set initial timer based on first question type
-          setTimeLeft(parsedQuestions[0]?.type === "open_ended" ? 60 : 30)
+          setTimeLeft(normalizedQuestions[0]?.type === "open_ended" ? 60 : 30)
           setIsLoading(false)
         } else {
           setHasError(true)
@@ -299,8 +352,9 @@ export default function BattlePage() {
       })
 
       // Submit results to API with sessionId (user is taken from secure session cookie on the server)
-      // Get documentId from sessionStorage if available
+      // Get documentId and notesId from sessionStorage if available
       const documentId = typeof window !== 'undefined' ? sessionStorage.getItem('documentId') : null
+      const notesId = typeof window !== 'undefined' ? sessionStorage.getItem('notesId') : null
       
       const response = await fetch('/api/quiz-results', {
         method: 'POST',
@@ -316,7 +370,8 @@ export default function BattlePage() {
           correctAnswers: correctAnswers,
           duration: totalTime,
           topic: topic,
-          documentId: documentId // Pass documentId for answer history tracking
+          documentId: documentId, // Pass documentId for answer history tracking
+          notesId: notesId // Pass notesId to link quiz to study notes
         })
       })
 
@@ -367,7 +422,28 @@ export default function BattlePage() {
           addAchievements(result.unlockedAchievements)
         }
       } else {
-        console.error('❌ Failed to submit battle results')
+        // Get error details from response
+        let errorMessage = 'Failed to submit battle results'
+        try {
+          const errorData = await response.json()
+          errorMessage = errorData.error || errorMessage
+          console.error('❌ API Error:', errorData)
+        } catch (e) {
+          console.error('❌ Failed to parse error response:', e)
+        }
+        const requestDetails = {
+          sessionId: sessionId || 'missing',
+          questionsCount: questions?.length || 0,
+          answersCount: userAnswers?.length || 0,
+          score: score || 0,
+          totalQuestions: totalQuestions || 0,
+          topic: topic || 'unknown',
+          correctAnswers: correctAnswers || 0,
+          duration: totalTime || 0
+        }
+        console.error(`❌ Failed to submit battle results: ${response.status} ${response.statusText}`)
+        console.error('   Error message:', errorMessage)
+        console.error('   Request details:', requestDetails)
       }
     } catch (error) {
       console.error('❌ Error submitting battle results:', error)
@@ -441,6 +517,30 @@ export default function BattlePage() {
     )
   }
 
+  // Show loading state while submitting results
+  if (isSubmittingResults) {
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900 p-6">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
+        </div>
+        <div className="relative z-10 max-w-2xl mx-auto">
+          <Card className="p-8 bg-gradient-to-br from-slate-800 to-slate-900 border-4 border-slate-600/50 shadow-lg text-center">
+            <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center mx-auto mb-6 border-2 border-blue-400">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-white"></div>
+            </div>
+            <h1 className="text-2xl font-black text-white mb-4">
+              Getting Quiz Results
+            </h1>
+            <p className="text-blue-100/70 font-bold">
+              Calculating your score and XP...
+            </p>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
   if (battleComplete) {
     return (
       <BattleResultsScreen 
@@ -450,8 +550,18 @@ export default function BattlePage() {
         userAnswers={userAnswers}
         questions={questions}
         sessionId={sessionId}
-        onRetakeBattle={() => window.location.href = '/singleplayer'}
-        onBackToDashboard={() => window.location.href = '/dashboard'}
+        onRetakeBattle={() => {
+          // Clear sessionStorage to start fresh
+          if (typeof window !== 'undefined') {
+            sessionStorage.removeItem('quizQuestions')
+            sessionStorage.removeItem('quizTopic')
+            sessionStorage.removeItem('quizDifficulty')
+            sessionStorage.removeItem('quizSessionId')
+            sessionStorage.removeItem('quizReady')
+          }
+          router.push('/singleplayer')
+        }}
+        onBackToDashboard={() => router.push('/dashboard')}
         documentId={typeof window !== 'undefined' ? sessionStorage.getItem('documentId') : null}
         difficulty={difficulty}
         educationLevel={typeof window !== 'undefined' ? sessionStorage.getItem('educationLevel') || 'university' : 'university'}
@@ -783,9 +893,12 @@ export default function BattlePage() {
                     <CheckCircle className="h-5 w-5 text-chart-3" strokeWidth={3} />
                     Correct Answer(s):
                   </h4>
-                  {question.expected_answers && question.expected_answers.length > 0 ? (
+                  {(() => {
+                    // Safely get expected_answers as array
+                    const expectedAnswers = normalizeExpectedAnswers(question.expected_answers)
+                    return expectedAnswers.length > 0 ? (
                     <div className="space-y-3">
-                      {question.expected_answers.map((answer: string, index: number) => {
+                        {expectedAnswers.map((answer: string, index: number) => {
                         // Check if answer contains multi-part indicators (a), (b), (c) or a), b), c)
                         const parts = answer.split(/(?=\([a-z]\)|^[a-z]\))/i).filter(p => p.trim())
                         
@@ -847,7 +960,8 @@ export default function BattlePage() {
                         }
                       })()}
                     </div>
-                  )}
+                    )
+                  })()}
                 </div>
               )}
             </div>
@@ -1178,8 +1292,9 @@ function BattleResultsScreen({
                   correctAnswerText = question.a || `Option ${String.fromCharCode(65 + correctIndex)}`
                 }
               } else {
-                if (question.expected_answers && question.expected_answers.length > 0) {
-                  correctAnswerText = question.expected_answers.join(", ")
+                const expectedAnswers = normalizeExpectedAnswers(question.expected_answers)
+                if (expectedAnswers.length > 0) {
+                  correctAnswerText = expectedAnswers.join(", ")
                 } else {
                   correctAnswerText = question.answer || question.a || "See explanation"
                 }

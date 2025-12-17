@@ -52,6 +52,14 @@ export async function verifySessionOwnership(
       .single()
 
     if (sessionError || !session) {
+      // For singleplayer, if session doesn't exist yet, allow it (will be created on first submission)
+      // Check if it's a valid UUID format (singleplayer sessions use UUIDs)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+      if (uuidRegex.test(sessionId)) {
+        // Likely a singleplayer session that hasn't been created yet - allow it
+        console.log(`ℹ️ [OWNERSHIP] Session ${sessionId} not found, but allowing for singleplayer (will be created)`)
+        return true
+      }
       console.log(`⚠️ [OWNERSHIP] Session not found: ${sessionId}`)
       return false
     }

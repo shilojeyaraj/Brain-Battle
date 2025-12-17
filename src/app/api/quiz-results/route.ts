@@ -29,7 +29,8 @@ export async function POST(request: NextRequest) {
       correctAnswers, 
       duration, 
       questions, 
-      answers 
+      answers,
+      notesId // ID of study notes used to generate this quiz
     } = body
     // userId is now from session, not body
 
@@ -101,68 +102,144 @@ export async function POST(request: NextRequest) {
           // Don't fail - continue with existing session data
           sessionData = existingSession
         } else {
-          sessionData = updatedSession
+        sessionData = updatedSession
         }
       } else {
         // Create new session with provided ID (if valid UUID)
+        // Use schema.sql columns only (no session_name, time_limit, is_active)
+        // Try with notes_id first, fallback without it if schema cache is stale
+        let createPayload: any = {
+            id: sessionId,
+          room_id: null, // Singleplayer
+            total_questions: totalQuestions,
+          status: 'complete',
+            started_at: new Date(Date.now() - duration * 1000).toISOString(),
+          ended_at: new Date().toISOString()
+        }
+        
+        // Only include notes_id if it's provided (and schema supports it)
+        if (notesId) {
+          createPayload.notes_id = notesId
+        }
+        
         const { data: newSession, error: createError } = await adminClient
           .from('quiz_sessions')
-          .insert({
-            id: sessionId,
-            session_name: `Singleplayer: ${topic}`,
-            total_questions: totalQuestions,
-            time_limit: 30,
-            started_at: new Date(Date.now() - duration * 1000).toISOString(),
-            ended_at: new Date().toISOString(),
-            is_active: false,
-            room_id: null
-          })
-          .select('id, room_id, session_name, total_questions, started_at, ended_at, is_active')
+          .insert(createPayload)
+          .select('id, room_id, status, total_questions, started_at, ended_at')
           .single()
         
         if (createError) {
           console.error("❌ [QUIZ RESULTS] Error creating quiz session with provided ID:", createError)
-          // Fall through to create new session without ID
+          
+          // If it's a schema cache issue with notes_id, retry without it
+          if (createError.code === 'PGRST204' && createError.message?.includes('notes_id')) {
+            console.log("🔄 [QUIZ RESULTS] Schema cache doesn't recognize notes_id, retrying without it...")
           const { data: fallbackSession, error: fallbackError } = await adminClient
             .from('quiz_sessions')
             .insert({
-              room_id: null, // Singleplayer
+                id: sessionId,
+                room_id: null,
               total_questions: totalQuestions,
-              status: 'complete',
+                status: 'complete',
               started_at: new Date(Date.now() - duration * 1000).toISOString(),
-              ended_at: new Date().toISOString()
+                ended_at: new Date().toISOString()
+                // Omit notes_id - will be added later via migration
             })
-            .select('id, room_id, status, total_questions, started_at, ended_at')
+              .select('id, room_id, status, total_questions, started_at, ended_at')
             .single()
           
           if (fallbackError) {
-            console.error("❌ [QUIZ RESULTS] Error creating fallback quiz session:", fallbackError)
+              console.error("❌ [QUIZ RESULTS] Fallback session creation also failed:", fallbackError)
+              // If session already exists (race condition), try to fetch it
+              if (fallbackError.code === '23505') {
+                console.log("ℹ️ [QUIZ RESULTS] Session already exists, fetching it...")
+                const { data: existingSession } = await adminClient
+                  .from('quiz_sessions')
+                  .select('id, room_id, status, total_questions, started_at, ended_at')
+                  .eq('id', sessionId)
+                  .single()
+                if (existingSession) {
+                  sessionData = existingSession
+                } else {
+                  return NextResponse.json({ error: "Failed to create or retrieve quiz session" }, { status: 500 })
+                }
+              } else {
             return NextResponse.json({ error: "Failed to create quiz session" }, { status: 500 })
           }
+            } else {
           sessionData = fallbackSession
+            }
+          } else if (createError.code === '23505') { // Unique violation
+            console.log("ℹ️ [QUIZ RESULTS] Session already exists, fetching it...")
+            const { data: existingSession } = await adminClient
+              .from('quiz_sessions')
+              .select('id, room_id, status, total_questions, started_at, ended_at')
+              .eq('id', sessionId)
+              .single()
+            if (existingSession) {
+              sessionData = existingSession
+            } else {
+              return NextResponse.json({ error: "Failed to create or retrieve quiz session" }, { status: 500 })
+            }
+          } else {
+            return NextResponse.json({ error: "Failed to create quiz session" }, { status: 500 })
+          }
         } else {
           sessionData = newSession
         }
       }
     } else {
       // Create new session without provided ID
+      // Try with notes_id first, fallback without it if schema cache is stale
+      let createPayload: any = {
+        room_id: null, // Singleplayer
+        total_questions: totalQuestions,
+        status: 'complete',
+        started_at: new Date(Date.now() - duration * 1000).toISOString(),
+        ended_at: new Date().toISOString()
+      }
+      
+      // Only include notes_id if it's provided (and schema supports it)
+      if (notesId) {
+        createPayload.notes_id = notesId
+      }
+      
       const { data: newSession, error: sessionError } = await adminClient
         .from('quiz_sessions')
-        .insert({
-          room_id: null, // Singleplayer
-          total_questions: totalQuestions,
-          status: 'complete',
-          started_at: new Date(Date.now() - duration * 1000).toISOString(),
-          ended_at: new Date().toISOString()
-        })
+        .insert(createPayload)
         .select('id, room_id, status, total_questions, started_at, ended_at')
         .single()
       
       if (sessionError) {
         console.error("❌ [QUIZ RESULTS] Error creating quiz session:", sessionError)
+        
+        // If it's a schema cache issue with notes_id, retry without it
+        if (sessionError.code === 'PGRST204' && sessionError.message?.includes('notes_id')) {
+          console.log("🔄 [QUIZ RESULTS] Schema cache doesn't recognize notes_id, retrying without it...")
+          const { data: fallbackSession, error: fallbackError } = await adminClient
+        .from('quiz_sessions')
+        .insert({
+              room_id: null,
+          total_questions: totalQuestions,
+              status: 'complete',
+          started_at: new Date(Date.now() - duration * 1000).toISOString(),
+              ended_at: new Date().toISOString()
+              // Omit notes_id - will be added later via migration
+        })
+            .select('id, room_id, status, total_questions, started_at, ended_at')
+        .single()
+      
+          if (fallbackError) {
+            console.error("❌ [QUIZ RESULTS] Fallback session creation also failed:", fallbackError)
         return NextResponse.json({ error: "Failed to create quiz session" }, { status: 500 })
       }
+          sessionData = fallbackSession
+        } else {
+          return NextResponse.json({ error: "Failed to create quiz session" }, { status: 500 })
+        }
+      } else {
       sessionData = newSession
+      }
     }
 
     if (!sessionData) {
@@ -315,13 +392,40 @@ export async function POST(request: NextRequest) {
       const question = insertedQuestions.find(q => q.order_index === index)
       const dbQuestion = dbQuestions.find(q => q.order_index === index)
       
+      // Parse options array from database
+      const dbOptions = dbQuestion?.options 
+        ? (Array.isArray(dbQuestion.options) ? dbQuestion.options : [dbQuestion.options])
+        : []
+      
+      // 🔧 FIX: Find the correct answer INDEX by matching correct_answer text against options
+      // dbQuestion.correct_answer is TEXT (e.g., "% Elongation = 25 %..."), not an index
+      let correctIndex = -1
+      if (dbQuestion?.correct_answer && dbOptions.length > 0) {
+        const normalizedCorrect = String(dbQuestion.correct_answer).toLowerCase().trim()
+        correctIndex = dbOptions.findIndex((opt: string) => 
+          String(opt).toLowerCase().trim() === normalizedCorrect
+        )
+        if (correctIndex === -1) {
+          // Fallback: fuzzy match if exact match fails
+          correctIndex = dbOptions.findIndex((opt: string) => 
+            String(opt).toLowerCase().includes(normalizedCorrect.substring(0, 20)) ||
+            normalizedCorrect.includes(String(opt).toLowerCase().substring(0, 20))
+          )
+        }
+        console.log(`🔍 [QUIZ RESULTS] Q${index + 1} correct answer lookup:`, {
+          correct_answer_text: dbQuestion.correct_answer.substring(0, 50) + '...',
+          options_count: dbOptions.length,
+          found_index: correctIndex
+        })
+      }
+      
       // Use database question for validation, fallback to client question only for answer extraction
       const questionData = dbQuestion ? {
         id: dbQuestion.id,
         question: dbQuestion.question_text,
         type: dbQuestion.question_type === 'fill_blank' ? 'open_ended' : dbQuestion.question_type,
-        correct: dbQuestion.correct_answer,
-        options: Array.isArray(dbQuestion.options) ? dbQuestion.options : (dbQuestion.options ? [dbQuestion.options] : []),
+        correct: correctIndex >= 0 ? correctIndex : 0, // Use found INDEX, not text!
+        options: dbOptions,
         expected_answers: [dbQuestion.correct_answer]
       } : questions[index] // Fallback if somehow missing
       
@@ -331,11 +435,33 @@ export async function POST(request: NextRequest) {
       
       if (questionData.type === "multiple_choice" || questionData.type === "mcq") {
         // Multiple choice: use selectedIndex
+        // 🔧 FIX: Handle undefined/null selectedIndex properly - don't default to 0
         const selectedIndex = answer.selectedIndex !== undefined ? answer.selectedIndex : answer.selected
-        userAnswer = typeof selectedIndex === 'number' ? selectedIndex : parseInt(String(selectedIndex)) || 0
-        answerText = questionData.options && questionData.options[userAnswer] 
-          ? questionData.options[userAnswer] 
-          : `Option ${String.fromCharCode(65 + (userAnswer || 0))}`
+        if (selectedIndex === undefined || selectedIndex === null) {
+          console.warn(`⚠️ [QUIZ RESULTS] Q${index + 1}: No selectedIndex provided, marking as incorrect`)
+          userAnswer = -1 // Invalid answer - will be marked incorrect
+          answerText = "No answer selected"
+        } else {
+          userAnswer = typeof selectedIndex === 'number' ? selectedIndex : parseInt(String(selectedIndex))
+          if (isNaN(userAnswer as number)) {
+            console.warn(`⚠️ [QUIZ RESULTS] Q${index + 1}: Invalid selectedIndex "${selectedIndex}", marking as incorrect`)
+            userAnswer = -1
+            answerText = "Invalid answer"
+          } else {
+            answerText = questionData.options && questionData.options[userAnswer as number] 
+              ? questionData.options[userAnswer as number] 
+              : `Option ${String.fromCharCode(65 + (userAnswer as number || 0))}`
+          }
+        }
+        
+        // Log the comparison for debugging
+        console.log(`📋 [QUIZ RESULTS] Q${index + 1} MC evaluation:`, {
+          userSelectedIndex: userAnswer,
+          correctIndex: questionData.correct,
+          userAnswerText: answerText.substring(0, 40) + '...',
+          correctAnswerText: questionData.options?.[questionData.correct as number]?.substring(0, 40) + '...',
+          isMatch: userAnswer === questionData.correct
+        })
       } else {
         // Open-ended: use selectedAnswer text
         userAnswer = answer.selectedAnswer || answer.textAnswer || answer.answer || ""
@@ -586,9 +712,10 @@ export async function POST(request: NextRequest) {
     // Calculate XP: base XP per question (20) + bonus for accuracy
     // Base: 20 XP per correct answer (increased from 10 for better retention)
     // Bonus: up to 100 XP for perfect score (increased from 50)
+    // IMPORTANT: If no correct answers, XP should be 0 (no participation bonus)
     const baseXP = verifiedCorrectAnswers * 20
     const accuracyBonus = verifiedCorrectAnswers === verifiedTotalQuestions ? 100 : Math.round((verifiedCorrectAnswers / verifiedTotalQuestions) * 60)
-    const xpEarned = baseXP + accuracyBonus
+    const xpEarned = verifiedCorrectAnswers > 0 ? (baseXP + accuracyBonus) : 0 // No XP for 0 correct answers
     
     console.log("💰 [QUIZ RESULTS] XP Calculation (using verified values):", {
       correctAnswers: verifiedCorrectAnswers,
@@ -596,8 +723,33 @@ export async function POST(request: NextRequest) {
       baseXP,
       accuracyBonus,
       xpEarned,
-      isPerfectScore: verifiedCorrectAnswers === verifiedTotalQuestions
+      isPerfectScore: verifiedCorrectAnswers === verifiedTotalQuestions,
+      score: verifiedScore,
+      // Debug: Log individual answer correctness to help diagnose XP issues
+      answerBreakdown: storedAnswers.map((a, i) => ({
+        questionIndex: i,
+        is_correct: a.is_correct,
+        question_id: a.question_id
+      }))
     })
+    
+    // Safety check: If verifiedCorrectAnswers is 0, xpEarned must be 0
+    let finalXPEarned = xpEarned
+    if (verifiedCorrectAnswers === 0 && xpEarned !== 0) {
+      console.error("❌ [QUIZ RESULTS] XP CALCULATION BUG: 0 correct answers but xpEarned is not 0!", {
+        verifiedCorrectAnswers,
+        xpEarned,
+        baseXP,
+        accuracyBonus
+      })
+      // Force to 0 to prevent incorrect XP
+      finalXPEarned = 0
+      console.log("🔧 [QUIZ RESULTS] Correcting XP from", xpEarned, "to", finalXPEarned)
+    }
+    
+    // Use finalXPEarned (safeguarded value) for all subsequent operations
+    const xpEarnedFinal = finalXPEarned
+    
     // 🛡️ SECURITY: Use verified values from database
     // 5. Create game result record - THIS IS CRITICAL FOR BATTLE HISTORY
     // Store topic in a way that can be retrieved for battle history display
@@ -607,16 +759,17 @@ export async function POST(request: NextRequest) {
       : null
     
     const gameResultData = {
-      room_id: null, // Singleplayer
-      user_id: userId,
-      session_id: sessionData.id,
-      final_score: verifiedScore,
-      questions_answered: verifiedTotalQuestions,
-      correct_answers: verifiedCorrectAnswers,
-      total_time: verifiedDuration,
-      rank: 1, // Singleplayer is always rank 1
-      xp_earned: xpEarned,
-      completed_at: new Date().toISOString()
+        room_id: null, // Singleplayer
+        user_id: userId,
+        session_id: sessionData.id,
+        final_score: Math.round(verifiedScore * 100), // Convert 0.8 → 80 (integer percentage)
+        questions_answered: verifiedTotalQuestions,
+        correct_answers: verifiedCorrectAnswers,
+        total_time: verifiedDuration,
+        rank: 1, // Singleplayer is always rank 1
+        xp_earned: xpEarnedFinal,
+      completed_at: new Date().toISOString(),
+      topic: safeTopic // Store topic for battle history display
     }
     
     // Store topic in quiz_sessions if possible (update session with topic info)
@@ -644,14 +797,39 @@ export async function POST(request: NextRequest) {
       score: verifiedScore,
       correct: verifiedCorrectAnswers,
       total: verifiedTotalQuestions,
-      xp: xpEarned
+      xp: xpEarnedFinal
     })
     
-    const { data: gameResult, error: gameResultError } = await adminClient
+    let gameResult: any = null
+    let gameResultError: any = null
+
+    // Try to insert game result with topic
+    const { data: result1, error: error1 } = await adminClient
       .from('game_results')
       .insert(gameResultData)
       .select()
       .single()
+    
+    gameResult = result1
+    gameResultError = error1
+
+    // If insert failed due to schema cache issue with topic column, retry without it
+    if (gameResultError && (
+      gameResultError.code === 'PGRST204' || 
+      gameResultError.message?.includes('topic') ||
+      gameResultError.code === '42703' // Column does not exist
+    )) {
+      console.warn("⚠️ [QUIZ RESULTS] Schema cache issue with topic column, retrying without it...")
+      const { topic: _, ...gameResultDataWithoutTopic } = gameResultData
+      const { data: result2, error: error2 } = await adminClient
+        .from('game_results')
+        .insert(gameResultDataWithoutTopic)
+        .select()
+        .single()
+      
+      gameResult = result2
+      gameResultError = error2
+    }
 
     if (gameResultError) {
       console.error("❌ [QUIZ RESULTS] CRITICAL: Failed to store battle history:", gameResultError)
@@ -661,7 +839,8 @@ export async function POST(request: NextRequest) {
         details: gameResultError.details,
         hint: gameResultError.hint,
         user_id: userId,
-        session_id: sessionData.id
+        session_id: sessionData.id,
+        gameResultData: JSON.stringify(gameResultData, null, 2)
       })
       // Don't fail the request - stats are more important, but log the error
       // The user will still get XP and stats updated, just won't see it in history
@@ -670,9 +849,9 @@ export async function POST(request: NextRequest) {
         game_result_id: gameResult.id,
         user_id: userId,
         session_id: sessionData.id,
-        topic: topic || 'Unknown',
+        topic: safeTopic || 'Unknown',
         score: `${verifiedCorrectAnswers}/${verifiedTotalQuestions}`,
-        xp_earned: xpEarned
+        xp_earned: xpEarnedFinal
       })
     }
 
@@ -703,10 +882,10 @@ export async function POST(request: NextRequest) {
       favorite_subject: topic
     })
 
-    if (!currentStats) {
+        if (!currentStats) {
       console.error("❌ [QUIZ RESULTS] Failed to ensure player stats exist")
-      return NextResponse.json({ error: "Failed to initialize stats" }, { status: 500 })
-    }
+          return NextResponse.json({ error: "Failed to initialize stats" }, { status: 500 })
+        }
 
     // 8. Update player stats manually (ensure it works even if trigger doesn't exist)
     // Determine if this is singleplayer (sessionData is already set)
@@ -733,7 +912,7 @@ export async function POST(request: NextRequest) {
     const newTotalQuestions = (currentStats.total_questions_answered || 0) + verifiedTotalQuestions
     const newCorrectAnswers = (currentStats.correct_answers || 0) + verifiedCorrectAnswers
     const newAccuracy = newTotalQuestions > 0 ? (newCorrectAnswers / newTotalQuestions) * 100 : 0
-    const newXP = (currentStats.xp || 0) + xpEarned
+    const newXP = (currentStats.xp || 0) + xpEarnedFinal
     const newLevel = Math.floor(newXP / 1000) + 1
 
     console.log("📊 [QUIZ RESULTS] Updating stats:", {
@@ -743,12 +922,12 @@ export async function POST(request: NextRequest) {
       newGames: newTotalGames,
       oldXP: currentStats.xp,
       newXP: newXP,
-      xpEarned
+      xpEarned: xpEarnedFinal
     })
 
     // Ensure XP is a valid number
     if (isNaN(newXP) || newXP < 0) {
-      console.error("❌ [QUIZ RESULTS] Invalid XP value:", { newXP, xpEarned, currentXP: currentStats.xp })
+      console.error("❌ [QUIZ RESULTS] Invalid XP value:", { newXP, xpEarned: xpEarnedFinal, currentXP: currentStats.xp })
       return NextResponse.json({ error: "Invalid XP calculation" }, { status: 500 })
     }
 
@@ -788,7 +967,7 @@ export async function POST(request: NextRequest) {
       console.log("✅ [QUIZ RESULTS] Updated player stats successfully:", {
         userId,
         oldXP: currentStats.xp,
-        xpEarned,
+        xpEarned: xpEarnedFinal,
         newXP: updatedStats?.xp,
         oldLevel: currentStats.level,
         newLevel: updatedStats?.level,
@@ -853,8 +1032,8 @@ export async function POST(request: NextRequest) {
     const responseData = {
       success: true,
       sessionId: sessionData.id,
-      gameResultId: gameResult.id,
-      xpEarned,
+      gameResultId: gameResult?.id || null, // Handle null gracefully
+      xpEarned: xpEarnedFinal,
       oldXP: currentStats.xp || 0,
       newXP: newXP,
       unlockedAchievements: undefined as any[] | undefined

@@ -620,8 +620,8 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames, hideActions 
                         </div>
                         
                         {/* Formula Display */}
-                        <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/80 p-8 rounded-xl border-4 border-blue-500/50 mb-4 min-h-[100px] flex items-center justify-center overflow-hidden shadow-lg shadow-blue-500/20">
-                          <div className="text-2xl md:text-3xl text-blue-200 text-center leading-relaxed flex items-center justify-center w-full max-w-full">
+                        <div className="bg-gradient-to-br from-slate-900/80 to-slate-800/80 p-6 rounded-xl border-4 border-blue-500/50 mb-4 min-h-[120px] flex items-center justify-center shadow-lg shadow-blue-500/20 overflow-x-auto overflow-y-visible">
+                          <div className="text-lg md:text-xl lg:text-2xl text-blue-200 text-center leading-relaxed flex items-center justify-center w-full" style={{ minWidth: 'fit-content' }}>
                             {formula.formula && formula.formula.trim() ? (
                               <FormulaRenderer 
                                 formula={formula.formula}

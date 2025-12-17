@@ -51,6 +51,16 @@ const nextConfig: NextConfig = {
       'node_modules'
     ];
     
+    // Suppress textract import trace warnings globally
+    const originalWarn = config.infrastructureLogging?.level;
+    config.ignoreWarnings = [
+      /Critical dependency/,
+      /the request of a dependency is an expression/,
+      /Import trace for requested module/,
+      /textract.*extract\.js/,
+      /node_modules\/textract/,
+    ];
+    
     // Externalize pdfjs-dist for server-side to avoid webpack bundling issues
     if (isServer) {
       const existingExternals = config.externals || [];
@@ -101,6 +111,14 @@ const nextConfig: NextConfig = {
         errorDetails: false, // Reduce verbose error output
         warnings: false, // Suppress warnings that can cause file system overhead
       };
+      
+      // Suppress textract import trace warnings
+      config.ignoreWarnings = [
+        /Critical dependency/,
+        /the request of a dependency is an expression/,
+        /Import trace for requested module/,
+        /textract.*extract\.js/,
+      ];
     } else if (dev) {
       // Non-Windows dev mode configuration
       config.watchOptions = {

@@ -53,11 +53,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Ensure user exists in users table (handles cases where session exists but user doesn't)
+    // This is CRITICAL - question history storage will fail with foreign key violation if user doesn't exist
     const userExists = await ensureUserExists(userId)
     if (!userExists) {
       console.error(`❌ [QUIZ API] Failed to ensure user exists: ${userId}`)
+      console.error(`   Quiz generation will continue, but question history storage may fail.`)
       // Continue anyway - quiz generation shouldn't fail just because user creation failed
       // The error will be caught when trying to store question history
+    } else {
+      console.log(`✅ [QUIZ API] User ${userId} exists in users table`)
     }
 
     // SECURITY: Admin mode removed - was vulnerable to header spoofing
@@ -73,7 +77,9 @@ export async function POST(request: NextRequest) {
     let includeDiagrams = true // Default to true
     let educationLevel = 'university' // Default to university
     let documentId: string | null = null // For tracking questions per document
+    let notesId: string | null = null // ID of the study notes used to generate this quiz
     let isRedo = false // Flag for redo quiz (focus on wrong answers)
+    let questionTypes: string[] | null = null // Question type filter (multiple_choice, open_ended)
 
     if (contentType?.includes('application/json')) {
       // Could be multiplayer OR singleplayer with notes
@@ -86,7 +92,31 @@ export async function POST(request: NextRequest) {
       includeDiagrams = body.includeDiagrams !== false // Default to true if not specified
       educationLevel = body.educationLevel || 'university'
       documentId = body.documentId || null
+      notesId = body.notesId || null // ID of study notes used for quiz generation
       isRedo = body.isRedo === true
+      const rawQuestionTypes = body.questionTypes || null
+      if (rawQuestionTypes) {
+        // Handle both array format and object format
+        if (Array.isArray(rawQuestionTypes)) {
+          questionTypes = rawQuestionTypes
+        } else if (typeof rawQuestionTypes === 'object' && rawQuestionTypes !== null) {
+          // Convert object format {multiple_choice: true, open_ended: false} to array ["multiple_choice"]
+          questionTypes = Object.entries(rawQuestionTypes)
+            .filter(([_, enabled]) => enabled === true)
+            .map(([type]) => type)
+        } else {
+          questionTypes = null
+        }
+        
+        if (questionTypes && questionTypes.length > 0) {
+          console.log(`📋 [QUIZ API] Question type filter applied: ${questionTypes.join(', ')}`)
+        } else {
+          console.log(`ℹ️ [QUIZ API] No question type filter - all types allowed`)
+          questionTypes = null
+        }
+      } else {
+        questionTypes = null
+      }
       // userId is now from session, not body
       notes = body.studyNotes ? JSON.stringify(body.studyNotes) : body.notes
       studyContextStr = body.studyContext ? JSON.stringify(body.studyContext) : null
@@ -111,6 +141,8 @@ export async function POST(request: NextRequest) {
       totalQuestions = totalQuestionsStr ? parseInt(totalQuestionsStr) : undefined
       const documentIdStr = form.get("documentId") as string
       documentId = documentIdStr || null
+      const notesIdStr = form.get("notesId") as string
+      notesId = notesIdStr || null // ID of study notes used for quiz generation
       const isRedoStr = form.get("isRedo") as string
       isRedo = isRedoStr === 'true'
       // userId is now from session, not form data
@@ -118,12 +150,31 @@ export async function POST(request: NextRequest) {
       notes = form.get("notes") as string
       studyContextStr = form.get("studyContext") as string
       const questionTypesStr = form.get("questionTypes") as string
-      let questionTypes = null
       if (questionTypesStr) {
         try {
-          questionTypes = JSON.parse(questionTypesStr)
+          const parsed = JSON.parse(questionTypesStr)
+          
+          // Handle both array format and object format
+          if (Array.isArray(parsed)) {
+            questionTypes = parsed
+          } else if (typeof parsed === 'object' && parsed !== null) {
+            // Convert object format {multiple_choice: true, open_ended: false} to array ["multiple_choice"]
+            questionTypes = Object.entries(parsed)
+              .filter(([_, enabled]) => enabled === true)
+              .map(([type]) => type)
+          } else {
+            questionTypes = null
+          }
+          
+          if (questionTypes && questionTypes.length > 0) {
+            console.log(`📋 [QUIZ API] Question type filter applied: ${questionTypes.join(', ')}`)
+          } else {
+            console.log(`ℹ️ [QUIZ API] No question type filter - all types allowed`)
+            questionTypes = null
+          }
         } catch (e) {
           console.log("⚠️ [QUIZ API] Failed to parse question types:", e)
+          questionTypes = null
         }
       }
       const contentFocus = form.get("contentFocus") as string || 'both'
@@ -394,6 +445,35 @@ export async function POST(request: NextRequest) {
         console.log(`✅ [QUIZ API] Extracted ${fileContent.length} characters from uploaded files`)
       } catch (error) {
         console.error(`❌ [QUIZ API] Error extracting file content:`, error)
+      }
+    }
+    
+    // If documentId is not provided but notes are, try to find it from study_notes_cache
+    if (!documentId && notes && userId) {
+      try {
+        const adminClient = createAdminClient()
+        const parsedNotes = typeof notes === 'string' ? JSON.parse(notes) : notes
+        const notesTitle = parsedNotes?.title || topic || ''
+        
+        // Try to find document_id from study_notes_cache by matching topic/title
+        if (notesTitle) {
+          const { data: cachedNotes } = await adminClient
+            .from('study_notes_cache')
+            .select('document_id')
+            .eq('user_id', userId)
+            .eq('topic', notesTitle)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          
+          if (cachedNotes?.document_id) {
+            documentId = cachedNotes.document_id
+            console.log(`✅ [QUIZ API] Found documentId from study_notes_cache: ${documentId}`)
+          }
+        }
+      } catch (error) {
+        console.warn('⚠️ [QUIZ API] Failed to extract documentId from study_notes_cache:', error)
+        // Continue without documentId - not critical
       }
     }
     
@@ -687,9 +767,16 @@ MANDATORY REQUIREMENTS:
 - Test knowledge of specific facts, figures, processes, or concepts mentioned in the documents
 - Questions should reference specific details, examples, or data from the document content
 - Create THOROUGH questions that test deep understanding, not just surface-level recall
+${questionTypes && questionTypes.length > 0 ? `
+- CRITICAL: You MUST ONLY generate questions of these types: ${questionTypes.join(', ')}
+- If "multiple_choice" is specified, generate ONLY multiple_choice questions
+- If "open_ended" is specified, generate ONLY open_ended questions
+- Do NOT generate any question types that are NOT in the specified list
+` : `
 - Mix of question types: 2-3 multiple choice, 2-3 open-ended
 - For open-ended: include calculations, word problems, or explanations based on document content
 - For multiple choice: create plausible incorrect options related to the document content
+`}
 - Include detailed explanations that reference the specific document content
 - Questions should test comprehension, application, and analysis - not just memorization
 - Use specific examples, formulas, processes, and data points from the content
@@ -891,6 +978,10 @@ CRITICAL REQUIREMENTS:
       cleanedResponse = cleanedResponse.trim()
       
       // Fix common JSON malformations BEFORE parsing
+      // Fix: "questions":":[{" -> "questions": [{ (model error where : is inside the string)
+      cleanedResponse = cleanedResponse.replace(/"questions"\s*:\s*":\s*\[\s*\{/g, '"questions": [{')
+      // Fix: Also handle "questions":":[{" without space
+      cleanedResponse = cleanedResponse.replace(/"questions"\s*":\s*":\s*\[\s*\{/g, '"questions": [{')
       cleanedResponse = cleanedResponse.replace(/"questions"\s*:\s*":\[{/g, '"questions": [{')
       cleanedResponse = cleanedResponse.replace(/"questions"\s*:\s*":\s*\[{/g, '"questions": [{')
       cleanedResponse = cleanedResponse.replace(/"questions"\s*:\s*:\[{/g, '"questions": [{')
@@ -958,15 +1049,66 @@ CRITICAL REQUIREMENTS:
         // Some providers wrap the JSON in a "content" field as a string. Unwrap if needed.
         if ((!quizDataLocal.questions || !Array.isArray(quizDataLocal.questions)) && typeof quizDataLocal.content === 'string') {
           try {
-            const inner = JSON.parse(quizDataLocal.content)
+            // First, try to repair malformed questions field in the content
+            let contentStr = quizDataLocal.content
+            // Fix "questions":":[{" pattern inside content
+            contentStr = contentStr.replace(/"questions"\s*:\s*":\s*\[\s*\{/g, '"questions": [{')
+            contentStr = contentStr.replace(/"questions"\s*":\s*":\s*\[\s*\{/g, '"questions": [{')
+            
+            const inner = JSON.parse(contentStr)
             if (inner?.questions && Array.isArray(inner.questions)) {
               quizDataLocal = inner
               if (process.env.NODE_ENV === 'development') {
                 console.log("🔄 [QUIZ API] Unwrapped questions from top-level content string")
               }
+            } else if (typeof inner?.questions === 'string' && inner.id) {
+              // Model returned flat structure where "questions" is garbage but other fields are valid
+              // Try to reconstruct as a single question
+              console.warn("⚠️ [QUIZ API] Detected malformed questions field, attempting reconstruction...")
+              const reconstructed = {
+                questions: [{
+                  id: inner.id,
+                  type: inner.type,
+                  question: inner.question,
+                  options: inner.options,
+                  correct: inner.correct,
+                  explanation: inner.explanation,
+                  source_document: inner.source_document,
+                  requires_image: inner.requires_image,
+                  image_reference: inner.image_reference
+                }]
+              }
+              if (reconstructed.questions[0].question) {
+                quizDataLocal = reconstructed
+                console.log("✅ [QUIZ API] Reconstructed single question from malformed response")
+              }
             }
           } catch (unwrapErr) {
             console.warn("⚠️ [QUIZ API] Failed to parse content wrapper as JSON:", unwrapErr instanceof Error ? unwrapErr.message : unwrapErr)
+          }
+        }
+        
+        // Also check if questions field itself is a malformed string (not in content wrapper)
+        if (quizDataLocal.questions && typeof quizDataLocal.questions === 'string' && quizDataLocal.id) {
+          // Model returned flat structure where "questions" is garbage but other fields are valid
+          // Try to reconstruct as a single question
+          console.warn("⚠️ [QUIZ API] Detected malformed questions field in main response, attempting reconstruction...")
+          const reconstructed = {
+            questions: [{
+              id: quizDataLocal.id,
+              type: quizDataLocal.type,
+              question: quizDataLocal.question,
+              options: quizDataLocal.options,
+              correct: quizDataLocal.correct,
+              explanation: quizDataLocal.explanation,
+              source_document: quizDataLocal.source_document,
+              requires_image: quizDataLocal.requires_image,
+              image_reference: quizDataLocal.image_reference
+            }]
+          }
+          if (reconstructed.questions[0].question) {
+            quizDataLocal = reconstructed
+            console.log("✅ [QUIZ API] Reconstructed single question from malformed main response")
           }
         }
       } catch (error: any) {
@@ -1208,6 +1350,20 @@ CRITICAL REQUIREMENTS:
       }
     }
 
+    // Helper to normalize expected_answers to always be an array
+    const normalizeExpectedAnswers = (expected: any): string[] => {
+      if (Array.isArray(expected)) {
+        return expected.map(e => String(e))
+      }
+      if (typeof expected === 'string') {
+        return [expected]
+      }
+      if (expected != null) {
+        return [String(expected)]
+      }
+      return []
+    }
+
     // Ensure each question has the required fields
     let validatedQuestions = quizData.questions.map((q: any, index: number) => ({
       id: index + 1,
@@ -1215,7 +1371,7 @@ CRITICAL REQUIREMENTS:
       question: q.question || q.q || "Question not available",
       options: q.type === "open_ended" ? null : (q.options || [q.a || "Option A", "Option B", "Option C", "Option D"]),
       correct: q.type === "open_ended" ? null : (typeof q.correct === 'number' ? q.correct : 0),
-      expected_answers: q.type === "open_ended" ? (q.expected_answers || []) : null,
+      expected_answers: q.type === "open_ended" ? normalizeExpectedAnswers(q.expected_answers) : null,
       answer_format: q.type === "open_ended" ? (q.answer_format || "text") : null,
       hints: q.type === "open_ended" ? (q.hints || []) : null,
       explanation: q.explanation || "Explanation not available",
@@ -1224,6 +1380,30 @@ CRITICAL REQUIREMENTS:
       requires_image: q.requires_image || false,
       image_data_b64: q.image_data_b64 || null // Base64 image data if available
     }))
+    
+    // Filter by question types if specified
+    if (questionTypes && Array.isArray(questionTypes) && questionTypes.length > 0) {
+      const originalCount = validatedQuestions.length
+      validatedQuestions = validatedQuestions.filter((q: any) => {
+        const questionType = q.type || "multiple_choice"
+        // Normalize question type names
+        const normalizedType = questionType === "multiple_choice" || questionType === "mcq" ? "multiple_choice" : 
+                               questionType === "open_ended" || questionType === "short" ? "open_ended" : 
+                               questionType
+        const isAllowed = questionTypes.includes(normalizedType)
+        if (!isAllowed) {
+          console.log(`⚠️ [QUIZ API] Filtered out ${normalizedType} question (not in allowed types: ${questionTypes.join(', ')}): "${q.question.substring(0, 50)}..."`)
+        }
+        return isAllowed
+      })
+      
+      if (validatedQuestions.length < originalCount) {
+        console.log(`📋 [QUIZ API] Filtered ${originalCount - validatedQuestions.length} questions by type (requested: ${questionTypes.join(', ')})`)
+        if (validatedQuestions.length === 0) {
+          console.error(`❌ [QUIZ API] All questions were filtered out! Requested types: ${questionTypes.join(', ')}, but AI generated different types.`)
+        }
+      }
+    }
     
     // Filter out duplicates if we have previous questions
     if (previousQuestions.length > 0 && userId && !isAdminMode) {
@@ -1265,21 +1445,46 @@ CRITICAL REQUIREMENTS:
     if (!sessionIdToUse) {
       try {
         console.log('ℹ️ [QUIZ API] No sessionId provided; creating singleplayer quiz_session...')
+        // Use adminClient to bypass RLS and schema cache issues
+        const adminClient = createAdminClient()
         // Use schema.sql schema: id, room_id, unit_id, status, total_questions, started_at, ended_at, winner_user_id, created_at
         // Note: session_name, time_limit, is_active don't exist in schema.sql
-        const { data: newSession, error: sessionError } = await supabase
+        // Try with status first, fallback to minimal insert if schema cache is stale
+        const { data: newSession, error: sessionError } = await adminClient
           .from('quiz_sessions')
           .insert({
             room_id: null, // NULL for singleplayer (enabled by enable-singleplayer-sessions migration)
             total_questions: validatedQuestions.length,
             status: 'active', // Use status instead of is_active
-            started_at: new Date().toISOString()
+            started_at: new Date().toISOString(),
+            notes_id: notesId || null // Link to study notes if provided
           })
           .select('id')
           .single()
 
         if (sessionError) {
           console.error('❌ [QUIZ API] Failed to create quiz session for question storage:', sessionError)
+          // If status column fails, try without it (schema cache might be stale)
+          if (sessionError.message?.includes('status')) {
+            console.log('🔄 [QUIZ API] Retrying session creation without status column...')
+            const { data: fallbackSession, error: fallbackError } = await adminClient
+              .from('quiz_sessions')
+              .insert({
+                room_id: null,
+                total_questions: validatedQuestions.length,
+                started_at: new Date().toISOString(),
+                notes_id: notesId || null // Link to study notes if provided
+              })
+              .select('id')
+              .single()
+            
+            if (fallbackError) {
+              console.error('❌ [QUIZ API] Fallback session creation also failed:', fallbackError)
+            } else if (fallbackSession?.id) {
+              sessionIdToUse = fallbackSession.id
+              console.log('✅ [QUIZ API] Created quiz session (fallback) for singleplayer question storage:', sessionIdToUse)
+            }
+          }
         } else if (newSession?.id) {
           sessionIdToUse = newSession.id
           console.log('✅ [QUIZ API] Created quiz session for singleplayer question storage:', sessionIdToUse)
@@ -1298,7 +1503,7 @@ CRITICAL REQUIREMENTS:
         const questionsToInsert = validatedQuestions.map((q: any, index: number) => ({
           session_id: sessionIdToUse,
           idx: index,
-          type: q.type === "multiple_choice" ? "mcq" : "short",
+          type: q.type === "multiple_choice" ? "mcq" : "short", // DB CHECK constraint expects 'mcq', 'short', or 'truefalse'
           prompt: q.question,
           options: q.options || [],
           answer: q.type === "multiple_choice" ? (q.options?.[q.correct] || "") : (q.expected_answers?.[0] || ""),
@@ -1310,7 +1515,9 @@ CRITICAL REQUIREMENTS:
           }
         }))
 
-        const { error: questionsError } = await supabase
+        // Use adminClient to bypass RLS (custom auth doesn't set auth.uid())
+        const adminClient = createAdminClient()
+        const { error: questionsError } = await adminClient
           .from('quiz_questions')
           .insert(questionsToInsert)
 
@@ -1331,7 +1538,7 @@ CRITICAL REQUIREMENTS:
         const questionsLegacy = validatedQuestions.map((q: any, index: number) => ({
           session_id: sessionIdToUse,
           question_text: q.question,
-          question_type: q.type === "multiple_choice" ? "mcq" : "short",
+          question_type: q.type === "multiple_choice" ? "multiple_choice" : "fill_blank", // Legacy questions table uses ENUM: 'multiple_choice', 'true_false', 'fill_blank'
           correct_answer: q.type === "multiple_choice" ? (q.options?.[q.correct] || "") : (q.expected_answers?.[0] || ""),
           options: q.options || [],
           explanation: q.explanation || '',
@@ -1387,7 +1594,8 @@ CRITICAL REQUIREMENTS:
       questions: validatedQuestions,
       sessionId: sessionIdToUse || sessionId || null,
       isRedo: isRedo,
-      documentId: documentId
+      documentId: documentId,
+      notesId: notesId // Return notes ID for reference
     })
 
   } catch (error) {

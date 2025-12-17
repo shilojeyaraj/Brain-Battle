@@ -62,11 +62,11 @@ export async function GET(request: NextRequest) {
           rank,
           xp_earned,
           completed_at,
+          topic,
           session_id,
           user_id,
           quiz_sessions!left(
             id,
-            session_name,
             room_id
           )
         `)
@@ -153,11 +153,10 @@ export async function GET(request: NextRequest) {
       })
       .map((game: any) => {
         const isSingleplayer = !game.quiz_sessions?.room_id
-        // Handle case where session_name might not exist in schema
-        // Fallback to a descriptive name based on game data
-        let baseName = game.quiz_sessions?.session_name
+        // Use topic from game_results if available, otherwise construct a name
+        let baseName = game.topic
         if (!baseName) {
-          // Try to construct a name from available data
+          // Fallback to a descriptive name based on game data
           const dateStr = new Date(game.completed_at).toLocaleDateString()
           baseName = isSingleplayer 
             ? `Singleplayer Battle - ${dateStr}`

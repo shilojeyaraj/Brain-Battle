@@ -156,11 +156,66 @@ export async function checkDocumentLimit(userId: string): Promise<DocumentLimitR
   startOfMonth.setDate(1)
   startOfMonth.setHours(0, 0, 0, 0)
   
-  const { count, error } = await adminClient
-    .from('documents')
-    .select('*', { count: 'exact', head: true })
-    .eq('uploaded_by', userId)
-    .gte('created_at', startOfMonth.toISOString())
+  // Check both user_id and uploaded_by columns for compatibility
+  // The documents table uses user_id, but some old records might use uploaded_by
+  // Use a more efficient query - only select id for count, not all columns
+  // Try user_id first (most common), then fallback to uploaded_by if needed
+  let count: number | null = null
+  let error: any = null
+  
+  try {
+    // Try user_id first (faster, more common)
+    const { count: userCount, error: userError } = await adminClient
+      .from('documents')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .gte('created_at', startOfMonth.toISOString())
+    
+    if (!userError && userCount !== null) {
+      count = userCount
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`📊 [LIMITS] Found ${count} documents by user_id this month`)
+      }
+    } else {
+      if (userError) {
+        console.warn(`⚠️ [LIMITS] Error querying by user_id:`, userError)
+      }
+      // Fallback to uploaded_by if user_id query fails or returns null
+      const { count: uploadedCount, error: uploadedError } = await adminClient
+        .from('documents')
+        .select('id', { count: 'exact', head: true })
+        .eq('uploaded_by', userId)
+        .gte('created_at', startOfMonth.toISOString())
+      
+      if (!uploadedError && uploadedCount !== null) {
+        count = uploadedCount
+        if (process.env.NODE_ENV === 'development') {
+          console.log(`📊 [LIMITS] Found ${count} documents by uploaded_by this month`)
+        }
+      } else {
+        error = uploadedError || userError
+        // Also try combined query as last resort
+        if (error) {
+          console.warn(`⚠️ [LIMITS] Both queries failed, trying combined query...`)
+          const { count: combinedCount, error: combinedError } = await adminClient
+            .from('documents')
+            .select('id', { count: 'exact', head: true })
+            .or(`user_id.eq.${userId},uploaded_by.eq.${userId}`)
+            .gte('created_at', startOfMonth.toISOString())
+          
+          if (!combinedError && combinedCount !== null) {
+            count = combinedCount
+            console.log(`📊 [LIMITS] Found ${count} documents using combined query this month`)
+          } else {
+            error = combinedError || error
+          }
+        }
+      }
+    }
+  } catch (err) {
+    error = err
+    console.error('❌ [LIMITS] Exception checking document limit:', err)
+  }
   
   if (error) {
     console.error('❌ [LIMITS] Error checking document limit:', error)

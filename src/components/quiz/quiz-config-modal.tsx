@@ -1,10 +1,11 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { X } from "lucide-react"
+import { useSubscription } from "@/hooks/use-subscription"
 
 interface QuizConfigModalProps {
   isOpen: boolean
@@ -40,7 +41,39 @@ export function QuizConfigModal({
   })
   const [contentFocus, setContentFocus] = useState<'application' | 'concept' | 'both'>('both')
   const [includeDiagrams, setIncludeDiagrams] = useState(true)
-
+  const [userId, setUserId] = useState<string | null>(null)
+  
+  // Get user ID and check subscription status
+  useEffect(() => {
+    const fetchUserId = async () => {
+      try {
+        const response = await fetch('/api/user/current', {
+          credentials: 'include',
+          cache: 'no-store',
+        })
+        const data = await response.json()
+        if (response.ok && data.success && data.userId) {
+          setUserId(data.userId)
+        }
+      } catch (error) {
+        console.error('Error fetching user ID:', error)
+      }
+    }
+    
+    if (isOpen) {
+      fetchUserId()
+    }
+  }, [isOpen])
+  
+  const { isPro } = useSubscription(userId)
+  
+  // For free users, always set includeDiagrams to false
+  useEffect(() => {
+    if (!isPro) {
+      setIncludeDiagrams(false)
+    }
+  }, [isPro])
+  
   if (!isOpen) return null
 
   const handleTypeToggle = (type: keyof typeof questionTypes) => {
@@ -223,26 +256,28 @@ export function QuizConfigModal({
             </p>
           </div>
 
-          {/* Include Diagrams Toggle */}
-          <div>
-            <label className="text-base font-bold text-white mb-2 block">
-              Diagram Options
-            </label>
-            <div className="p-3 rounded-lg bg-slate-600/30 border-2 border-slate-500/30">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={includeDiagrams}
-                  onChange={(e) => setIncludeDiagrams(e.target.checked)}
-                  className="w-5 h-5 accent-blue-500 cursor-pointer"
-                />
-                <div>
-                  <span className="text-sm text-white font-bold block">Include Image-Generated Diagrams</span>
-                  <span className="text-xs text-white/60 font-bold">Generate diagrams for questions that need visual aids</span>
-                </div>
+          {/* Include Diagrams Toggle - Only show for Pro users */}
+          {isPro && (
+            <div>
+              <label className="text-base font-bold text-white mb-2 block">
+                Diagram Options
               </label>
+              <div className="p-3 rounded-lg bg-slate-600/30 border-2 border-slate-500/30">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeDiagrams}
+                    onChange={(e) => setIncludeDiagrams(e.target.checked)}
+                    className="w-5 h-5 accent-blue-500 cursor-pointer"
+                  />
+                  <div>
+                    <span className="text-sm text-white font-bold block">Include Image-Generated Diagrams</span>
+                    <span className="text-xs text-white/60 font-bold">Generate diagrams for questions that need visual aids</span>
+                  </div>
+                </label>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Action Buttons */}
           <div className="flex gap-4 pt-4">

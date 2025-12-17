@@ -140,17 +140,17 @@ Include page references in captions. Return a JSON object with a "diagrams" arra
 
         try {
           const data = JSON.parse(response.content)
-          
+
           // Match analyzed diagrams with original images by index (since we process in batches)
           const batchDiagrams = (data.diagrams || []).map((diagram: any, idx: number) => {
             const originalImage = batch[idx]
-            return {
-              ...diagram,
-              page: originalImage?.page || diagram.page,
-              image_data_b64: originalImage?.image_data_b64,
-              width: originalImage?.width,
-              height: originalImage?.height,
-            }
+        return {
+          ...diagram,
+          page: originalImage?.page || diagram.page,
+          image_data_b64: originalImage?.image_data_b64,
+          width: originalImage?.width,
+          height: originalImage?.height,
+        }
           })
           
           allDiagrams.push(...batchDiagrams)

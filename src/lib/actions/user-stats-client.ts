@@ -55,10 +55,10 @@ export async function getUserStatsClient(userId: string, opts?: { force?: boolea
   } else {
     // Normal caching behavior
     if (lastStatsFetch && (now - lastStatsFetch.timestamp) < STATS_CACHE_MS) {
-      return lastStatsFetch.result
-    }
+    return lastStatsFetch.result
+  }
     if (inflightStatsPromise) {
-      return inflightStatsPromise
+    return inflightStatsPromise
     }
   }
 
@@ -327,14 +327,14 @@ export async function getUserStatsClient(userId: string, opts?: { force?: boolea
 
   // Only track inflight promise if not forcing
   if (!opts?.force) {
-    inflightStatsPromise = fetchPromise
+  inflightStatsPromise = fetchPromise
   }
   
   const result = await fetchPromise
   
   // Clear inflight promise after completion
   if (inflightStatsPromise === fetchPromise) {
-    inflightStatsPromise = null
+  inflightStatsPromise = null
   }
   
   // Only cache result if not forcing and successful

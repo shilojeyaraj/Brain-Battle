@@ -207,6 +207,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No files provided" }, { status: 400 })
     }
 
+    // Check document limit before processing
+    const { checkDocumentLimit } = await import('@/lib/subscription/limits')
+    const docLimit = await checkDocumentLimit(userId)
+    
+    if (!docLimit.allowed) {
+      console.warn(`⚠️ [NOTES API] Document limit reached: ${docLimit.count}/${docLimit.limit}`)
+      return NextResponse.json(
+        { 
+          error: `You've reached your monthly limit of ${docLimit.limit} documents. Upgrade to Pro for ${docLimit.limit === 15 ? 50 : 'more'} documents per month!`,
+          requiresPro: true,
+          count: docLimit.count,
+          limit: docLimit.limit,
+          remaining: docLimit.remaining
+        },
+        { status: 403 }
+      )
+    }
+    
+    console.log(`📊 [NOTES API] Document limit check: ${docLimit.count}/${docLimit.limit} (${docLimit.remaining} remaining)`)
+
     // SECURITY: Validate and sanitize inputs
     try {
       // Validate difficulty
@@ -576,42 +596,46 @@ export async function POST(req: NextRequest) {
 
     // 2b) Track documents in database for auditing and reuse
     if (documentMetadata.length > 0) {
+      console.log(`\n📝 [NOTES API] Starting document tracking for ${documentMetadata.length} file(s)...`)
+      console.log(`  User ID: ${userId}`)
+      
+      // CRITICAL: First verify the user exists in public.users table
+      // The documents table has a FK to public.users, not auth.users
       const adminClient = createAdminClient()
-      const payloadStoragePath = '' // placeholder; actual storage path not available in notes flow
-      const payloadFileUrl = '' // placeholder; actual storage URL not available in notes flow
-      for (const meta of documentMetadata) {
-        if (!meta.contentHash) {
-          console.warn(`  ⚠️ [NOTES API] Skipping document upsert for ${meta.fileName} (missing content hash)`)
-          continue
-        }
-
-        // Ensure user exists to satisfy FK
-        let userEnsured = false
+      
+      // Check if user exists in public.users
+      const { data: existingUser, error: userCheckError } = await adminClient
+        .from('users')
+        .select('id')
+        .eq('id', userId)
+        .single()
+      
+      if (userCheckError || !existingUser) {
+        console.warn(`  ⚠️ [NOTES API] User ${userId} not found in public.users table, attempting to create...`)
+        // User doesn't exist - this will cause FK violations
+        // Try to create the user first
         try {
           const { ensureUserExists } = await import('@/lib/utils/ensure-user-exists')
-          userEnsured = await ensureUserExists(userId)
-        } catch (ensureErr) {
-          console.error(`  ⚠️ [NOTES API] ensureUserExists failed for ${userId}:`, ensureErr)
-        }
-
-        if (!userEnsured) {
-          try {
-            const { error: createUserError } = await adminClient
-              .from('users')
-              .insert({ id: userId })
-            if (createUserError) {
-              console.error(`  ❌ [NOTES API] Direct user create failed for ${userId}:`, createUserError)
-            } else {
-              userEnsured = true
-              console.log(`  ✅ [NOTES API] Fallback created user row for ${userId}`)
-            }
-          } catch (createErr) {
-            console.error(`  ❌ [NOTES API] Exception creating user row for ${userId}:`, createErr)
+          const userCreated = await ensureUserExists(userId)
+          if (userCreated) {
+            console.log(`  ✅ [NOTES API] User ${userId} created/verified in public.users table`)
+          } else {
+            console.error(`  ❌ [NOTES API] Failed to create user ${userId} - document tracking will fail`)
           }
+        } catch (err) {
+          console.error(`  ❌ [NOTES API] Error ensuring user exists:`, err)
         }
-
-        if (!userEnsured) {
-          console.error(`  ❌ [NOTES API] Skipping document upsert; could not ensure user exists (userId=${userId})`)
+      } else {
+        console.log(`  ✅ [NOTES API] User ${userId} exists in public.users table`)
+      }
+      
+      const payloadStoragePath = '' // placeholder; actual storage path not available in notes flow
+      const payloadFileUrl = '' // placeholder; actual storage URL not available in notes flow
+      // User check done above - we've already ensured user exists
+      for (const meta of documentMetadata) {
+        console.log(`  📄 Processing: ${meta.fileName} (hash: ${meta.contentHash ? meta.contentHash.substring(0, 16) + '...' : 'MISSING'})`)
+        if (!meta.contentHash) {
+          console.warn(`  ⚠️ [NOTES API] Skipping document upsert for ${meta.fileName} (missing content hash)`)
           continue
         }
 
@@ -626,21 +650,68 @@ export async function POST(req: NextRequest) {
           file_size: meta.fileSize || 0,
           content_hash: meta.contentHash
         }
+        // Use upsert to handle duplicates, but ensure created_at is preserved for first upload
+        // If document already exists, we still want to count it for the month it was first created
         const { data: docRow, error: docError } = await adminClient
           .from('documents')
-          .upsert(payload, { onConflict: 'user_id,content_hash' })
-          .select('id, original_name')
+          .upsert(payload, { 
+            onConflict: 'user_id,content_hash',
+            // Don't update created_at if document already exists (preserve original upload date)
+            ignoreDuplicates: false
+          })
+          .select('id, original_name, created_at')
           .maybeSingle()
 
         if (docError) {
           console.error(`  ❌ [NOTES API] Failed to upsert document row for ${meta.fileName}:`, docError)
+          console.error(`     Error details:`, {
+            code: docError.code,
+            message: docError.message,
+            details: docError.details,
+            hint: docError.hint
+          })
+          console.error(`     Payload used:`, {
+            user_id: payload.user_id,
+            original_name: payload.original_name,
+            content_hash: payload.content_hash ? `${payload.content_hash.substring(0, 16)}...` : 'MISSING',
+            file_size: payload.file_size
+          })
+          errorsEncountered.push(`Document upsert failed for ${meta.fileName}: ${docError.message}`)
+        } else if (docRow?.id) {
+          documentIds.push(docRow.id)
+          console.log(`  ✅ [NOTES API] Document tracked: ${meta.fileName} (id=${docRow.id}, created_at=${docRow.created_at})`)
         } else {
-          console.log(`  ✅ [NOTES API] Document tracked: ${meta.fileName} (id=${docRow?.id || 'unknown'})`)
-          if (docRow?.id) {
-            documentIds.push(docRow.id)
+          console.warn(`  ⚠️ [NOTES API] Document upsert succeeded but no ID returned for ${meta.fileName}`)
+          console.warn(`     This might indicate the document already exists (upsert updated existing row)`)
+          // Try to fetch the document by content_hash as fallback
+          try {
+            const { data: existingDoc, error: fetchError } = await adminClient
+              .from('documents')
+              .select('id, created_at')
+              .eq('user_id', userId)
+              .eq('content_hash', meta.contentHash)
+              .maybeSingle()
+            if (existingDoc?.id) {
+              documentIds.push(existingDoc.id)
+              console.log(`  ✅ [NOTES API] Found existing document ID: ${existingDoc.id} (created_at=${existingDoc.created_at})`)
+            } else if (fetchError) {
+              console.error(`  ❌ [NOTES API] Failed to fetch document by hash:`, fetchError)
+            } else {
+              console.warn(`  ⚠️ [NOTES API] Document not found by hash either - this is unusual`)
+            }
+          } catch (fetchError) {
+            console.error(`  ❌ [NOTES API] Exception fetching document by hash:`, fetchError)
           }
         }
       }
+      console.log(`\n✅ [NOTES API] Document tracking complete. Total document IDs collected: ${documentIds.length}`)
+      if (documentIds.length === 0 && documentMetadata.length > 0) {
+        console.warn(`  ⚠️ [NOTES API] WARNING: No document IDs were collected despite processing ${documentMetadata.length} file(s)!`)
+        console.warn(`     This may indicate all documents already existed (upsert updated instead of inserted)`)
+        console.warn(`     Or there were errors during insertion. Check logs above for details.`)
+      }
+    } else {
+      console.log(`\n⚠️ [NOTES API] No document metadata to track (documentMetadata.length = ${documentMetadata.length})`)
     }
 
     // 3) Use semantic search to understand the content better (optional)
@@ -1729,7 +1800,12 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
         console.error('⚠️ [NOTES API] Exception while caching notes:', cacheErr)
       }
     } else {
-      console.warn('⚠️ [NOTES API] Skipping study_notes_cache insert (no document_id available)')
+      console.warn(`⚠️ [NOTES API] Skipping study_notes_cache insert (no document_id available)`)
+      console.warn(`   documentIds array length: ${documentIds.length}`)
+      console.warn(`   documentMetadata length: ${documentMetadata.length}`)
+      if (documentMetadata.length > 0) {
+        console.warn(`   This may indicate documents were not properly inserted into the database`)
+      }
     }
 
     // MEMORY ARCHITECTURE: Log progress (non-blocking, doesn't affect response)
@@ -1846,4 +1922,5 @@ async function extractImagesFromPDF(buffer: Buffer, filename: string): Promise<{
 
 // Note: enrichWithWebImages has been replaced with parallel enrichment
 // See src/lib/utils/parallel-enrichment.ts for enrichDiagramsWithWebImages
+
 

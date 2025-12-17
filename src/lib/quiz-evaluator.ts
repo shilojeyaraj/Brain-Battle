@@ -53,9 +53,25 @@ function isFuzzyTextCorrect(expected: string[], userInput: string, threshold = 0
   return false
 }
 
+// Helper to ensure expected_answers is always an array
+function getExpectedAnswers(question: QuizQuestion): string[] {
+  const expected = question.expected_answers
+  if (Array.isArray(expected)) {
+    return expected
+  }
+  if (typeof expected === 'string') {
+    return [expected]
+  }
+  if (expected != null) {
+    // Try to convert to array if it's some other type
+    return [String(expected)]
+  }
+  return []
+}
+
 export function isAnswerCorrect(question: QuizQuestion, userAnswer: number | string): boolean {
   // Multiple choice via index or text fallback
-  if (question.type === "multiple_choice") {
+  if (question.type === "multiple_choice" || question.type === "mcq") {
     const correctIndex = typeof question.correct === "number" ? question.correct : 0
     if (typeof userAnswer === "number") {
       if (typeof question.correct === "number") {
@@ -77,23 +93,33 @@ export function isAnswerCorrect(question: QuizQuestion, userAnswer: number | str
     }
   }
 
+  // Helper to ensure expected_answers is always an array (moved outside for reuse)
+  const expected = getExpectedAnswers(question)
+
   // Open ended numeric
   if (question.answer_format === "number" || question.answer_format === "numeric") {
-    const expected = question.expected_answers ?? []
     if (expected.length === 0) return false
     const userText = typeof userAnswer === "string" ? userAnswer : String(userAnswer)
     return isNumericCorrect(expected, userText, 0.05)
   }
 
-  // Open ended text/fuzzy
-  if (question.type === "open_ended") {
-    const expected = question.expected_answers ?? []
+  // Open ended text/fuzzy - check for open_ended, short, or any non-multiple-choice with expected_answers
+  const isOpenEnded = question.type === "open_ended" || 
+                      question.type === "short" || 
+                      (question.type !== "multiple_choice" && question.type !== "mcq" && expected.length > 0)
+  
+  if (isOpenEnded) {
     const userText = typeof userAnswer === "string" ? userAnswer : String(userAnswer)
     if (expected.length === 0) {
       // Fallback to direct match with provided 'a' or any answer field
       if (question.a) {
         return normalizeText(userText) === normalizeText(question.a)
       }
+      return false
+    }
+    // Ensure expected is an array before calling .some()
+    if (!Array.isArray(expected)) {
+      console.error('❌ [QUIZ EVALUATOR] expected_answers is not an array:', typeof expected, expected)
       return false
     }
     const userNormalized = normalizeText(userText)

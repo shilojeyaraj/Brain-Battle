@@ -245,8 +245,8 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
             // If formula is wider than available space, scale it down
             if (formulaWidth > availableWidth && availableWidth > 0) {
               const scaleFactor = availableWidth / formulaWidth
-              // Ensure minimum scale of 0.5 to keep it readable
-              const finalScale = Math.max(scaleFactor, 0.5)
+              // Ensure minimum scale of 0.6 to keep it readable (don't scale below 60%)
+              const finalScale = Math.max(scaleFactor, 0.6)
               
               katexElement.style.transform = `scale(${finalScale})`
               katexElement.style.transformOrigin = 'center center'
@@ -302,7 +302,7 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
             
             if (formulaWidth > availableWidth && availableWidth > 0) {
               const scaleFactor = availableWidth / formulaWidth
-              const finalScale = Math.max(scaleFactor, 0.5)
+              const finalScale = Math.max(scaleFactor, 0.6)
               
               containerRef.current.style.transform = `scale(${finalScale})`
               containerRef.current.style.transformOrigin = 'center center'
@@ -344,7 +344,7 @@ export function FormulaRenderer({ formula, className = '', displayMode = false }
             
             if (formulaWidth > availableWidth && availableWidth > 0) {
               const scaleFactor = availableWidth / formulaWidth
-              const finalScale = Math.max(scaleFactor, 0.5)
+              const finalScale = Math.max(scaleFactor, 0.6)
               
               containerRef.current.style.transform = `scale(${finalScale})`
               containerRef.current.style.transformOrigin = 'center center'

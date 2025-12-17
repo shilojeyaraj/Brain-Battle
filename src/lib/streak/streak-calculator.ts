@@ -22,6 +22,138 @@ export interface StreakData {
 export async function calculateUserStreak(userId: string): Promise<StreakData> {
   const adminClient = createAdminClient()
   
+  console.log('🔥 [STREAK] calculateUserStreak called for user:', userId)
+  
+  try {
+    // First, check if user has any stats record
+    const { data: stats, error: statsError } = await adminClient
+      .from('player_stats')
+      .select('daily_streak, last_activity_date, longest_streak')
+      .eq('user_id', userId)
+      .single()
+
+    console.log('📊 [STREAK] Current stats from DB:', { 
+      stats, 
+      error: statsError?.message,
+      daily_streak: stats?.daily_streak,
+      last_activity_date: stats?.last_activity_date,
+      longest_streak: stats?.longest_streak
+    })
+
+    // If no stats exist or no activity date, initialize streak to 1 for today
+    const today = new Date().toISOString().split('T')[0] // YYYY-MM-DD format
+    console.log('📅 [STREAK] Today is:', today)
+    
+    if (!stats || !stats.last_activity_date) {
+      // New user or no activity date - initialize streak to 1 for today
+      console.log('🆕 [STREAK] Initializing streak for user (no previous activity or stats)')
+      
+      const { error: upsertError } = await adminClient
+        .from('player_stats')
+        .upsert({
+          user_id: userId,
+          daily_streak: 1,
+          last_activity_date: today,
+          longest_streak: Math.max(1, stats?.longest_streak || 0),
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'user_id'
+        })
+      
+      if (upsertError) {
+        console.error('❌ [STREAK] Error initializing streak:', upsertError)
+      } else {
+        console.log('✅ [STREAK] Initialized streak to 1 for today')
+      }
+      
+      return {
+        currentStreak: 1,
+        longestStreak: Math.max(1, stats?.longest_streak || 0),
+        lastActivityDate: today,
+        isActiveToday: true,
+        daysUntilBreak: 2 // Full grace period
+      }
+    }
+
+    // Check if last activity was today - if so, just return current streak
+    if (stats.last_activity_date === today) {
+      console.log('✅ [STREAK] Already active today, returning current streak:', stats.daily_streak)
+      return {
+        currentStreak: stats.daily_streak || 1,
+        longestStreak: stats.longest_streak || 1,
+        lastActivityDate: today,
+        isActiveToday: true,
+        daysUntilBreak: 2
+      }
+    }
+
+    // Calculate days since last activity
+    const lastActivity = new Date(stats.last_activity_date + 'T00:00:00')
+    const todayDate = new Date(today + 'T00:00:00')
+    const daysSinceLastActivity = Math.floor((todayDate.getTime() - lastActivity.getTime()) / (1000 * 60 * 60 * 24))
+    
+    console.log('📅 [STREAK] Days since last activity:', daysSinceLastActivity, {
+      lastActivity: stats.last_activity_date,
+      today: today
+    })
+
+    let newStreak: number
+    if (daysSinceLastActivity === 1) {
+      // Consecutive day - increment streak
+      newStreak = (stats.daily_streak || 0) + 1
+      console.log('🔥 [STREAK] Consecutive day! New streak:', newStreak)
+    } else if (daysSinceLastActivity <= 2) {
+      // Within grace period (2 days) - keep streak but don't increment
+      newStreak = stats.daily_streak || 1
+      console.log('⚠️ [STREAK] Within grace period, maintaining streak:', newStreak)
+    } else {
+      // Grace period expired - reset streak
+      newStreak = 1
+      console.log('💔 [STREAK] Grace period expired, resetting streak to 1')
+    }
+
+    const newLongestStreak = Math.max(newStreak, stats.longest_streak || 0)
+
+    // Update streak in database
+    const { error: updateError } = await adminClient
+      .from('player_stats')
+      .update({
+        daily_streak: newStreak,
+        last_activity_date: today,
+        longest_streak: newLongestStreak,
+        updated_at: new Date().toISOString()
+      })
+      .eq('user_id', userId)
+
+    if (updateError) {
+      console.error('❌ [STREAK] Error updating streak:', updateError)
+    } else {
+      console.log('✅ [STREAK] Updated streak in DB:', { newStreak, newLongestStreak, last_activity_date: today })
+    }
+
+    return {
+      currentStreak: newStreak,
+      longestStreak: newLongestStreak,
+      lastActivityDate: today,
+      isActiveToday: true,
+      daysUntilBreak: 2
+    }
+  } catch (error) {
+    console.error('❌ [STREAK] Error calculating streak:', error)
+    return {
+      currentStreak: 0,
+      longestStreak: 0,
+      lastActivityDate: null,
+      isActiveToday: false,
+      daysUntilBreak: 0
+    }
+  }
+}
+
+// Keep original function for reference but no longer use RPC
+async function calculateUserStreakWithRPC(userId: string): Promise<StreakData> {
+  const adminClient = createAdminClient()
+  
   try {
     // First, check if user has any stats record
     const { data: stats } = await adminClient

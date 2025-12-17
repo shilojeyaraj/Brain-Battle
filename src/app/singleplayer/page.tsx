@@ -31,11 +31,21 @@ export default function SingleplayerPage() {
   // Check authentication on page load
   useEffect(() => {
     const checkAuth = async () => {
+      // Add timeout to prevent hanging
+      const timeoutId = setTimeout(() => {
+        console.warn('⚠️ [SINGLEPLAYER] Auth check timed out after 10 seconds')
+        setIsCheckingAuth(false)
+        setIsAuthenticated(false)
+      }, 10000) // 10 second timeout
+      
       try {
         const response = await fetch('/api/user/current', {
           credentials: 'include', // Important: include cookies
           cache: 'no-store', // Don't cache auth checks
+          signal: AbortSignal.timeout(8000) // 8 second fetch timeout
         })
+        
+        clearTimeout(timeoutId) // Clear timeout on success
         
         const data = await response.json()
         
@@ -75,11 +85,11 @@ export default function SingleplayerPage() {
         const currentUrl = '/singleplayer'
         router.push(`/login?redirect=${encodeURIComponent(currentUrl)}&error=${encodeURIComponent(errorMessage)}`)
       } catch (error) {
+        clearTimeout(timeoutId) // Clear timeout on error
         console.error('❌ [SINGLEPLAYER] Error checking authentication:', error)
         // On error, redirect to login
-        router.push('/login?redirect=' + encodeURIComponent('/singleplayer') + '&error=' + encodeURIComponent('An error occurred. Please log in again.'))
-      } finally {
         setIsCheckingAuth(false)
+        router.push('/login?redirect=' + encodeURIComponent('/singleplayer') + '&error=' + encodeURIComponent('An error occurred. Please log in again.'))
       }
     }
     
@@ -324,14 +334,27 @@ export default function SingleplayerPage() {
       const result = await response.json()
       
       if (result.success) {
-        setStudyNotes(result.notes)
+        // Store noteId with the notes object for later use
+        const notesWithId = { ...result.notes, id: result.noteId, noteId: result.noteId }
+        setStudyNotes(notesWithId)
         setProcessedFileNames(result.fileNames || [])
-        sessionStorage.setItem('studyNotes', JSON.stringify(result.notes))
+        sessionStorage.setItem('studyNotes', JSON.stringify(notesWithId))
         sessionStorage.setItem('processedFileNames', JSON.stringify(result.fileNames || []))
-        // Refresh limits to reflect newly processed documents
-        fetchLimits()
+        if (result.noteId) {
+          sessionStorage.setItem('currentNoteId', result.noteId)
+        }
+        // IMPORTANT: Set isGenerating to false BEFORE doing anything else
+        // This prevents the loading screen from blocking the UI
+        setIsGenerating(false)
         toastSuccess("Study notes generated successfully!")
         setStep(4) // Go to study notes step
+        // Refresh limits to reflect newly processed documents (non-blocking, in background)
+        // Add small delay to ensure database transaction is committed
+        setTimeout(() => {
+          fetchLimits().catch(err => {
+            console.warn('Failed to refresh limits (non-critical):', err)
+          })
+        }, 500)
       } else {
         toastError(result.error || "Failed to generate study notes", "Generation Error")
       }
@@ -402,6 +425,10 @@ export default function SingleplayerPage() {
       }
       if (studyNotes) {
         formData.append('notes', JSON.stringify(studyNotes))
+        // If studyNotes has an ID (from notes API response), pass it to link quiz to notes
+        if (studyNotes.id || studyNotes.noteId) {
+          formData.append('notesId', studyNotes.id || studyNotes.noteId)
+        }
       }
       
       // Add admin mode header if in admin mode
@@ -431,9 +458,12 @@ export default function SingleplayerPage() {
         sessionStorage.setItem('quizDifficulty', difficulty)
         sessionStorage.setItem('quizSessionId', sessionId)
         
-        // Store documentId and quiz settings if available
+        // Store documentId, notesId and quiz settings if available
         if (result.documentId) {
           sessionStorage.setItem('documentId', result.documentId)
+        }
+        if (result.notesId) {
+          sessionStorage.setItem('notesId', result.notesId)
         }
         sessionStorage.setItem('educationLevel', educationLevel)
         sessionStorage.setItem('contentFocus', activeConfig.contentFocus)

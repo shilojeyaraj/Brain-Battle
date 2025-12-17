@@ -5,6 +5,7 @@
 
 import { validateAndFilterVideos } from "@/lib/utils/youtube-validator"
 import { searchYouTubeVideosForTopic } from "@/lib/web/tavily-client"
+import { createAdminClient } from "@/lib/supabase/server-admin"
 
 /**
  * Enriches a single diagram with web image if needed
@@ -289,7 +290,6 @@ export async function generateEmbeddingsForNotes(
     // Call embeddings function directly instead of via HTTP to avoid cookie/auth issues
     // Import the embeddings logic directly
     const { OpenAIClient } = await import('@/lib/ai/openai-client')
-    const { createClient } = await import('@/lib/supabase/server')
     
     if (!process.env.OPENAI_API_KEY) {
       if (process.env.NODE_ENV === 'development') {
@@ -302,20 +302,47 @@ export async function generateEmbeddingsForNotes(
     const openAIClient = new OpenAIClient()
     
     // Chunk text for embeddings (same logic as embeddings route)
-    function chunkText(text: string, chunkSize: number = 1000, overlap: number = 200): string[] {
+    // Add safety limits to prevent "Invalid array length" errors
+    const MAX_TEXT_LENGTH = 500000 // ~500KB of text (reasonable limit)
+    const MAX_CHUNKS = 1000 // Maximum number of chunks to prevent array overflow
+    const chunkSize = 1000
+    const overlap = 200
+    
+    function chunkText(text: string, maxChunks: number = MAX_CHUNKS): string[] {
       const chunks: string[] = []
       let start = 0
+      let chunkCount = 0
       
-      while (start < text.length) {
-        const end = Math.min(start + chunkSize, text.length)
-        chunks.push(text.slice(start, end))
+      // Truncate text if too long to prevent memory issues
+      const safeText = text.length > MAX_TEXT_LENGTH 
+        ? text.substring(0, MAX_TEXT_LENGTH) 
+        : text
+      
+      if (text.length > MAX_TEXT_LENGTH) {
+        console.warn(`  ⚠️ [EMBEDDINGS] Text too long (${text.length} chars), truncating to ${MAX_TEXT_LENGTH} chars for embeddings`)
+      }
+      
+      while (start < safeText.length && chunkCount < maxChunks) {
+        const end = Math.min(start + chunkSize, safeText.length)
+        chunks.push(safeText.slice(start, end))
         start = end - overlap
+        chunkCount++
+        
+        // Safety check to prevent infinite loops
+        if (start <= (end - overlap)) {
+          start = end
+        }
       }
       
       return chunks
     }
     
     const textChunks = chunkText(combinedText)
+    
+    if (textChunks.length === 0) {
+      console.warn(`  ⚠️ [EMBEDDINGS] No chunks generated, skipping embeddings`)
+      return { success: false, error: 'No text chunks to embed' }
+    }
     
     if (process.env.NODE_ENV === 'development') {
       console.log(`  🔧 [EMBEDDINGS] Generating embeddings for ${textChunks.length} chunks`)
@@ -331,8 +358,8 @@ export async function generateEmbeddingsForNotes(
       difficultyLevel: 'medium'
     }
     
-    // Store embeddings in database
-    const supabase = await createClient()
+    // Store embeddings in database - use adminClient to bypass RLS (custom auth doesn't set auth.uid())
+    const supabase = createAdminClient()
     
     const embeddingRecords = textChunks.map((chunk, index) => ({
       user_id: userId,

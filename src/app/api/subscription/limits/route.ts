@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
       },
     }, {
       headers: {
-        'Cache-Control': 'private, max-age=30', // Cache for 30 seconds
+        'Cache-Control': 'private, no-cache, must-revalidate', // Don't cache - always fetch fresh data
       },
     })
   } catch (error: any) {

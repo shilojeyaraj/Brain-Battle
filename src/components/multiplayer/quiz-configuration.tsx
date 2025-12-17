@@ -17,6 +17,7 @@ import {
   AlertCircle,
   Lightbulb
 } from 'lucide-react'
+import { useSubscription } from '@/hooks/use-subscription'
 
 interface QuizConfigurationProps {
   topic: string
@@ -60,6 +61,36 @@ export default function QuizConfiguration({
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [contentFocus, setContentFocus] = useState<'application' | 'concept' | 'both'>('both')
   const [includeDiagrams, setIncludeDiagrams] = useState(true)
+  const [userId, setUserId] = useState<string | null>(null)
+  
+  // Get user ID and check subscription status
+  useEffect(() => {
+    const fetchUserId = async () => {
+      try {
+        const response = await fetch('/api/user/current', {
+          credentials: 'include',
+          cache: 'no-store',
+        })
+        const data = await response.json()
+        if (response.ok && data.success && data.userId) {
+          setUserId(data.userId)
+        }
+      } catch (error) {
+        console.error('Error fetching user ID:', error)
+      }
+    }
+    
+    fetchUserId()
+  }, [])
+  
+  const { isPro } = useSubscription(userId)
+  
+  // For free users, always set includeDiagrams to false
+  useEffect(() => {
+    if (!isPro) {
+      setIncludeDiagrams(false)
+    }
+  }, [isPro])
 
   // Analyze document content when topic or documents change
   useEffect(() => {
@@ -369,26 +400,28 @@ export default function QuizConfiguration({
             </div>
           </div>
 
-          {/* Include Diagrams Toggle */}
-          <div>
-            <Label className="text-sm font-black text-foreground mb-2 block">
-              Diagram Options
-            </Label>
-            <div className="p-4 rounded-lg bg-muted/30 cartoon-border">
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={includeDiagrams}
-                  onChange={(e) => setIncludeDiagrams(e.target.checked)}
-                  className="w-5 h-5 accent-primary cursor-pointer"
-                />
-                <div>
-                  <span className="text-sm text-foreground font-bold block">Include Image-Generated Diagrams</span>
-                  <span className="text-xs text-muted-foreground font-bold">Generate diagrams for questions that need visual aids (e.g., physics diagrams, charts, graphs)</span>
-                </div>
-              </label>
+          {/* Include Diagrams Toggle - Only show for Pro users */}
+          {isPro && (
+            <div>
+              <Label className="text-sm font-black text-foreground mb-2 block">
+                Diagram Options
+              </Label>
+              <div className="p-4 rounded-lg bg-muted/30 cartoon-border">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={includeDiagrams}
+                    onChange={(e) => setIncludeDiagrams(e.target.checked)}
+                    className="w-5 h-5 accent-primary cursor-pointer"
+                  />
+                  <div>
+                    <span className="text-sm text-foreground font-bold block">Include Image-Generated Diagrams</span>
+                    <span className="text-xs text-muted-foreground font-bold">Generate diagrams for questions that need visual aids (e.g., physics diagrams, charts, graphs)</span>
+                  </div>
+                </label>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Difficulty and Topic Display */}
           <div className="grid grid-cols-2 gap-4">
