@@ -42,6 +42,7 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames, hideActions 
   const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set())
   const [currentCardIndex, setCurrentCardIndex] = useState(0)
   const [isPro, setIsPro] = useState(false)
+  const [isTrialing, setIsTrialing] = useState(false)
   const [subscriptionLoading, setSubscriptionLoading] = useState(true)
 
   // Safety: Ensure diagrams and concepts are arrays
@@ -61,6 +62,8 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames, hideActions 
             if (statusResponse.ok) {
               const statusData = await statusResponse.json()
               setIsPro(statusData.isPro || false)
+              const subStatus = statusData.subscription?.status || statusData.subscription_status
+              setIsTrialing(subStatus === 'trialing')
             }
           }
         }
@@ -68,6 +71,7 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames, hideActions 
         console.error('Error checking subscription:', error)
         // Default to free if check fails
         setIsPro(false)
+        setIsTrialing(false)
       } finally {
         setSubscriptionLoading(false)
       }
@@ -77,18 +81,16 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames, hideActions 
   }, [])
 
   // Filter sections based on subscription - diagrams only for pro users
-  const allSections = [
+  const allowDiagrams = isPro && !isTrialing
+
+  const sections = [
     { id: "outline", label: "Outline", icon: BookOpen },
     { id: "concepts", label: "Concepts", icon: Lightbulb },
-    { id: "diagrams", label: "Diagrams", icon: Image },
+    ...(allowDiagrams ? [{ id: "diagrams", label: "Diagrams", icon: Image }] : []),
     { id: "videos", label: "Videos", icon: Youtube },
-    // Only show Formulas tab if formulas exist
     ...(notes.formulas && notes.formulas.length > 0 ? [{ id: "formulas", label: "Formulas", icon: Calculator }] : []),
     { id: "quiz", label: "Quiz Prep", icon: Play }
   ] as const
-
-  // Show all sections - diagrams are now available for all users
-  const sections = allSections
 
   const toggleOutlineItem = (index: number) => {
     const newExpanded = new Set(expandedOutlineItems)

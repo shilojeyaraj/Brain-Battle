@@ -8,6 +8,9 @@ import { sanitizeError, createSafeErrorResponse } from '@/lib/utils/error-saniti
 // import { checkQuizDiagramLimit, decrementQuizDiagramQuota } from '@/lib/subscription/diagram-limits'
 // import { generateQuizQuestionDiagram } from '@/lib/nanobanana/client'
 import { z } from 'zod'
+import { getPromptRules } from '@/lib/prompt/rules-loader'
+import { distillContent } from '@/lib/prompt/distillation'
+import { getOrSetDistillation } from '@/lib/prompt/distillation-cache'
 import {
   getPreviousQuestions,
   getWrongAnswers,
@@ -850,28 +853,51 @@ CRITICAL REQUIREMENT: You MUST generate exactly ${numQuestions} questions. The q
 Generate exactly ${numQuestions} questions that test knowledge of the specific document content provided. The response MUST have a "questions" array with exactly ${numQuestions} question objects. An empty array is NOT acceptable.
 `
 
+    // Compact prompts using shared rules + distillation
+    const rules = await getPromptRules()
+    const distillKeyParts = [
+      fileContent || "",
+      topic || "",
+      difficulty || "",
+      contentFocus || "",
+      String(includeDiagrams),
+      educationLevel || ""
+    ]
+    const distilledQuizContent = await getOrSetDistillation(
+      distillKeyParts,
+      () => distillContent(fileContent ? [fileContent] : [], 6000)
+    )
+
+    const systemPrompt = `${rules}
+
+TASK: Generate quiz questions as JSON matching quiz schema. Never invent facts; use only provided content. Return exactly the requested number of questions.`
+
+    const quizUserPrompt = `DOC SNAPSHOT (distilled, capped 6k chars):
+${distilledQuizContent || '[no text extracted]'}
+
+QUESTION COUNT: ${numQuestions}
+DIFFICULTY: ${difficulty}
+CONTENT FOCUS: ${contentFocus}
+INCLUDE DIAGRAMS: ${includeDiagrams}
+EDUCATION LEVEL: ${educationLevel}
+
+CONSTRAINTS:
+- Use only provided content; cite specific facts/examples/formulas.
+- No generic topic questions; tie each question to document specifics.
+- If content is thin, still produce ${numQuestions} valid questions using available details.
+- Return valid JSON with a "questions" array of length ${numQuestions}.`
+
     // Use Moonshot for quiz generation
     const aiProvider = 'moonshot' as const
     
     const messages: AIChatMessage[] = [
       {
         role: "system",
-        content: `You are an expert quiz generator. Your ONLY job is to create questions based on the EXACT document content provided. 
-
-CRITICAL REQUIREMENTS:
-1. You MUST ALWAYS generate the requested number of questions - NEVER return an empty questions array
-2. NEVER create generic questions about a topic - only use what's in the documents
-3. If the document is about sorting algorithms, create questions about sorting algorithms from the document
-4. If the document is about biology, create questions about biology from the document
-5. Every question MUST reference specific facts, examples, formulas, or processes from the provided documents
-6. If content is limited, create questions based on what IS available - even if you need to ask about definitions, concepts, or basic information from the documents
-7. DO NOT invent or assume content that isn't in the documents, but DO create questions from whatever content IS provided
-8. Always return valid JSON format with a "questions" array containing the exact number of questions requested
-9. An empty questions array is NEVER acceptable - you must generate questions even if the content is minimal`
+        content: systemPrompt
       },
       {
         role: "user",
-        content: prompt
+        content: quizUserPrompt
       }
     ]
 
@@ -879,10 +905,14 @@ CRITICAL REQUIREMENTS:
     let modelUsed: string
     const provider: 'moonshot' = 'moonshot'
 
-    // Use Moonshot for quiz generation
+    // Use Moonshot for quiz generation (via OpenRouter)
     if (process.env.NODE_ENV === 'development') {
-      console.log(`\n🤖 [QUIZ API] Using Moonshot (Kimi K2) for quiz generation`)
-      console.log(`   Checking MOONSHOT_API_KEY: ${process.env.MOONSHOT_API_KEY ? 'SET (length: ' + process.env.MOONSHOT_API_KEY.length + ')' : 'NOT SET'}`)
+      console.log(`\n🤖 [QUIZ API] Using Moonshot (Kimi K2) for quiz generation via OpenRouter`)
+      const openRouterKey = process.env.OPEN_ROUTER_KEY || process.env.OPENROUTER_API_KEY
+      console.log(`   Checking OPEN_ROUTER_KEY: ${openRouterKey ? 'SET (length: ' + openRouterKey.length + ')' : 'NOT SET'}`)
+      if (!openRouterKey) {
+        console.error(`   ❌ [QUIZ API] OPEN_ROUTER_KEY is required for Moonshot access. Please set it in .env.local`)
+      }
     }
     
     const aiClient = createAIClient('moonshot')

@@ -74,3 +74,6 @@ SELECT
 FROM public.documents
 WHERE uploaded_by IS NULL;
 
+
+
+

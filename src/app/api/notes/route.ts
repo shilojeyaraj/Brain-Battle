@@ -19,6 +19,11 @@ import { extractTextFromDocument } from "@/lib/document-text-extractor"
 import type { AIChatMessage } from "@/lib/ai/types"
 import { initializeBrowserPolyfills } from "@/lib/polyfills/browser-apis"
 import { createHash, randomUUID } from "crypto"
+import { getPromptRules } from "@/lib/prompt/rules-loader"
+import { distillContent } from "@/lib/prompt/distillation"
+import { getOrSetDistillation } from "@/lib/prompt/distillation-cache"
+import { getPromptRules } from "@/lib/prompt/rules-loader"
+import { distillContent } from "@/lib/prompt/distillation"
 
 // Ensure this route runs in the Node.js runtime (needed for pdfjs + Supabase client libs)
 export const runtime = 'nodejs'
@@ -728,7 +733,7 @@ export async function POST(req: NextRequest) {
     console.log("🔍 [NOTES API] Analyzing content complexity and education level...")
     
     // 5) Generate study notes using OpenAI with enhanced schema
-    const systemPrompt = `You are an expert study-note generator that produces content-specific notes from the provided document(s). Your job is to extract, structure, and cite the actual material—not to invent filler.
+    const legacySystemPrompt = `You are an expert study-note generator that produces content-specific notes from the provided document(s). Your job is to extract, structure, and cite the actual material—not to invent filler.
 
 PRIMARY GOAL:
 Create high-quality study notes and quizzes only from the supplied document content, with page references and diagram mentions. Output valid JSON that matches the provided notesSchema exactly.
@@ -1016,7 +1021,7 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
       }
     }
 
-    const userPrompt = `Generate comprehensive study notes based on the ACTUAL CONTENT from these specific documents:
+    const legacyUserPrompt = `Generate comprehensive study notes based on the ACTUAL CONTENT from these specific documents:
 
 ${topicInstruction}
 DIFFICULTY: ${difficulty || 'medium'}
@@ -1289,6 +1294,46 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
     let usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number }
     let provider: 'moonshot' = 'moonshot'
 
+    // Build compact prompts using shared rules + distillation
+    const rules = await getPromptRules()
+    const distillKeyParts = [
+      fileContents.join("||"),
+      instructions || "",
+      contextInstructions || "",
+      fileNames.join(",") || ""
+    ]
+    const distilledContent = await getOrSetDistillation(
+      distillKeyParts,
+      () => distillContent(fileContents, 8000)
+    )
+
+    const systemPrompt = `${rules}
+
+TASK: Generate study notes as JSON matching notesSchema. Never invent facts; use only provided content. Cite pages. Keep outputs concise and schema-valid.
+`
+
+    const userPrompt = `DOCUMENT SNAPSHOT (distilled, capped 8k chars):
+${distilledContent || '[no text extracted]'}
+
+FILES: ${fileNames.join(', ') || 'uploaded files'}
+TOTAL CHARS: ${fileContents.join('').length}
+
+STUDY INSTRUCTIONS: ${instructions || 'Use the document content to create comprehensive study notes. If no topic, infer from content.'}
+${fileContents.length > 1 ? 'Multiple documents: keep examples/formulas tied to the correct source (use page/file names).' : ''}
+
+IMAGES: ${extractedImages.length} extracted images${extractedImages.length ? ' (reference by page; image data available separately)' : ' (none)'}
+
+CONTEXT: ${contextInstructions || '[none]'}
+
+REQUIREMENTS:
+- Use only the provided content; cite (p. N) or sections.
+- Outline items must be document-specific (titles/examples/formulas), not generic.
+- Extract every formula with exact notation and variable meanings.
+- Extract every concept/key term with page refs.
+- Describe diagrams if present; include page refs.
+- Practice questions must reference document specifics (formulas/examples/diagrams).
+- Return valid JSON only, matching notesSchema.`
+
     // Use Moonshot for study notes generation
     const aiClient = createAIClient('moonshot')
       
@@ -1301,7 +1346,7 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
       model: process.env.MOONSHOT_MODEL || 'kimi-k2-thinking',
       temperature: 0.2,
       responseFormat: 'json_object',
-      maxTokens: 32000, // Ensure complete JSON responses for notes generation
+      maxTokens: 16000, // Reduced for leaner completions; schema + distillation keeps size manageable
     })
 
     content = response.content
@@ -1922,5 +1967,3 @@ async function extractImagesFromPDF(buffer: Buffer, filename: string): Promise<{
 
 // Note: enrichWithWebImages has been replaced with parallel enrichment
 // See src/lib/utils/parallel-enrichment.ts for enrichDiagramsWithWebImages
-
-

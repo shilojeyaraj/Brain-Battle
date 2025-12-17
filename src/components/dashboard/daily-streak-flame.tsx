@@ -69,12 +69,14 @@ export function DailyStreakFlame({ streak, isAnimating = false, className = "" }
       </div>
 
       {/* Streak number positioned below the flame - Duolingo style */}
-      <div className="mt-2 flex items-center justify-center gap-2">
+      <div className="mt-2 flex items-center justify-center gap-3 md:gap-4 flex-wrap min-w-[200px] md:min-w-[280px]">
         <span
           className={`
             text-5xl md:text-6xl lg:text-7xl font-black
             transition-all duration-300
             ${isAnimating ? "scale-125" : "scale-100"}
+            whitespace-nowrap
+            flex-shrink-0
           `}
           style={{
             color: '#F97316',
@@ -92,6 +94,8 @@ export function DailyStreakFlame({ streak, isAnimating = false, className = "" }
             text-3xl md:text-4xl lg:text-5xl font-black
             transition-all duration-300
             ${isAnimating ? "scale-125" : "scale-100"}
+            whitespace-nowrap
+            flex-shrink-0
           `}
           style={{
             color: '#F97316',

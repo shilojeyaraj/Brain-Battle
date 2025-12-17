@@ -638,16 +638,28 @@ export default function HomePage() {
         </main>
 
         {/* University Logos Carousel - Subtle Dark Mode Style */}
-        <section className="pt-8 pb-12 md:pt-10 md:pb-16 overflow-hidden border-y border-slate-800/30 -mt-4">
+        <motion.section 
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6, delay: 0.2 }}
+          className="pt-8 pb-12 md:pt-10 md:pb-16 overflow-hidden border-y border-slate-800/30 -mt-4"
+        >
           {/* Header */}
-          <div className="text-center mb-6 px-6">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.5, delay: 0.3 }}
+            className="text-center mb-6 px-6"
+          >
             <h2 className="text-xl md:text-2xl font-bold text-blue-100/90 mb-2">
               Used by students at the following universities
             </h2>
             <p className="text-sm text-blue-200/60">
               Trusted by thousands of students across Canada
             </p>
-          </div>
+          </motion.div>
           
           <div className="relative">
             {/* Gradient overlays for fade effect */}
@@ -744,7 +756,7 @@ export default function HomePage() {
               ))}
             </div>
           </div>
-        </section>
+        </motion.section>
 
         {/* Live Leaderboard Section - New Layout */}
         <section className="px-6 py-20 md:px-8 lg:px-12 max-w-7xl mx-auto">

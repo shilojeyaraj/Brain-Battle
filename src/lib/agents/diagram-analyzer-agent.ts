@@ -92,11 +92,44 @@ IMPORTANT: Base all descriptions on BOTH the document context AND what you can s
         const batch = imageBatches[batchIdx]
         this.log(`Processing batch ${batchIdx + 1}/${imageBatches.length} (${batch.length} images)`)
 
-        // Build Vision API message with actual images
+        // Validate and filter images by size before sending to OpenAI Vision API
+        // OpenAI Vision API has limits: base64 images should be under ~20MB
+        // Base64 encoding increases size by ~33%, so we limit raw image size to ~15MB
+        const MAX_IMAGE_SIZE_BYTES = 15 * 1024 * 1024 // 15MB
+        const validImages: typeof batch = []
+        const skippedImages: string[] = []
+
+        for (const img of batch) {
+          // Calculate approximate base64 size (base64 is ~33% larger than binary)
+          const base64Size = img.image_data_b64.length
+          const estimatedBinarySize = (base64Size * 3) / 4
+          
+          if (estimatedBinarySize > MAX_IMAGE_SIZE_BYTES) {
+            const sizeMB = (estimatedBinarySize / 1024 / 1024).toFixed(2)
+            this.log(`⚠️ Skipping image on page ${img.page}: too large (${sizeMB}MB, max 15MB)`)
+            skippedImages.push(`Page ${img.page} (${sizeMB}MB)`)
+            continue
+          }
+          
+          validImages.push(img)
+        }
+
+        if (validImages.length === 0) {
+          this.log(`⚠️ Batch ${batchIdx + 1} skipped: all images too large for OpenAI Vision API`)
+          this.log(`   Skipped images: ${skippedImages.join(', ')}`)
+          this.log(`   Consider compressing images or splitting the document`)
+          continue
+        }
+
+        if (skippedImages.length > 0) {
+          this.log(`⚠️ Skipped ${skippedImages.length} image(s) in batch ${batchIdx + 1} due to size: ${skippedImages.join(', ')}`)
+        }
+
+        // Build Vision API message with validated images
         const visionContent: AIChatMessage['content'] = [
           {
             type: 'text',
-            text: `Analyze these ${batch.length} extracted diagram(s) from the document:
+            text: `Analyze these ${validImages.length} extracted diagram(s) from the document:
 
 DOCUMENT CONTEXT (first 5000 chars):
 ${documentContext}
@@ -114,8 +147,8 @@ For each image, analyze what it shows based on the document context AND what you
 
 Include page references in captions. Return a JSON object with a "diagrams" array containing analysis for each image in order.`
           },
-          // Add each image in the batch
-          ...batch.map((img, idx) => ({
+          // Add each validated image in the batch
+          ...validImages.map((img, idx) => ({
             type: 'image_url' as const,
             image_url: {
               url: `data:image/png;base64,${img.image_data_b64}`,
@@ -130,39 +163,59 @@ Include page references in captions. Return a JSON object with a "diagrams" arra
         ]
 
         const startTime = Date.now()
-        const response = await this.openAIClient.chatCompletions(messages, {
-          model: 'gpt-4o', // Use GPT-4o for Vision API
-          responseFormat: 'json_object',
-          temperature: 0.3,
-        })
-
-        const processingTime = Date.now() - startTime
-
+        
         try {
-          const data = JSON.parse(response.content)
+          const response = await this.openAIClient.chatCompletions(messages, {
+            model: 'gpt-4o', // Use GPT-4o for Vision API
+            responseFormat: 'json_object',
+            temperature: 0.3,
+          })
 
-          // Match analyzed diagrams with original images by index (since we process in batches)
-          const batchDiagrams = (data.diagrams || []).map((diagram: any, idx: number) => {
-            const originalImage = batch[idx]
-        return {
-          ...diagram,
-          page: originalImage?.page || diagram.page,
-          image_data_b64: originalImage?.image_data_b64,
-          width: originalImage?.width,
-          height: originalImage?.height,
-        }
-          })
+          const processingTime = Date.now() - startTime
+
+          try {
+            const data = JSON.parse(response.content)
+
+            // Match analyzed diagrams with original images by index (since we process in batches)
+            // Use validImages instead of batch since we filtered out large images
+            const batchDiagrams = (data.diagrams || []).map((diagram: any, idx: number) => {
+              const originalImage = validImages[idx]
+          return {
+            ...diagram,
+            page: originalImage?.page || diagram.page,
+            image_data_b64: originalImage?.image_data_b64,
+            width: originalImage?.width,
+            height: originalImage?.height,
+          }
+            })
+            
+            allDiagrams.push(...batchDiagrams)
+            totalTokensUsed += response.usage.total_tokens
+            
+            this.log(`Batch ${batchIdx + 1} completed: ${batchDiagrams.length} diagrams analyzed`, {
+              tokensUsed: response.usage.total_tokens,
+              processingTime,
+            })
+          } catch (parseError) {
+            this.error(`Failed to parse response from batch ${batchIdx + 1}`, parseError)
+            // Continue with other batches even if one fails
+          }
+        } catch (apiError: any) {
+          // Handle OpenAI API errors (including file size errors)
+          const errorMessage = apiError?.message || apiError?.error?.message || String(apiError)
           
-          allDiagrams.push(...batchDiagrams)
-          totalTokensUsed += response.usage.total_tokens
+          if (errorMessage.includes('too large') || errorMessage.includes('file size') || errorMessage.includes('maximum') || errorMessage.includes('exceed')) {
+            this.error(`OpenAI Vision API error: Image(s) too large in batch ${batchIdx + 1}`, apiError)
+            this.log(`   Error: ${errorMessage}`)
+            this.log(`   This usually means extracted images exceed OpenAI's size limits (~20MB per image)`)
+            this.log(`   Consider: 1) Compressing images before extraction, 2) Using lower resolution, 3) Splitting the document`)
+            // Continue with other batches
+            continue
+          }
           
-          this.log(`Batch ${batchIdx + 1} completed: ${batchDiagrams.length} diagrams analyzed`, {
-            tokensUsed: response.usage.total_tokens,
-            processingTime,
-          })
-        } catch (parseError) {
-          this.error(`Failed to parse response from batch ${batchIdx + 1}`, parseError)
-          // Continue with other batches even if one fails
+          // Re-throw other errors
+          this.error(`OpenAI Vision API error in batch ${batchIdx + 1}`, apiError)
+          throw apiError
         }
       }
 

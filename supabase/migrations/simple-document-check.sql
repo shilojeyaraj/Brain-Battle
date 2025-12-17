@@ -64,3 +64,6 @@ FROM public.documents
 WHERE uploaded_by = 'YOUR_USER_ID_HERE'::uuid
   AND created_at >= date_trunc('month', CURRENT_DATE);
 
+
+
+
