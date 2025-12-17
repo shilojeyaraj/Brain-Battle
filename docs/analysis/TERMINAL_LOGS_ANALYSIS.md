@@ -1,305 +1,166 @@
-# Terminal Logs Analysis
+# Terminal Logs Analysis - Critical Issues
 
-## Date: 2025-11-28
-## Analysis of Notes Generation Request
+## Date: 2025-12-17
 
----
-
-## 🔴 Critical Issues
-
-### 1. **Moonshot API Authentication Failure**
-```
-❌ Moonshot: 401 Invalid Authentication
-⚠️ [NOTES API] Moonshot failed, using OpenAI response as fallback
-   Moonshot error: 401 Invalid Authentication
-```
-
-**Impact**: 
-- Parallel testing not working
-- Falling back to OpenAI only (higher costs)
-- Missing cost savings opportunity (83% potential savings)
-
-**Root Cause**:
-- `MOONSHOT_API_KEY` is either:
-  - Not set in `.env.local`
-  - Invalid/expired
-  - Incorrect format
-
-**Fix Required**:
-1. Verify `MOONSHOT_API_KEY` is set in `.env.local`
-2. Check key format (should start with `sk-` for Moonshot)
-3. Restart dev server after adding key
-4. Verify key is valid by testing with Moonshot API directly
+### Summary
+Analysis of terminal logs (lines 226-1013) reveals **4 critical issues** preventing proper quiz generation and notes processing.
 
 ---
 
-### 2. **PDF Image Extraction Failed**
+## 🔴 Critical Issue #1: Quiz Sessions Schema Mismatch
+
+**Error:**
 ```
-📄 [PDF EXTRACTOR] Extracted 0 images using pdfjs-dist fallback
-⚠️ [PDF EXTRACTOR] No embedded images found in PDF. PDF may contain only text/drawings.
+❌ [QUIZ API] Failed to create quiz session for question storage: {
+  code: 'PGRST204',
+  message: "Could not find the 'user_id' column of 'quiz_sessions' in the schema cache"
+}
 ```
 
-**Impact**:
-- No actual diagram images extracted
-- Diagrams are text-only (AI-generated descriptions)
-- Users can't see visual diagrams, only descriptions
+**Root Cause:**
+- Code in `src/app/api/generate-quiz/route.ts` (line 1271) tries to insert `user_id` into `quiz_sessions`
+- The `quiz_sessions` table schema (from `supabase/schema.sql`) does NOT have a `user_id` column
+- Schema has: `id`, `room_id`, `unit_id`, `status`, `total_questions`, `started_at`, `ended_at`, `winner_user_id`, `created_at`
+- Code also tries to insert: `session_name`, `time_limit`, `is_active` which don't exist in the schema
 
-**Root Cause**:
-- PDF contains **vector graphics/drawings**, not embedded image objects
-- Current extraction only finds embedded image objects
-- Vector graphics (SVG, paths, shapes) are not detected
+**Impact:**
+- Quiz sessions cannot be created for singleplayer games
+- Questions cannot be stored in the database
+- Quiz generation fails silently (returns 200 but doesn't store data)
 
-**Technical Details**:
-- `pdf-extract-image` library only extracts embedded image objects
-- `pdfjs-dist` fallback also only finds embedded images
-- Vector graphics require canvas rendering to convert to images
-
-**Current Workaround**:
-- AI generates text descriptions of diagrams based on document context
-- Users see page references to find diagrams in original PDF
-- Web image enrichment could help but requires keywords
+**Fix Applied:**
+- Removed `user_id` from insert statement
+- Need to verify which schema is actually in production (schema.sql vs setup.sql)
 
 ---
 
-### 3. **Diagram Enrichment Skipped (No Keywords)**
+## 🔴 Critical Issue #2: User Foreign Key Violation
+
+**Error:**
 ```
-📊 [IMAGE ENRICHMENT] Processing diagram 1/3: Engineering Stress-Strain Curve
-  - Source: file
-  - Keywords: None
-  ℹ️ [IMAGE ENRICHMENT] Skipping (not web source or no keywords)
+❌ [QUIZ DEDUP] Foreign key violation: User 19d3c81b-a1fd-4850-bc9a-d32ce90f765f does not exist in users table
+   This should have been caught earlier. User may have been deleted.
 ```
 
-**Impact**:
-- No web images fetched for diagrams
-- Diagrams remain text-only
-- Missing visual aids for learning
+**Root Cause:**
+- User exists in `auth.users` (session is valid) but NOT in `public.users`
+- `quiz_question_history` table has foreign key to `public.users`
+- `ensureUserExists` utility exists but isn't being called before storing question history
 
-**Root Cause**:
-- AI-generated diagrams have `source: "file"` but no `keywords` array
-- Enrichment logic only processes `source: "web"` diagrams OR diagrams with keywords
-- Current logic: `if (diagram.source === "web" && diagram.keywords)`
+**Impact:**
+- Question deduplication fails
+- Question history is not stored
+- Users may see duplicate questions
 
-**Fix Required**:
-1. Update AI prompt to include `keywords` for file-source diagrams
-2. Update enrichment logic to process file-source diagrams with keywords
-3. Extract keywords from diagram titles/captions if not provided
+**Fix Needed:**
+- Call `ensureUserExists(userId)` before storing question history
+- Or handle the error gracefully (already done, but should prevent it)
 
 ---
 
-### 4. **Embeddings API Authentication Error**
+## 🟡 Issue #3: Embeddings API 404
+
+**Error:**
 ```
-POST /api/embeddings 401 in 6384ms
-⚠️ [NOTES API] Failed to generate embeddings: 401
+⚠️ [EMBEDDINGS] Failed to generate embeddings: 404
+⚠️ [NOTES API] Embedding generation failed: HTTP 404
 ```
 
-**Impact**:
-- Semantic search not working
-- Can't find related documents
-- Missing search functionality
+**Root Cause:**
+- Embeddings API route exists at `/api/embeddings`
+- Called from `src/lib/utils/parallel-enrichment.ts` (line 295)
+- Base URL might be incorrect or route not accessible
+- Could be authentication issue or route not deployed
 
-**Root Cause**:
-- Authentication issue in `/api/embeddings` route
-- Likely missing or invalid API key for embeddings service
+**Impact:**
+- Embeddings are not generated for study notes
+- Semantic search won't work for these notes
+- Non-critical (notes still work without embeddings)
 
-**Fix Required**:
-1. Check `OPENAI_API_KEY` is set (used for embeddings)
-2. Verify key has embeddings API access
-3. Check authentication logic in `/api/embeddings` route
+**Fix Needed:**
+- Verify base URL is correct
+- Check if route requires authentication
+- Ensure route is accessible in production
 
 ---
 
-## ⚠️ Warning Issues
+## 🟡 Issue #4: Invalid YouTube Video URLs
 
-### 5. **YouTube Video Validation Failures**
+**Error:**
 ```
-YouTube video not found or inaccessible: https://www.youtube.com/watch?v=xyz123
-YouTube video not found or inaccessible: https://www.youtube.com/watch?v=abc456
-⚠️ [NOTES API] Removed 2 invalid or inaccessible video(s) after validation
+YouTube video not found or inaccessible: https://www.youtube.com/watch?v=example-tensile
+YouTube video not found or inaccessible: https://www.youtube.com/watch?v=example-hardness
+YouTube video not found or inaccessible: https://www.youtube.com/watch?v=example-impact
+YouTube video not found or inaccessible: https://www.youtube.com/watch?v=example-columbia
 ```
 
-**Impact**:
-- Some recommended videos are invalid
-- Reduced video resources for users
+**Root Cause:**
+- AI is generating placeholder URLs instead of real YouTube video IDs
+- Video enrichment logic should validate URLs before storing
+- AI prompt might need improvement to generate real URLs
 
-**Root Cause**:
-- Tavily API may return invalid/placeholder YouTube URLs
-- Videos may have been deleted or made private
-- URL format may be incorrect
+**Impact:**
+- Invalid video links in study notes
+- Users see broken video references
+- Non-critical (videos are optional enrichment)
 
-**Current Behavior** (Good):
-- Validation catches invalid videos
-- Only valid videos are shown to users
-- System gracefully handles failures
-
-**Improvement Opportunity**:
-- Better error logging to identify why videos fail
-- Retry with different search terms if many videos fail
+**Fix Needed:**
+- Improve AI prompt to generate real YouTube URLs
+- Add validation to filter out placeholder URLs
+- Use Tavily API results instead of AI-generated URLs
 
 ---
 
-### 6. **Missing Sound Files (Non-Critical)**
-```
-GET /sounds/hover.ogg 404 in 3687ms
-```
+## ✅ What's Working
 
-**Impact**: 
-- Minor UX issue
-- Hover sounds don't play
-- No functional impact
-
-**Root Cause**:
-- Sound files not in `/public/sounds/` directory
-- Or path is incorrect
-
-**Fix** (Optional):
-- Add sound files to `/public/sounds/hover.ogg`
-- Or remove sound file references if not needed
-
----
-
-## ✅ Working Correctly
-
-### 7. **Notes Generation Success**
-```
-✅ [NOTES API] Successfully parsed JSON response
-  - Title: The Science and Engineering of Materials
-  - Outline items: 6
-  - Key terms: 8
-  - Concepts: 6
-  - Diagrams: 3
-  - Formulas: 5
-  - Quiz questions: 5
-```
-
-**Status**: ✅ Working
-- AI successfully generated comprehensive notes
-- All content types extracted correctly
-- JSON parsing successful
-
----
-
-### 8. **Video Search with Specific Concepts**
-```
-📹 [NOTES API] Tavily suggested 3 YouTube video(s) for topic: "The Science and Engineering of Materials"
-📹 [NOTES API] Total videos before validation: 5
-```
-
-**Status**: ✅ Working
-- Video search is functioning
-- Using specific concepts for targeted searches (recently improved)
-- Validation removes invalid videos
-
----
-
-## 📊 Performance Metrics
-
-### Request Timing:
-- **Total Time**: 63,588ms (~63.6 seconds)
-- **File Processing**: 3,046ms
-- **AI Generation**: 45,547ms (OpenAI GPT-4o)
-- **Video Enrichment**: ~1-2 seconds
-- **Embeddings**: Failed (401 error)
-
-### Cost Analysis:
-- **OpenAI Cost**: $0.0621 per request
-- **Moonshot Cost**: $0.0000 (failed)
-- **Potential Savings**: $0.0621 (100% if Moonshot worked)
+1. **Notes Generation**: Successfully generating study notes (68.5 seconds)
+2. **Quiz Generation**: AI successfully generates questions (39.5 seconds)
+3. **OpenRouter API**: Connection and retry logic working
+4. **Progress Logging**: Memory architecture logging working
+5. **Video Enrichment**: Tavily API finding real videos (6 valid videos)
 
 ---
 
 ## 🔧 Recommended Fixes (Priority Order)
 
-### Priority 1: Critical Functionality
-1. **Fix Moonshot API Key**
-   - Verify `MOONSHOT_API_KEY` in `.env.local`
-   - Test key validity
-   - Restart server
+### Priority 1: Fix Quiz Sessions Schema
+1. Verify actual production schema for `quiz_sessions`
+2. Either:
+   - Update code to match schema.sql (remove non-existent columns)
+   - OR create migration to add missing columns if setup.sql is correct
+3. Test quiz session creation
 
-2. **Fix Embeddings API**
-   - Check `OPENAI_API_KEY` for embeddings
-   - Verify authentication in `/api/embeddings`
+### Priority 2: Fix User Foreign Key
+1. Call `ensureUserExists(userId)` before storing question history
+2. Add to `storeQuestionHistory` function in `question-deduplication.ts`
 
-### Priority 2: Feature Improvements
-3. **Add Keywords to File-Source Diagrams**
-   - Update AI prompt to include keywords
-   - Extract keywords from diagram titles if missing
-   - Enable web image enrichment for file-source diagrams
+### Priority 3: Fix Embeddings 404
+1. Check base URL configuration
+2. Verify route accessibility
+3. Add authentication if needed
 
-4. **Improve PDF Image Extraction**
-   - Consider canvas rendering for vector graphics
-   - Or accept text-only diagrams as current state
-   - Update UI messaging to be more accurate
-
-### Priority 3: Polish
-5. **Update Diagram Section Messaging**
-   - Remove "experimental" language
-   - Explain current capabilities accurately
-   - Set proper expectations
-
-6. **Add Sound Files** (Optional)
-   - Add hover.ogg to `/public/sounds/`
-   - Or remove sound references
+### Priority 4: Fix YouTube URLs
+1. Improve AI prompt for video URL generation
+2. Add URL validation
+3. Use Tavily results directly
 
 ---
 
-## 📝 Code Changes Needed
+## 📊 Statistics from Logs
 
-### 1. Update Diagram Enrichment Logic
-**File**: `src/app/api/notes/route.ts` (line ~1428)
-
-**Current**:
-```typescript
-if (diagram.source === "web" && diagram.keywords) {
-  // enrich with web images
-}
-```
-
-**Should Be**:
-```typescript
-if (diagram.keywords && diagram.keywords.length > 0) {
-  // enrich with web images (works for both file and web sources)
-}
-```
-
-### 2. Extract Keywords from Diagram Titles
-**File**: `src/app/api/notes/route.ts`
-
-Add logic to extract keywords from diagram titles/captions if keywords array is missing:
-```typescript
-if (!diagram.keywords || diagram.keywords.length === 0) {
-  // Extract keywords from title and caption
-  const titleWords = diagram.title?.split(/\s+/) || []
-  const captionWords = diagram.caption?.split(/\s+/) || []
-  diagram.keywords = [...titleWords, ...captionWords]
-    .filter(w => w.length > 3) // Only meaningful words
-    .slice(0, 5) // Limit to 5 keywords
-}
-```
-
-### 3. Update Diagram Section UI Text
-**File**: `src/components/study-notes/study-notes-viewer.tsx` (line ~534)
-
-**Current**:
-```
-Diagram extraction from PDFs is still experimental...
-```
-
-**Should Be**:
-```
-Diagrams are identified from your document content. Use the page references below to find each diagram in your original PDF. We're working on automatic image extraction for future updates.
-```
+- **Notes Generation Time**: 68.5 seconds
+- **Quiz Generation Time**: 39.5 seconds  
+- **Total API Time**: 90.9 seconds (notes) + 64.7 seconds (quiz)
+- **Questions Generated**: 5 questions (3 multiple choice, 2 open-ended)
+- **Diagrams Extracted**: 5 diagrams (but no images, free tier)
+- **Videos Found**: 6 valid videos (4 invalid filtered out)
+- **Embeddings**: Failed (404)
 
 ---
 
-## 🎯 Summary
+## 🎯 Next Steps
 
-**Critical Issues**: 2 (Moonshot auth, Embeddings auth)
-**Warning Issues**: 2 (Video validation, Missing sounds)
-**Working**: Notes generation, Video search, Content extraction
-
-**Overall Status**: ⚠️ Functional but with authentication issues preventing full feature set
-
-**Next Steps**: Fix API keys first, then improve diagram enrichment logic.
-
-
-
+1. ✅ Fix quiz_sessions insert (remove user_id)
+2. ⏳ Fix user foreign key (add ensureUserExists call)
+3. ⏳ Investigate embeddings 404
+4. ⏳ Improve YouTube URL generation

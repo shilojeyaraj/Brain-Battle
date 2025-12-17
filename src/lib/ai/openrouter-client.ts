@@ -30,10 +30,12 @@ export class OpenRouterClient implements AIClient {
     }
 
     // OpenRouter API is OpenAI-compatible
+    // Increased timeout for long-running notes generation (up to 5 minutes)
+    const timeout = parseInt(process.env.OPENROUTER_TIMEOUT || '300000', 10) // 5 minutes default
     this.client = new OpenAI({
       apiKey: trimmedKey,
       baseURL: 'https://openrouter.ai/api/v1',
-      timeout: 120000, // 2 minute timeout (120 seconds) - prevent hanging
+      timeout, // Configurable timeout (default 5 minutes for notes generation)
       defaultHeaders: {
         'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
         'X-Title': 'Brain-Brawl Study App',
@@ -111,29 +113,38 @@ export class OpenRouterClient implements AIClient {
       model = mappedModel
     }
 
-    try {
-      const requestOptions: any = {
-        model,
-        messages: textOnlyMessages.map(msg => ({
-          role: msg.role,
-          content: msg.content,
-        })),
-        temperature: options.temperature ?? 0.2,
-        response_format: options.responseFormat ? { type: options.responseFormat } : undefined,
-      }
-      
-      // OpenRouter/Moonshot models support up to 32,000 max_tokens for output
-      // For notes generation, we need more tokens to ensure complete JSON responses
-      if (options.responseFormat === 'json_object') {
-        requestOptions.max_tokens = options.maxTokens || 32000 // Increase for complete JSON responses
-      } else {
-        requestOptions.max_tokens = options.maxTokens || 16000
-      }
-      if (options.maxTokens) {
-        requestOptions.max_tokens = Math.min(options.maxTokens, 32000)
-      }
-      
-      const response = await this.client.chat.completions.create(requestOptions)
+    // Retry logic for transient network errors
+    const maxRetries = 2
+    let lastError: any = null
+    
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const requestOptions: any = {
+          model,
+          messages: textOnlyMessages.map(msg => ({
+            role: msg.role,
+            content: msg.content,
+          })),
+          temperature: options.temperature ?? 0.2,
+          response_format: options.responseFormat ? { type: options.responseFormat } : undefined,
+        }
+        
+        // OpenRouter/Moonshot models support up to 32,000 max_tokens for output
+        // For notes generation, we need more tokens to ensure complete JSON responses
+        if (options.responseFormat === 'json_object') {
+          requestOptions.max_tokens = options.maxTokens || 32000 // Increase for complete JSON responses
+        } else {
+          requestOptions.max_tokens = options.maxTokens || 16000
+        }
+        if (options.maxTokens) {
+          requestOptions.max_tokens = Math.min(options.maxTokens, 32000)
+        }
+        
+        if (attempt > 0 && process.env.NODE_ENV === 'development') {
+          console.log(`🔄 [OPENROUTER] Retry attempt ${attempt}/${maxRetries}...`)
+        }
+        
+        const response = await this.client.chat.completions.create(requestOptions)
 
       // Log full response structure for debugging (especially for thinking models)
       if (process.env.NODE_ENV === 'development') {
@@ -209,18 +220,48 @@ export class OpenRouterClient implements AIClient {
         console.log(`✅ [OPENROUTER] Extracted content: ${content.length} characters`)
       }
 
-      return {
-        id: response.id,
-        model: response.model,
-        content,
-        usage: {
-          prompt_tokens: response.usage?.prompt_tokens || 0,
-          completion_tokens: response.usage?.completion_tokens || 0,
-          total_tokens: response.usage?.total_tokens || 0,
-        },
-        provider: 'moonshot', // Keep provider as 'moonshot' for compatibility
+        return {
+          id: response.id,
+          model: response.model,
+          content,
+          usage: {
+            prompt_tokens: response.usage?.prompt_tokens || 0,
+            completion_tokens: response.usage?.completion_tokens || 0,
+            total_tokens: response.usage?.total_tokens || 0,
+          },
+          provider: 'moonshot', // Keep provider as 'moonshot' for compatibility
+        }
+      } catch (error: any) {
+        lastError = error
+        
+        // Check if this is a retryable error (network/connection issues)
+        const isRetryable = 
+          error?.code === 'ECONNRESET' ||
+          error?.message?.includes('terminated') ||
+          error?.message?.includes('ECONNRESET') ||
+          error?.message?.includes('timeout') ||
+          error?.message?.includes('ETIMEDOUT') ||
+          (error?.status >= 500 && error?.status < 600) // Server errors
+        
+        if (isRetryable && attempt < maxRetries) {
+          // Wait before retrying (exponential backoff)
+          const delay = Math.min(1000 * Math.pow(2, attempt), 5000) // Max 5 seconds
+          if (process.env.NODE_ENV === 'development') {
+            console.warn(`⚠️ [OPENROUTER] Retryable error (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms...`)
+            console.warn(`   Error: ${error?.message || error?.code || 'Unknown'}`)
+          }
+          await new Promise(resolve => setTimeout(resolve, delay))
+          continue // Retry
+        }
+        
+        // Not retryable or out of retries - break and handle error
+        break
       }
-    } catch (error: any) {
+    }
+    
+    // If we get here and lastError is set, the request failed after all retries
+    if (lastError) {
+      const error = lastError
       // Log full error details for debugging
       console.error('❌ [OPENROUTER] API call failed:', {
         status: error?.status,
@@ -298,6 +339,9 @@ export class OpenRouterClient implements AIClient {
       // Re-throw other errors as-is
       throw error
     }
+    
+    // This should never be reached, but TypeScript needs it
+    throw new Error('OpenRouter API call failed after retries')
   }
 
   /**

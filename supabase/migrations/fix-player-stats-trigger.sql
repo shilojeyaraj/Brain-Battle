@@ -8,7 +8,7 @@ DROP FUNCTION IF EXISTS update_player_stats_after_game();
 
 -- Updated function that creates stats if missing
 CREATE OR REPLACE FUNCTION update_player_stats_after_game()
-RETURNS TRIGGER AS $$
+RETURNS TRIGGER AS $$ 
 DECLARE
     stats_exists BOOLEAN;
 BEGIN

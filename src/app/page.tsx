@@ -655,10 +655,17 @@ export default function HomePage() {
             <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-slate-950 via-slate-950/80 to-transparent z-10 pointer-events-none" />
             
             {/* Carousel container */}
-            <div className="flex animate-scroll-left" style={{ willChange: 'transform', width: 'max-content' }}>
+            <div 
+              className="flex animate-scroll-left" 
+              style={{ 
+                willChange: 'transform', 
+                width: 'max-content',
+                transform: 'translateZ(0)', // Force hardware acceleration
+              }}
+            >
               {/* First set of logos - using logos from logos folder with greyscale */}
               {[
-                { src: "/logos/uoftnobg.webp", alt: "University of Toronto", filter: 'brightness(0) invert(1) contrast(1.2)', width: 350, height: 140 },
+                { src: "/logos/uoftnobg.webp", alt: "University of Toronto", filter: 'grayscale(100%) brightness(0) invert(1) contrast(1.2)', width: 350, height: 140 },
                 { src: "/logos/uwaterloonobg.png", alt: "University of Waterloo", filter: 'brightness(0) invert(1) brightness(3) contrast(1.3)' },
                 { src: "/logos/McMaster-logo.png", alt: "McMaster University", filter: 'brightness(0) invert(1) contrast(1.2)' },
                 { src: "/logos/lauriernobg.png", alt: "Wilfrid Laurier University", filter: 'brightness(0) invert(1)' },
@@ -698,9 +705,9 @@ export default function HomePage() {
               
               {/* Duplicate set for seamless loop */}
               {[
-                { src: "/logos/uoftnobg.webp", alt: "University of Toronto", filter: 'brightness(0) invert(1) contrast(1.2)', width: 350, height: 140 },
+                { src: "/logos/uoftnobg.webp", alt: "University of Toronto", filter: 'grayscale(100%) brightness(0) invert(1) contrast(1.2)', width: 350, height: 140 },
                 { src: "/logos/uwaterloonobg.png", alt: "University of Waterloo", filter: 'brightness(0) invert(1) brightness(3) contrast(1.3)' },
-                { src: "/logos/McMaster-logo.png", alt: "McMaster University", filter: 'brightness(0) invert(1) contrast(1.2)' },
+                { src: "/logos/McMaster-logo.png", alt: "McMaster University", filter: 'brightness(1.5) invert(1) contrast(1.1) saturate(0.8)' },
                 { src: "/logos/lauriernobg.png", alt: "Wilfrid Laurier University", filter: 'brightness(0) invert(1)' },
                 { src: "/logos/brocknobg.png", alt: "Brock University", filter: 'brightness(0) invert(1)' },
                 { src: "/logos/yorklogo.png", alt: "York University", filter: 'brightness(0) invert(1)' },

@@ -315,13 +315,22 @@
   display: flex;
   width: max-content;
   will-change: transform; /* Optimize animation performance */
+  /* Force hardware acceleration */
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
-/* Ensure carousel works in production */
+/* Ensure carousel works in production - override reduced motion for this specific animation */
 @media (prefers-reduced-motion: no-preference) {
   .animate-scroll-left {
-    animation: scroll-left 30s linear infinite;
+    animation: scroll-left 30s linear infinite !important;
   }
+}
+
+/* Force animation even if reduced motion is enabled (carousel is decorative) */
+.animate-scroll-left {
+  animation: scroll-left 30s linear infinite !important;
 }
 
 /* 🚀 OPTIMIZATION: Smooth scrolling and performance */
@@ -344,6 +353,11 @@ html {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+  
+  /* Exception: Keep carousel animation (it's decorative and important for UX) */
+  .animate-scroll-left {
+    animation: scroll-left 30s linear infinite !important;
   }
 }
 

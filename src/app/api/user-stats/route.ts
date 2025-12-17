@@ -63,6 +63,7 @@ export async function GET(request: NextRequest) {
           xp_earned,
           completed_at,
           session_id,
+          user_id,
           quiz_sessions!left(
             id,
             session_name,
@@ -139,17 +140,50 @@ export async function GET(request: NextRequest) {
           console.warn('⚠️ [USER STATS] Game result missing quiz session:', game.id)
           return false
         }
+        // Verify user_id matches (security check)
+        if (game.user_id !== userIdString) {
+          console.warn('⚠️ [USER STATS] Game result user_id mismatch:', {
+            game_id: game.id,
+            game_user_id: game.user_id,
+            requested_user_id: userIdString
+          })
+          return false
+        }
         return true
       })
       .map((game: any) => {
         const isSingleplayer = !game.quiz_sessions?.room_id
-        const baseName = game.quiz_sessions?.session_name || `Battle ${game.id.substring(0, 8)}`
+        // Handle case where session_name might not exist in schema
+        // Fallback to a descriptive name based on game data
+        let baseName = game.quiz_sessions?.session_name
+        if (!baseName) {
+          // Try to construct a name from available data
+          const dateStr = new Date(game.completed_at).toLocaleDateString()
+          baseName = isSingleplayer 
+            ? `Singleplayer Battle - ${dateStr}`
+            : `Multiplayer Battle - ${dateStr}`
+        }
+        
+        // Get username from profile (already fetched above)
+        const username = profile?.username || 'You'
+        
+        console.log('📊 [USER STATS] Formatting battle history entry:', {
+          game_id: game.id,
+          session_id: game.session_id,
+          session_name: baseName,
+          username: username,
+          user_id: game.user_id,
+          isSingleplayer: isSingleplayer,
+          score: `${game.correct_answers}/${game.questions_answered}`,
+          xp_earned: game.xp_earned
+        })
+        
         return {
           id: game.id,
           session_id: game.session_id || game.quiz_sessions?.id,
           name: baseName,
           subject: isSingleplayer
-            ? baseName.replace('Singleplayer: ', '')
+            ? baseName.replace('Singleplayer: ', '').replace('Singleplayer Battle - ', '')
             : baseName,
           result: isSingleplayer
             ? "Practice"
@@ -161,9 +195,13 @@ export async function GET(request: NextRequest) {
           players: isSingleplayer ? "1" : "Multiplayer",
           date: new Date(game.completed_at).toLocaleDateString(),
           xpEarned: game.xp_earned || 0,
-          percentage: Math.round((game.correct_answers / game.questions_answered) * 100)
+          percentage: Math.round((game.correct_answers / game.questions_answered) * 100),
+          username: username, // Include username for display
+          user_id: game.user_id // Include user_id for verification
         }
       })
+    
+    console.log(`✅ [USER STATS] Formatted ${formattedRecentGames.length} battle history entries for user ${userIdString}`)
 
     // 🚀 OPTIMIZATION: Return data directly (already filtered by select())
     // 🚀 OPTIMIZATION: Reduced cache time to 0 for immediate updates after quiz completion

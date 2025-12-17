@@ -18,7 +18,7 @@ import { createAIClient } from "@/lib/ai/client-factory"
 import { extractTextFromDocument } from "@/lib/document-text-extractor"
 import type { AIChatMessage } from "@/lib/ai/types"
 import { initializeBrowserPolyfills } from "@/lib/polyfills/browser-apis"
-import { createHash } from "crypto"
+import { createHash, randomUUID } from "crypto"
 
 // Ensure this route runs in the Node.js runtime (needed for pdfjs + Supabase client libs)
 export const runtime = 'nodejs'
@@ -150,8 +150,20 @@ export async function POST(req: NextRequest) {
   // This must happen before pdf-parse or pdfjs-dist are imported/used
   initializeBrowserPolyfills()
 
+  // MEMORY ARCHITECTURE: Initialize session tracking
+  const sessionStartTime = Date.now()
+  const sessionId = randomUUID()
+  const { ProgressLogger } = await import('@/lib/domain-memory/progress-logger')
+  const { FeatureFlags } = await import('@/lib/config/feature-flags')
+  const errorsEncountered: string[] = []
+  let totalTokensUsed = 0
+
   if (process.env.NODE_ENV === 'development') {
     console.log("🚀 [NOTES API] Starting notes generation request...")
+    if (FeatureFlags.DEBUG_MEMORY) {
+      console.log(`  📊 [MEMORY] Session ID: ${sessionId}`)
+      console.log(`  📊 [MEMORY] Enabled features:`, Object.entries(FeatureFlags).filter(([_, v]) => v).map(([k]) => k))
+    }
   }
   try {
     // SECURITY: Get userId from session cookie, not form data
@@ -882,6 +894,57 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
       ? `STUDY TOPIC: ${studyTopic}`
       : `STUDY TOPIC: Analyze the uploaded documents and determine the subject matter from their content. Extract the main topic, theme, or subject from the document text itself.`
     
+    // MEMORY ARCHITECTURE: Context Compilation (optional, behind feature flag)
+    let compiledFileContents = fileContents
+    if (FeatureFlags.CONTEXT_COMPILATION) {
+      const { ContextCompiler } = await import('@/lib/context/context-compiler')
+      try {
+        compiledFileContents = fileContents.map((content, index) => {
+          const compiled = ContextCompiler.compileForNotesGeneration(
+            content,
+            topic || studyTopic || '',
+            { maxTokens: 15000 }
+          )
+          if (FeatureFlags.DEBUG_MEMORY) {
+            const originalTokens = Math.ceil(content.length / 4)
+            const compiledTokens = Math.ceil(compiled.length / 4)
+            const reduction = ((1 - compiledTokens / originalTokens) * 100).toFixed(1)
+            console.log(`  📊 [CONTEXT COMPILER] File ${index + 1}: ${originalTokens} -> ${compiledTokens} tokens (${reduction}% reduction)`)
+          }
+          return compiled
+        })
+      } catch (compileError) {
+        // Fail-safe: use original content if compilation fails
+        console.warn('[NOTES API] Context compilation failed, using original content:', compileError)
+        errorsEncountered.push(`Context compilation failed: ${compileError instanceof Error ? compileError.message : 'Unknown error'}`)
+      }
+    }
+
+    // MEMORY ARCHITECTURE: Retrieve patterns (optional, behind feature flag)
+    let retrievedPatterns: any[] = []
+    if (FeatureFlags.PATTERN_MEMORY) {
+      try {
+        const { PatternMemory } = await import('@/lib/memory/pattern-memory')
+        const documentTypes = fileNames.map(f => f.split('.').pop() || 'unknown')
+        retrievedPatterns = await PatternMemory.retrievePatterns(
+          'formula_extraction',
+          {
+            document_types: documentTypes,
+            subject: topic || studyTopic || 'general',
+          },
+          3 // Limit to 3 most relevant patterns
+        )
+        if (retrievedPatterns.length > 0 && FeatureFlags.DEBUG_MEMORY) {
+          console.log(`  📊 [PATTERN MEMORY] Retrieved ${retrievedPatterns.length} patterns for formula extraction`)
+        }
+      } catch (patternError) {
+        // Fail silently - pattern retrieval is optional
+        if (FeatureFlags.DEBUG_MEMORY) {
+          console.warn('[NOTES API] Pattern retrieval failed (non-critical):', patternError)
+        }
+      }
+    }
+
     const userPrompt = `Generate comprehensive study notes based on the ACTUAL CONTENT from these specific documents:
 
 ${topicInstruction}
@@ -896,8 +959,13 @@ STUDY INSTRUCTIONS: ${instructions || 'Analyze the uploaded documents and create
 - Every fact, example, and definition must come directly from the document text below
 - If the document content is about "${fileNames[0] || 'the uploaded file'}", your notes MUST be about that topic
 
+${retrievedPatterns.length > 0 ? `
+PATTERNS FROM PAST RUNS (learn from these):
+${retrievedPatterns.map((p, i) => `${i + 1}. ${p.pattern_data?.approach || p.pattern_data?.learning || 'Pattern'} (${p.outcome})`).join('\n')}
+` : ''}
+
 DOCUMENT CONTENT (EXTRACT THE SPECIFIC INFORMATION FROM THESE - THIS IS THE ACTUAL CONTENT):
-${fileContents.map((content, index) => `--- DOCUMENT ${index + 1}: ${fileNames[index] || `File ${index + 1}`} (${content.length} characters) ---\n${content}\n`).join('\n\n')}
+${compiledFileContents.map((content, index) => `--- DOCUMENT ${index + 1}: ${fileNames[index] || `File ${index + 1}`} (${content.length} characters) ---\n${content}\n`).join('\n\n')}
 
 VALIDATION: The document content above contains ${fileContents.join('').length} total characters. You MUST base all notes on this actual content, not on the topic name or generic knowledge.
 
@@ -1169,6 +1237,10 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
     responseId = response.id
     modelUsed = response.model
     usage = response.usage
+    // MEMORY ARCHITECTURE: Track token usage
+    if (usage) {
+      totalTokensUsed = (usage.total_tokens || 0) + totalTokensUsed
+    }
     // Provider is always 'moonshot' since we're using Moonshot client
 
     console.log(`✅ [NOTES API] Moonshot (Kimi K2) API call successful`)
@@ -1660,6 +1732,26 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
       console.warn('⚠️ [NOTES API] Skipping study_notes_cache insert (no document_id available)')
     }
 
+    // MEMORY ARCHITECTURE: Log progress (non-blocking, doesn't affect response)
+    const processingTime = Date.now() - sessionStartTime
+    const qualityMetrics = ProgressLogger.extractQualityMetrics(enrichedNotes)
+    
+    ProgressLogger.logGeneration({
+      session_id: sessionId,
+      task_type: 'study_notes',
+      timestamp: new Date().toISOString(),
+      user_id: userId,
+      document_types: fileNames.map(f => f.split('.').pop() || 'unknown'),
+      features_worked_on: FeatureFlags.FEATURE_BACKLOG ? ['notes_generation'] : [],
+      key_learnings: errorsEncountered.length === 0 ? ['Generation completed successfully'] : [],
+      errors_encountered: errorsEncountered,
+      tokens_used: totalTokensUsed,
+      processing_time_ms: processingTime,
+      notes_quality_metrics: qualityMetrics,
+    }).catch(() => {
+      // Fail silently - logging is non-critical
+    })
+
     return NextResponse.json({ 
       success: true, 
       noteId: noteId, // May be null if save is still in progress
@@ -1677,6 +1769,39 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
     if (error instanceof Error && error.stack) {
       console.error(`❌ [NOTES API] Stack trace:`, error.stack)
     }
+
+    // MEMORY ARCHITECTURE: Log error to progress log (non-blocking)
+    try {
+      // Only log if session tracking was initialized and userId is available
+      if (typeof sessionStartTime !== 'undefined' && sessionId) {
+        const { ProgressLogger } = await import('@/lib/domain-memory/progress-logger')
+        const processingTime = Date.now() - sessionStartTime
+        // Try to get userId if not already available
+        let errorUserId: string | undefined = undefined
+        try {
+          const { getUserIdFromRequest } = await import('@/lib/auth/session-cookies')
+          const fetchedUserId = await getUserIdFromRequest(req)
+          errorUserId = fetchedUserId || undefined
+        } catch {
+          // Ignore - userId might not be available
+        }
+        
+        ProgressLogger.logGeneration({
+          session_id: sessionId,
+          task_type: 'study_notes',
+          timestamp: new Date().toISOString(),
+          user_id: errorUserId,
+          errors_encountered: [error instanceof Error ? error.message : 'Unknown error'],
+          tokens_used: totalTokensUsed || 0,
+          processing_time_ms: processingTime,
+        }).catch(() => {
+          // Fail silently - logging is non-critical
+        })
+      }
+    } catch (logError) {
+      // Ignore logging errors
+    }
+
     // SECURITY: Sanitize error message before sending to client
     const sanitized = sanitizeError(error, 'Failed to generate notes')
     return NextResponse.json(

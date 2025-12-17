@@ -37,8 +37,8 @@ function CreateQuizContent() {
     
     if (!isAuthenticated) {
       return // Already redirected to login
-    }
-    
+  }
+
     router.push("/singleplayer")
   }
 
@@ -65,38 +65,38 @@ function CreateQuizContent() {
         ]}
       />
       
-      <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
-        {/* Background Elements */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
-          <div
-            className="absolute -bottom-40 -left-40 w-80 h-80 bg-orange-500/10 rounded-full blur-3xl animate-float"
-            style={{ animationDelay: "1s" }}
-          />
-        </div>
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-950 to-slate-900">
+      {/* Background Elements */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl animate-float" />
+        <div
+          className="absolute -bottom-40 -left-40 w-80 h-80 bg-orange-500/10 rounded-full blur-3xl animate-float"
+          style={{ animationDelay: "1s" }}
+        />
+      </div>
 
-        <div className="relative z-10 container mx-auto px-6 py-12">
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="max-w-2xl mx-auto"
-          >
+      <div className="relative z-10 container mx-auto px-6 py-12">
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="max-w-2xl mx-auto"
+        >
             {/* Breadcrumbs */}
             <div className="mb-6">
               <Breadcrumbs items={[{ label: "Create Quiz" }]} />
             </div>
             
-            <div className="mb-8">
+          <div className="mb-8">
               <Link href="/">
-                <Button
-                  className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black border-2 border-orange-400 shadow-lg hover:shadow-xl hover:shadow-orange-500/50"
-                >
-                  <ArrowLeft className="w-4 h-4 mr-2" strokeWidth={3} />
+              <Button
+                className="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-black border-2 border-orange-400 shadow-lg hover:shadow-xl hover:shadow-orange-500/50"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" strokeWidth={3} />
                   Back to Home
-                </Button>
-              </Link>
-            </div>
+              </Button>
+            </Link>
+          </div>
 
           <div className="text-center mb-12">
             <div className="flex items-center justify-center gap-3 mb-4">
@@ -191,9 +191,9 @@ function CreateQuizContent() {
                     </>
                   ) : (
                     <>
-                      <Sparkles className="w-5 h-5 mr-2" strokeWidth={3} />
-                      Start Creating Quiz
-                      <ArrowRight className="w-5 h-5 ml-2" strokeWidth={3} />
+                  <Sparkles className="w-5 h-5 mr-2" strokeWidth={3} />
+                  Start Creating Quiz
+                  <ArrowRight className="w-5 h-5 ml-2" strokeWidth={3} />
                     </>
                   )}
                 </Button>

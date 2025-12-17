@@ -1265,15 +1265,14 @@ CRITICAL REQUIREMENTS:
     if (!sessionIdToUse) {
       try {
         console.log('ℹ️ [QUIZ API] No sessionId provided; creating singleplayer quiz_session...')
+        // Use schema.sql schema: id, room_id, unit_id, status, total_questions, started_at, ended_at, winner_user_id, created_at
+        // Note: session_name, time_limit, is_active don't exist in schema.sql
         const { data: newSession, error: sessionError } = await supabase
           .from('quiz_sessions')
           .insert({
-            user_id: userId,
-            session_name: topic ? `Singleplayer: ${topic}` : 'Singleplayer Quiz',
+            room_id: null, // NULL for singleplayer (enabled by enable-singleplayer-sessions migration)
             total_questions: validatedQuestions.length,
-            time_limit: 30,
-            is_active: true,
-            room_id: null,
+            status: 'active', // Use status instead of is_active
             started_at: new Date().toISOString()
           })
           .select('id')

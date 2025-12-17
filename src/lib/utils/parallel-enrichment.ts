@@ -285,42 +285,95 @@ export async function generateEmbeddingsForNotes(
 ): Promise<{ success: boolean; result?: any; error?: string }> {
   try {
     const combinedText = fileContents.join('\n\n')
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000')
     
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`  🌐 [EMBEDDINGS] Using base URL: ${baseUrl}`)
-      console.log(`  🔧 [EMBEDDINGS] Environment check: VERCEL_URL=${process.env.VERCEL_URL}, NEXT_PUBLIC_APP_URL=${process.env.NEXT_PUBLIC_APP_URL}`)
+    // Call embeddings function directly instead of via HTTP to avoid cookie/auth issues
+    // Import the embeddings logic directly
+    const { OpenAIClient } = await import('@/lib/ai/openai-client')
+    const { createClient } = await import('@/lib/supabase/server')
+    
+    if (!process.env.OPENAI_API_KEY) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`⚠️ [EMBEDDINGS] OPENAI_API_KEY not set, skipping embeddings generation`)
+      }
+      return { success: false, error: 'OPENAI_API_KEY not configured' }
     }
     
-    const embeddingResponse = await fetch(`${baseUrl}/api/embeddings`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text: combinedText,
-        fileName: fileNames.join(', '),
-        fileType: 'study_notes',
-        userId: userId
-      }),
-      signal: AbortSignal.timeout(30000) // 30 second timeout
-    })
+    // Generate embeddings using OpenAI client directly
+    const openAIClient = new OpenAIClient()
     
-    if (embeddingResponse.ok) {
-      const embeddingResult = await embeddingResponse.json()
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`✅ [EMBEDDINGS] Embeddings generated successfully`)
-        console.log(`  - Chunks processed: ${embeddingResult.chunksProcessed}`)
-        console.log(`  - Subject tags: ${embeddingResult.metadata?.subjectTags?.join(', ') || 'None'}`)
-        console.log(`  - Course topics: ${embeddingResult.metadata?.courseTopics?.join(', ') || 'None'}`)
-        console.log(`  - Difficulty: ${embeddingResult.metadata?.difficultyLevel || 'Unknown'}`)
+    // Chunk text for embeddings (same logic as embeddings route)
+    function chunkText(text: string, chunkSize: number = 1000, overlap: number = 200): string[] {
+      const chunks: string[] = []
+      let start = 0
+      
+      while (start < text.length) {
+        const end = Math.min(start + chunkSize, text.length)
+        chunks.push(text.slice(start, end))
+        start = end - overlap
       }
-      return { success: true, result: embeddingResult }
-    } else {
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`⚠️ [EMBEDDINGS] Failed to generate embeddings: ${embeddingResponse.status}`)
+      
+      return chunks
+    }
+    
+    const textChunks = chunkText(combinedText)
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`  🔧 [EMBEDDINGS] Generating embeddings for ${textChunks.length} chunks`)
+    }
+    
+    // Generate embeddings
+    const embeddings = await openAIClient.createEmbeddings(textChunks, "text-embedding-3-small")
+    
+    // Analyze first chunk for metadata (simplified)
+    const metadata = {
+      subjectTags: [] as string[],
+      courseTopics: [] as string[],
+      difficultyLevel: 'medium'
+    }
+    
+    // Store embeddings in database
+    const supabase = await createClient()
+    
+    const embeddingRecords = textChunks.map((chunk, index) => ({
+      user_id: userId,
+      file_name: fileNames.join(', '),
+      file_type: 'study_notes',
+      chunk_index: index,
+      chunk_text: chunk,
+      chunk_metadata: {
+        chunk_length: chunk.length,
+        total_chunks: textChunks.length,
+        ...metadata
+      },
+      embedding: embeddings[index],
+      subject_tags: metadata.subjectTags,
+      course_topics: metadata.courseTopics,
+      difficulty_level: metadata.difficultyLevel
+    }))
+    
+    const { error } = await supabase
+      .from('document_embeddings')
+      .insert(embeddingRecords)
+    
+    if (error) {
+      console.error('❌ [EMBEDDINGS] Error storing embeddings:', error)
+      return { success: false, error: 'Failed to store embeddings' }
+    }
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`✅ [EMBEDDINGS] Embeddings generated and stored successfully`)
+      console.log(`  - Chunks processed: ${textChunks.length}`)
+      console.log(`  - Subject tags: ${metadata.subjectTags.join(', ') || 'None'}`)
+      console.log(`  - Course topics: ${metadata.courseTopics.join(', ') || 'None'}`)
+      console.log(`  - Difficulty: ${metadata.difficultyLevel}`)
+    }
+    
+    return { 
+      success: true, 
+      result: {
+        chunksProcessed: textChunks.length,
+        metadata: metadata
       }
-      return { success: false, error: `HTTP ${embeddingResponse.status}` }
     }
   } catch (error) {
     console.error(`❌ [EMBEDDINGS] Error generating embeddings:`, error)

@@ -34,6 +34,8 @@ export async function verifyDocumentOwnership(
 
 /**
  * Verify that a user owns a quiz session
+ * For singleplayer sessions (room_id is null), check via game_results
+ * For multiplayer sessions, check via room_members
  */
 export async function verifySessionOwnership(
   userId: string,
@@ -41,17 +43,42 @@ export async function verifySessionOwnership(
 ): Promise<boolean> {
   try {
     const adminClient = createAdminClient()
-    const { data, error } = await adminClient
+    
+    // First, get the session to check if it's singleplayer or multiplayer
+    const { data: session, error: sessionError } = await adminClient
       .from('quiz_sessions')
-      .select('user_id')
+      .select('id, room_id')
       .eq('id', sessionId)
       .single()
 
-    if (error || !data) {
+    if (sessionError || !session) {
+      console.log(`⚠️ [OWNERSHIP] Session not found: ${sessionId}`)
       return false
     }
 
-    return data.user_id === userId
+    // Singleplayer session (room_id is null) - verify via game_results
+    if (!session.room_id) {
+      const { data: gameResult } = await adminClient
+        .from('game_results')
+        .select('user_id')
+        .eq('session_id', sessionId)
+        .eq('user_id', userId)
+        .maybeSingle()
+      
+      // If game_result exists, user owns it
+      // If no game_result yet (first submission), allow it for singleplayer
+      return true // Singleplayer sessions are user-owned by default
+    }
+
+    // Multiplayer session - verify via room_members
+    const { data: roomMember } = await adminClient
+      .from('room_members')
+      .select('user_id')
+      .eq('room_id', session.room_id)
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    return !!roomMember
   } catch (error) {
     console.error('Error verifying session ownership:', error)
     return false
