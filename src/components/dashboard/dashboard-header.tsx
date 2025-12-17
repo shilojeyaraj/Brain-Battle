@@ -167,13 +167,13 @@ function DashboardHeaderContent({ onToggleStats, showStats }: DashboardHeaderCon
             <div className="hidden md:flex items-center gap-4 text-sm">
               <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/60 border border-slate-700/50 backdrop-blur-sm">
                 <Trophy className="h-5 w-5 text-primary" strokeWidth={3} />
-                <span className="text-slate-400 font-bold">Rank:</span>
-                <span className="font-black text-primary">#New</span>
+                <span className="text-slate-400 font-bold">Level:</span>
+                <span className="font-black text-primary">{userProfile?.stats?.level || 1}</span>
               </div>
               <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/60 border border-slate-700/50 backdrop-blur-sm">
                 <Star className="h-5 w-5 text-secondary" strokeWidth={3} />
                 <span className="text-slate-400 font-bold">XP:</span>
-                <span className="font-black text-secondary">0</span>
+                <span className="font-black text-secondary">{userProfile?.stats?.xp || 0}</span>
               </div>
               <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/60 border border-slate-700/50 backdrop-blur-sm">
                 <Flame className="h-5 w-5 text-orange-500" strokeWidth={3} />

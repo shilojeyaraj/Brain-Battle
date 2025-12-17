@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
         .single(),
       supabase
         .from('player_stats')
-        .select('level, xp, total_games, total_wins, win_streak, best_streak, total_questions_answered, correct_answers, accuracy, daily_streak, longest_streak, last_activity_date, updated_at')
+        .select('level, xp, total_games, total_wins, total_losses, win_streak, best_streak, total_questions_answered, correct_answers, accuracy, average_response_time, favorite_subject, daily_streak, longest_streak, last_activity_date, updated_at')
         .eq('user_id', userIdString)
         .single(),
       supabase

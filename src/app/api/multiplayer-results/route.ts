@@ -227,6 +227,106 @@ export async function POST(request: NextRequest) {
       console.error('❌ [MULTIPLAYER RESULTS] Error updating room status:', roomUpdateError)
     }
 
+    // Update player_stats for each player and check achievements
+    const { createAdminClient } = await import('@/lib/supabase/server-admin')
+    const adminClient = createAdminClient()
+    
+    for (const playerResult of player_results) {
+      // Skip if player was already processed (duplicate)
+      if (skippedPlayers.includes(playerResult.user_id)) {
+        continue
+      }
+      
+      const rank = rankings.get(playerResult.user_id) || player_results.length
+      const isWin = rank === 1 // First place is a win
+      const insertedResult = gameResults.find(r => r.user_id === playerResult.user_id)
+      const xpEarned = insertedResult?.xp_earned || 0
+      
+      try {
+        // Get current stats
+        const { data: currentStats, error: statsGetError } = await adminClient
+          .from('player_stats')
+          .select('*')
+          .eq('user_id', playerResult.user_id)
+          .single()
+        
+        if (statsGetError || !currentStats) {
+          console.error(`❌ [MULTIPLAYER RESULTS] Error fetching stats for player ${playerResult.user_id}:`, statsGetError)
+          continue
+        }
+        
+        // Calculate new stats
+        const newTotalGames = (currentStats.total_games || 0) + 1
+        const newTotalWins = isWin ? (currentStats.total_wins || 0) + 1 : (currentStats.total_wins || 0)
+        const newTotalLosses = !isWin ? (currentStats.total_losses || 0) + 1 : (currentStats.total_losses || 0)
+        const newWinStreak = isWin ? (currentStats.win_streak || 0) + 1 : 0
+        const newBestStreak = Math.max(currentStats.best_streak || 0, newWinStreak)
+        const newTotalQuestions = (currentStats.total_questions_answered || 0) + playerResult.questions_answered
+        const newCorrectAnswers = (currentStats.correct_answers || 0) + playerResult.correct_answers
+        const newAccuracy = newTotalQuestions > 0 ? (newCorrectAnswers / newTotalQuestions) * 100 : 0
+        const newXP = (currentStats.xp || 0) + xpEarned
+        const newLevel = Math.floor(newXP / 1000) + 1
+        
+        // Update player stats
+        const { error: statsUpdateError } = await adminClient
+          .from('player_stats')
+          .update({
+            total_games: newTotalGames,
+            total_wins: newTotalWins,
+            total_losses: newTotalLosses,
+            win_streak: newWinStreak,
+            best_streak: newBestStreak,
+            total_questions_answered: newTotalQuestions,
+            correct_answers: newCorrectAnswers,
+            accuracy: newAccuracy,
+            xp: newXP,
+            level: newLevel,
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', playerResult.user_id)
+        
+        if (statsUpdateError) {
+          console.error(`❌ [MULTIPLAYER RESULTS] Error updating stats for player ${playerResult.user_id}:`, statsUpdateError)
+        } else {
+          console.log(`✅ [MULTIPLAYER RESULTS] Updated stats for player ${playerResult.user_id}: +${xpEarned} XP, ${isWin ? 'WIN' : 'LOSS'}`)
+        }
+        
+        // Check and unlock achievements
+        try {
+          const { checkAndUnlockAchievements, checkCustomAchievements } = await import('@/lib/achievements/achievement-checker')
+          
+          const isPerfectScore = playerResult.correct_answers === playerResult.questions_answered && playerResult.questions_answered > 0
+          
+          // Check standard achievements
+          const unlockedStandard = await checkAndUnlockAchievements(playerResult.user_id)
+          
+          // Check custom achievements
+          const unlockedCustom = await checkCustomAchievements(playerResult.user_id, {
+            isPerfectScore,
+            isMultiplayer: true,
+            isWin: isWin,
+          })
+          
+          const totalUnlocked = unlockedStandard.length + unlockedCustom.length
+          if (totalUnlocked > 0) {
+            console.log(`🏆 [MULTIPLAYER RESULTS] Player ${playerResult.user_id} unlocked ${totalUnlocked} achievement(s)`)
+          }
+        } catch (achievementError) {
+          console.error(`❌ [MULTIPLAYER RESULTS] Error checking achievements for player ${playerResult.user_id}:`, achievementError)
+        }
+        
+        // Update daily streak
+        try {
+          const { calculateUserStreak } = await import('@/lib/streak/streak-calculator')
+          await calculateUserStreak(playerResult.user_id)
+        } catch (streakError) {
+          console.error(`❌ [MULTIPLAYER RESULTS] Error updating streak for player ${playerResult.user_id}:`, streakError)
+        }
+      } catch (playerError) {
+        console.error(`❌ [MULTIPLAYER RESULTS] Error processing player ${playerResult.user_id}:`, playerError)
+      }
+    }
+
     // Prepare response with rankings and XP breakdowns
     const responseResults = player_results.map(player => {
       const rank = rankings.get(player.user_id) || player_results.length

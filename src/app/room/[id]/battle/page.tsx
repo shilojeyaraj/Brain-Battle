@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Clock, Target, Trophy, Zap, AlertTriangle, EyeOff, X, Star, TrendingUp, Users } from "lucide-react"
+import { ArrowLeft, Clock, Target, Trophy, Zap, AlertTriangle, EyeOff, X, Star, TrendingUp, Users, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { useAntiCheat, CheatEvent } from "@/hooks/use-anti-cheat"
 import { QuizProgressBar } from "@/components/ui/quiz-progress-bar"
@@ -14,6 +14,8 @@ import { useParams, useRouter } from "next/navigation"
 import { useFeedback } from "@/hooks/useFeedback"
 import { useBackgroundMusic } from "@/hooks/use-background-music"
 import { RewardToast } from "@/components/feedback/GameFeedback"
+import { useAchievements } from "@/hooks/use-achievements"
+import { AchievementNotification } from "@/components/achievements/achievement-notification"
 
 interface Question {
   id: number
@@ -57,12 +59,18 @@ export default function MultiplayerBattlePage() {
   const [cheatViolations, setCheatViolations] = useState<CheatEvent[]>([])
   const [showCheatWarning, setShowCheatWarning] = useState(false)
   const [battleComplete, setBattleComplete] = useState(false)
+  const [isSubmittingResults, setIsSubmittingResults] = useState(false)
+  const [battleResults, setBattleResults] = useState<{
+    xpEarned: number
+    results: any[]
+  } | null>(null)
   
   const { id: roomId } = useParams()
   const router = useRouter()
   const supabase = createClient()
   const channelRef = useRef<any>(null)
   const { playCorrect, playWrong, burstConfetti } = useFeedback()
+  const { unlockedAchievements, dismissAchievement, addAchievements } = useAchievements()
 
   // Play battle background music (stops when battle is complete)
   useBackgroundMusic(battleComplete ? "none" : "battle")
@@ -343,6 +351,93 @@ export default function MultiplayerBattlePage() {
     handleAnswer(isCorrect ? 0 : 1)
   }, [currentQuestionData, textAnswer, handleAnswer])
 
+  // Handle battle completion - submit results to API
+  const handleBattleComplete = useCallback(async () => {
+    if (!quizSession || !currentUserId) {
+      console.error('❌ [BATTLE] Cannot submit results: missing session or user')
+      setBattleComplete(true)
+      return
+    }
+
+    setIsSubmittingResults(true)
+    
+    try {
+      // Reload latest player progress before submitting
+      await loadPlayerProgress(quizSession.id)
+      
+      // Get current player progress state after reload
+      const { data: latestProgress } = await supabase
+        .from('player_progress')
+        .select('user_id, correct_count, total_answered')
+        .eq('session_id', quizSession.id)
+
+      if (!latestProgress || latestProgress.length === 0) {
+        console.error('❌ [BATTLE] No player progress found')
+        setBattleComplete(true)
+        return
+      }
+
+      // Collect all player results
+      const player_results = latestProgress.map(p => ({
+        user_id: p.user_id,
+        score: (p.correct_count || 0) * 10,
+        questions_answered: p.total_answered || 0,
+        correct_answers: p.correct_count || 0,
+        total_time: 30 * questions.length, // Estimate based on time limit
+        average_time_per_question: 30
+      }))
+
+      console.log('📊 [BATTLE] Submitting multiplayer results:', {
+        session_id: quizSession.id,
+        room_id: roomId,
+        player_count: player_results.length
+      })
+
+      const response = await fetch('/api/multiplayer-results', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: quizSession.id,
+          room_id: roomId,
+          player_results
+        })
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        console.log('✅ [BATTLE] Multiplayer results submitted:', result)
+        
+        // Find current user's XP earned
+        const currentUserResult = result.results?.find((r: any) => r.user_id === currentUserId)
+        
+        setBattleResults({
+          xpEarned: currentUserResult?.xp_earned || 0,
+          results: result.results || []
+        })
+
+        // Dispatch event to refresh stats on dashboard
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('quizCompleted', { 
+            detail: { xpEarned: currentUserResult?.xp_earned || 0 } 
+          }))
+        }
+
+        // Check for any unlocked achievements in the response
+        if (result.unlockedAchievements && result.unlockedAchievements.length > 0) {
+          addAchievements(result.unlockedAchievements)
+        }
+      } else {
+        const errorData = await response.json()
+        console.error('❌ [BATTLE] Failed to submit results:', errorData)
+      }
+    } catch (error) {
+      console.error('❌ [BATTLE] Error submitting battle results:', error)
+    } finally {
+      setIsSubmittingResults(false)
+      setBattleComplete(true)
+    }
+  }, [quizSession, currentUserId, questions.length, roomId, supabase, addAchievements])
+
   const handleNext = useCallback(() => {
     if (currentQuestion < questions.length - 1) {
       setCurrentQuestion(prev => prev + 1)
@@ -351,10 +446,10 @@ export default function MultiplayerBattlePage() {
       setShowResult(false)
       setTimeLeft(30)
     } else {
-      // Quiz completed
-      setBattleComplete(true)
+      // Quiz completed - submit results to API
+      handleBattleComplete()
     }
-  }, [currentQuestion, questions.length])
+  }, [currentQuestion, questions.length, handleBattleComplete])
 
   const getScoreColor = useMemo(() => {
     const currentPlayerProgress = playerProgress.find(p => p.user_id === currentUserId)
@@ -381,6 +476,25 @@ export default function MultiplayerBattlePage() {
               Loading Battle...
             </h1>
             <p className="text-muted-foreground font-bold">Preparing your multiplayer quiz</p>
+          </Card>
+        </div>
+      </div>
+    )
+  }
+
+  // Submitting results state
+  if (isSubmittingResults) {
+    return (
+      <div className="min-h-screen bg-background p-6">
+        <div className="max-w-6xl mx-auto">
+          <Card className="p-8 bg-card cartoon-border cartoon-shadow text-center">
+            <div className="w-20 h-20 rounded-xl bg-primary flex items-center justify-center mx-auto mb-6 cartoon-border cartoon-shadow">
+              <Loader2 className="w-10 h-10 text-primary-foreground animate-spin" strokeWidth={3} />
+            </div>
+            <h1 className="text-3xl font-black text-foreground mb-4" style={{ fontFamily: "var(--font-display)" }}>
+              Calculating Results...
+            </h1>
+            <p className="text-muted-foreground font-bold">Updating stats and checking achievements</p>
           </Card>
         </div>
       </div>
@@ -415,8 +529,22 @@ export default function MultiplayerBattlePage() {
   }
 
   if (battleComplete) {
+    // Get current player's result
+    const currentPlayerResult = battleResults?.results?.find((r: any) => r.user_id === currentUserId)
+    const currentPlayerProgress = playerProgress.find(p => p.user_id === currentUserId)
+    const sortedResults = battleResults?.results?.sort((a: any, b: any) => a.rank - b.rank) || []
+    
     return (
       <div className="min-h-screen bg-background p-6">
+        {/* Achievement Notifications */}
+        {unlockedAchievements.map((achievement, index) => (
+          <AchievementNotification
+            key={`${achievement.code}-${index}`}
+            achievement={achievement}
+            onClose={() => dismissAchievement(index)}
+          />
+        ))}
+        
         <div className="max-w-6xl mx-auto">
           <Card className="p-8 bg-card cartoon-border cartoon-shadow text-center">
             <div className="w-20 h-20 rounded-xl bg-chart-3 flex items-center justify-center mx-auto mb-6 cartoon-border cartoon-shadow">
@@ -425,9 +553,81 @@ export default function MultiplayerBattlePage() {
             <h1 className="text-3xl font-black text-foreground mb-4" style={{ fontFamily: "var(--font-display)" }}>
               Battle Complete!
             </h1>
-            <p className="text-muted-foreground font-bold mb-6">
-              Great job! Check the final results in the room.
-            </p>
+            
+            {/* XP Earned Display */}
+            {battleResults && (
+              <div className="mb-6 p-4 rounded-xl bg-chart-3/20 border-2 border-chart-3/50 cartoon-border">
+                <div className="flex items-center justify-center gap-2 mb-2">
+                  <Star className="h-6 w-6 text-chart-3" strokeWidth={3} />
+                  <span className="text-2xl font-black text-chart-3">+{battleResults.xpEarned} XP</span>
+                </div>
+                {currentPlayerResult && (
+                  <p className="text-sm text-muted-foreground font-bold">
+                    Rank #{currentPlayerResult.rank} • {currentPlayerResult.correct_answers}/{currentPlayerResult.questions_answered} correct • {currentPlayerResult.accuracy?.toFixed(0)}% accuracy
+                  </p>
+                )}
+              </div>
+            )}
+            
+            {/* Final Leaderboard */}
+            {sortedResults.length > 0 && (
+              <div className="mb-6">
+                <h3 className="text-lg font-black text-foreground mb-4 flex items-center justify-center gap-2">
+                  <Users className="h-5 w-5 text-primary" strokeWidth={3} />
+                  Final Results
+                </h3>
+                <div className="space-y-3">
+                  {sortedResults.map((player: any, index: number) => {
+                    const isCurrentPlayer = player.user_id === currentUserId
+                    return (
+                      <div
+                        key={player.user_id}
+                        className={`p-4 rounded-xl border-2 ${
+                          isCurrentPlayer 
+                            ? "bg-primary/10 border-primary" 
+                            : "bg-muted/30 border-border"
+                        } cartoon-border`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-black ${
+                              player.rank === 1 ? "bg-chart-3 text-foreground" :
+                              player.rank === 2 ? "bg-primary text-primary-foreground" :
+                              player.rank === 3 ? "bg-secondary text-secondary-foreground" :
+                              "bg-muted text-muted-foreground"
+                            }`}>
+                              {player.rank}
+                            </div>
+                            <div className="text-left">
+                              <span className={`font-bold ${isCurrentPlayer ? "text-primary" : "text-foreground"}`}>
+                                {player.display_name}
+                                {isCurrentPlayer && " (You)"}
+                              </span>
+                              <p className="text-xs text-muted-foreground">
+                                {player.correct_answers}/{player.questions_answered} correct • {player.accuracy?.toFixed(0)}%
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="flex items-center gap-1">
+                              <Star className="h-4 w-4 text-chart-3" strokeWidth={3} />
+                              <span className="font-black text-chart-3">+{player.xp_earned} XP</span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            
+            {!battleResults && (
+              <p className="text-muted-foreground font-bold mb-6">
+                Great job! Your stats have been updated.
+              </p>
+            )}
+            
             <Link href={`/room/${roomId}`}>
               <Button className="w-full h-12 bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg cartoon-border cartoon-shadow cartoon-hover">
                 <ArrowLeft className="h-5 w-5 mr-2" strokeWidth={3} />
