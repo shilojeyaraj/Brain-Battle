@@ -100,6 +100,13 @@ IMPORTANT: Base all descriptions on BOTH the document context AND what you can s
         const skippedImages: string[] = []
 
         for (const img of batch) {
+          // Skip images without base64 data
+          if (!img.image_data_b64) {
+            this.log(`⚠️ Skipping image on page ${img.page}: missing image data`)
+            skippedImages.push(`Page ${img.page} (no data)`)
+            continue
+          }
+
           // Calculate approximate base64 size (base64 is ~33% larger than binary)
           const base64Size = img.image_data_b64.length
           const estimatedBinarySize = (base64Size * 3) / 4

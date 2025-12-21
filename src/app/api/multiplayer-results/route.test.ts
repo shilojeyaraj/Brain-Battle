@@ -10,12 +10,12 @@ jest.mock('@/lib/supabase/server', () => ({
         error: null
       })
     },
-    from: jest.fn((table: string) => {
+    from: jest.fn((table: string): any => {
       if (table === 'quiz_sessions') {
         return {
           select: jest.fn(() => ({
             eq: jest.fn(() => ({
-              single: jest.fn().mockResolvedValue({
+              single: jest.fn(() => Promise.resolve({
                 data: {
                   id: 'test-session-id',
                   room_id: 'test-room-id',
@@ -24,18 +24,18 @@ jest.mock('@/lib/supabase/server', () => ({
                   rooms: [{ id: 'test-room-id', difficulty: 'medium' }]
                 },
                 error: null
-              })
+              }))
             }))
           })),
           update: jest.fn(() => ({
-            eq: jest.fn().mockResolvedValue({ error: null })
+            eq: jest.fn(() => Promise.resolve({ error: null }))
           }))
         }
       }
       if (table === 'profiles') {
         return {
           select: jest.fn(() => ({
-            in: jest.fn().mockResolvedValue({
+            in: jest.fn(() => Promise.resolve({
               data: [
                 { user_id: 'user1', display_name: 'Player 1' },
                 { user_id: 'user2', display_name: 'Player 2' }
@@ -48,11 +48,18 @@ jest.mock('@/lib/supabase/server', () => ({
       if (table === 'player_stats') {
         return {
           select: jest.fn(() => ({
+            in: jest.fn(() => Promise.resolve({
+              data: [
+                { user_id: 'user1', win_streak: 0 },
+                { user_id: 'user2', win_streak: 0 }
+              ],
+              error: null
+            })),
             eq: jest.fn(() => ({
-              single: jest.fn().mockResolvedValue({
+              single: jest.fn(() => Promise.resolve({
                 data: { win_streak: 0 },
                 error: null
-              })
+              }))
             }))
           }))
         }
@@ -60,12 +67,20 @@ jest.mock('@/lib/supabase/server', () => ({
       if (table === 'game_results') {
         return {
           insert: jest.fn(() => ({
-            select: jest.fn().mockResolvedValue({
+            select: jest.fn(() => Promise.resolve({
               data: [
                 { user_id: 'user1', xp_earned: 100 },
                 { user_id: 'user2', xp_earned: 80 }
               ],
               error: null
+            }))
+          })),
+          select: jest.fn(() => ({
+            eq: jest.fn(() => ({
+              in: jest.fn(() => Promise.resolve({
+                data: [],
+                error: null
+              }))
             }))
           }))
         }
@@ -73,17 +88,27 @@ jest.mock('@/lib/supabase/server', () => ({
       if (table === 'game_rooms') {
         return {
           update: jest.fn(() => ({
-            eq: jest.fn().mockResolvedValue({ error: null })
+            eq: jest.fn(() => Promise.resolve({ error: null }))
+          }))
+        }
+      }
+      if (table === 'quiz_answers') {
+        return {
+          select: jest.fn(() => ({
+            eq: jest.fn(() => Promise.resolve({
+              data: [],
+              error: null
+            }))
           }))
         }
       }
       return {
         update: jest.fn(() => ({
-          eq: jest.fn().mockResolvedValue({ error: null })
+          eq: jest.fn(() => Promise.resolve({ error: null }))
         }))
       }
-    }
-  })
+    })
+  }))
 }))
 
 jest.mock('@/lib/xp-calculator', () => ({
@@ -231,4 +256,3 @@ describe('POST /api/multiplayer-results', () => {
     expect(data.results[1].rank).toBe(1)
   })
 })
-

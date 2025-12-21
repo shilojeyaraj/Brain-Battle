@@ -10,7 +10,6 @@ import { ArrowLeft, Upload, FileText, BookOpen, Brain, Zap, X, Plus, CheckCircle
 import Link from "next/link"
 import { generateQuizQuestions, extractTextFromFile } from "@/lib/actions/quiz-generation"
 import { StudyNotesViewer } from "@/components/study-notes/study-notes-viewer"
-import { StudyContextChatbot } from "@/components/study-assistant/study-context-chatbot"
 import { LoadingSkeleton } from "@/components/ui/loading-skeleton"
 import { motion } from "framer-motion"
 import { UpgradePrompt } from "@/components/subscription/upgrade-prompt"
@@ -113,7 +112,6 @@ export default function SingleplayerPage() {
   const [isDragOver, setIsDragOver] = useState(false)
   const [dragCounter, setDragCounter] = useState(0)
   const [isUploading, setIsUploading] = useState(false)
-  const [studyContext, setStudyContext] = useState<any>(null)
   const [subscriptionLimits, setSubscriptionLimits] = useState<any>(null)
   const [showQuizConfig, setShowQuizConfig] = useState(false)
   const [quizConfig, setQuizConfig] = useState<QuizConfig | null>(null)
@@ -322,9 +320,6 @@ export default function SingleplayerPage() {
       const battleTopic = studyNotes?.title || topic || 'General Knowledge'
       formData.append('topic', battleTopic)
       formData.append('difficulty', difficulty)
-      if (studyContext) {
-        formData.append('studyContext', JSON.stringify(studyContext))
-      }
       
       const response = await fetch('/api/notes', {
         method: 'POST',
@@ -347,9 +342,19 @@ export default function SingleplayerPage() {
         // This prevents the loading screen from blocking the UI
         setIsGenerating(false)
         toastSuccess("Study notes generated successfully!")
-        setStep(4) // Go to study notes step
+        
+        // Redirect to the note-specific route so notes persist on refresh
+        if (result.noteId) {
+          // Small delay to ensure database transaction is committed
+          setTimeout(() => {
+            router.push(`/singleplayer/${result.noteId}`)
+          }, 300)
+        } else {
+          // Fallback to step 4 if no noteId (shouldn't happen, but just in case)
+          setStep(4)
+        }
+        
         // Refresh limits to reflect newly processed documents (non-blocking, in background)
-        // Add small delay to ensure database transaction is committed
         setTimeout(() => {
           fetchLimits().catch(err => {
             console.warn('Failed to refresh limits (non-critical):', err)
@@ -419,9 +424,6 @@ export default function SingleplayerPage() {
       formData.append('includeDiagrams', activeConfig.includeDiagrams.toString())
       if (userId) {
         formData.append('userId', userId)
-      }
-      if (studyContext) {
-        formData.append('studyContext', JSON.stringify(studyContext))
       }
       if (studyNotes) {
         formData.append('notes', JSON.stringify(studyNotes))
@@ -776,13 +778,6 @@ export default function SingleplayerPage() {
           </Card>
         )}
 
-        {/* Study Context Chatbot - appears after upload */}
-        {step === 1 && uploadedFiles.length > 0 && (
-          <StudyContextChatbot 
-            onContextUpdate={setStudyContext}
-            uploadedFiles={uploadedFiles}
-          />
-        )}
 
         {/* Step 2: Topic Selection & Notes Generation */}
         {step === 2 && (

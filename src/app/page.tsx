@@ -36,7 +36,6 @@ import {
 } from "@phosphor-icons/react"
 import Link from "next/link"
 import Image from "next/image"
-import dynamicImport from "next/dynamic"
 import { useEffect, useState, useCallback, useMemo, memo } from "react"
 import { useRouter } from "next/navigation"
 // 🚀 OPTIMIZATION: Import schema components normally (needed for SEO/SSR)
@@ -180,11 +179,8 @@ interface LeaderboardPlayer {
   longestStreak?: number
 }
 
-// 🚀 OPTIMIZATION: Lazy load DailyStreakFlame component
-const DailyStreakFlameLazy = dynamicImport(() => import("@/components/dashboard/daily-streak-flame").then(mod => ({ default: mod.DailyStreakFlame })), {
-  loading: () => <div className="w-64 h-64 md:w-80 md:h-80 lg:w-96 lg:h-96 flex items-center justify-center text-white/50">Loading...</div>,
-  ssr: false
-})
+// Import DailyStreakFlame directly (dynamic import was causing build issues)
+import { DailyStreakFlame } from "@/components/dashboard/daily-streak-flame"
 
 // 🚀 OPTIMIZATION: Memoized Feature Card Component
 const FeatureCard = memo(function FeatureCard({ feature, index }: { feature: typeof features[0], index: number }) {
@@ -277,7 +273,7 @@ const StreakFlameAnimation = memo(function StreakFlameAnimation() {
 
   return (
     <div className="relative">
-      <DailyStreakFlameLazy 
+      <DailyStreakFlame 
         streak={animatedStreak} 
         isAnimating={isAnimating}
         className="w-64 h-64 md:w-80 md:h-80 lg:w-96 lg:h-96"
@@ -615,23 +611,6 @@ export default function HomePage() {
                 <div className="absolute inset-3 rounded-lg border border-slate-600/50 bg-slate-900/60 flex items-center justify-center">
                   <span className="text-sm font-semibold text-blue-100/80">Demo: Create quiz in 60 seconds</span>
                 </div>
-              </div>
-            </div>
-          </motion.div>
-
-          <motion.div
-            className="absolute top-1/3 right-10 md:right-20 opacity-30 md:opacity-50 lg:hidden"
-            initial={{ opacity: 0, y: 50 }}
-            animate={{ opacity: 0.5, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.7 }}
-          >
-            <div
-              className="w-48 h-48 bg-gradient-to-br from-orange-500/20 to-orange-600/10 rounded-2xl border-4 border-orange-400/30 backdrop-blur animate-float p-4"
-              style={{ animationDelay: "1.5s" }}
-            >
-              <div className="text-xs font-bold text-orange-300">Level Up and Gain Rewards</div>
-              <div className="mt-8 text-3xl font-black text-transparent bg-gradient-to-r from-orange-300 to-orange-200 bg-clip-text">
-                +500
               </div>
             </div>
           </motion.div>

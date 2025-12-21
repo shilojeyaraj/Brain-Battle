@@ -163,6 +163,12 @@ export async function GET(request: NextRequest) {
             : `Multiplayer Battle - ${dateStr}`
         }
         
+        // Clean up title - remove leading colons, whitespace, and common prefixes
+        baseName = baseName
+          .replace(/^[\s:]+/, '') // Remove leading whitespace and colons
+          .replace(/^Singleplayer:\s*/i, '') // Remove "Singleplayer:" prefix if present
+          .trim()
+        
         // Get username from profile (already fetched above)
         const username = profile?.username || 'You'
         

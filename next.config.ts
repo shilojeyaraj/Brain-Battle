@@ -11,8 +11,8 @@ const nextConfig: NextConfig = {
   experimental: {
     // Disabled optimizeCss - requires 'critters' package which causes build errors
     // optimizeCss: true, // TODO: Re-enable after installing critters: npm install critters
-    // Enable webpack build worker for parallel compilation (faster builds)
-    webpackBuildWorker: true,
+    // Temporarily disabled webpackBuildWorker - can cause 'next-flight-client-entry-loader' errors
+    // webpackBuildWorker: true,
     // Optimize package imports for commonly used libraries
     optimizePackageImports: ['lucide-react', 'framer-motion', '@radix-ui/react-dialog', '@radix-ui/react-select'],
   },

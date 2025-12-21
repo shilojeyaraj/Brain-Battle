@@ -9,7 +9,7 @@ import { Brain, Trophy, Star, Settings, LogOut, User, RotateCw, Crown, Sparkles,
 import { logout } from "@/lib/actions/custom-auth"
 import { getUserStatsClient, UserProfile } from "@/lib/actions/user-stats-client"
 import { UserProfileModal } from "@/components/ui/user-profile-modal"
-import { getCurrentUserId, setUserSession } from "@/lib/auth/session"
+import { getCurrentUserId } from "@/lib/auth/session"
 import Link from "next/link"
 import { SettingsModal } from "@/components/ui/settings-modal"
 import { AchievementsModal } from "@/components/achievements/achievements-modal"

@@ -1,153 +1,1017 @@
-# Brain-Brawl Project Rules
+# BA Copilot Project Rules
 
 ## Project Context
-This is a Next.js 15.5.4 study application with multiplayer quiz functionality, AI-powered question generation, and real-time features.
+BA Copilot (bacp) is an AI-powered assistant for business analysts. The MVP focuses on creating and iterating on BPMN diagrams through conversational AI, with support for document uploads and diagram visualization/editing.
 
 ## Tech Stack
-- **Framework**: Next.js 15.5.4 (App Router)
+- **Framework**: Next.js (App Router) - **CRITICAL: Always use App Router, never Pages Router**
 - **Language**: TypeScript (strict mode)
-- **Database**: Supabase (PostgreSQL with pgvector)
-- **Auth**: Better Auth with WebAuthn MFA support
-- **AI**: OpenAI GPT-4o for content generation
-- **Styling**: Tailwind CSS 4.0
-- **UI**: Radix UI components
-- **Animations**: Framer Motion
-- **State**: React Hooks (useState, useEffect, useCallback, useMemo)
+- **Database**: Supabase (PostgreSQL with type safety)
+- **Auth**: Supabase Auth
+- **AI**: Vercel AI SDK
+- **Styling**: Material UI (MUI)
+- **State Management**: Tanstack Query (React Query) for server state
+- **API Client**: Orval (for type-safe API calls, Tanstack Query integration, MSW testing)
+- **Diagram Library**: bpmn-js
+- **Development**: Quokka for live testing
+- **App Directory**: `src/app` - **NEVER create `app/` directory, always use `src/app/`**
+
+## Next.js App Router Fundamentals (Educational)
+
+### Understanding App Router vs Pages Router
+- **App Router** (what we use): Uses `app/` directory, supports Server Components, Route Handlers, and modern React features
+- **Pages Router** (old): Uses `pages/` directory, different routing patterns
+- **Always verify**: Any Next.js recommendation must be for App Router, not Pages Router
+
+### Key App Router Concepts
+
+#### Server Components (Default)
+```typescript
+// src/app/page.tsx - This is a Server Component by default
+// Can directly access database, filesystem, etc.
+// No 'use client' directive needed
+export default async function Page() {
+  const data = await fetchData() // Can use async/await directly
+  return <div>{data}</div>
+}
+```
+
+#### Client Components
+```typescript
+// Must add 'use client' at the top for interactivity
+'use client'
+import { useState } from 'react'
+
+export default function InteractiveComponent() {
+  const [count, setCount] = useState(0)
+  return <button onClick={() => setCount(count + 1)}>{count}</button>
+}
+```
+
+#### Route Handlers (API Routes)
+```typescript
+// src/app/api/example/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function GET(request: NextRequest) {
+  return NextResponse.json({ message: 'Hello' })
+}
+
+export async function POST(request: NextRequest) {
+  const body = await request.json()
+  return NextResponse.json({ received: body })
+}
+```
+
+#### Dynamic Routes
+```typescript
+// src/app/diagrams/[id]/page.tsx
+export default async function DiagramPage({ 
+  params 
+}: { 
+  params: Promise<{ id: string }> 
+}) {
+  const { id } = await params // In App Router, params is a Promise
+  // Fetch diagram data
+  return <div>Diagram {id}</div>
+}
+```
 
 ## Code Style Guidelines
 
 ### TypeScript
-- Use strict TypeScript types
-- Prefer interfaces for object shapes
+- Use strict TypeScript types (`strict: true` in tsconfig.json)
+- Prefer interfaces for object shapes, types for unions/intersections
 - Use type guards for runtime type checking
-- Avoid `any` - use `unknown` when necessary
+- Avoid `any` - use `unknown` when type is truly unknown
+- Use Zod schemas for runtime validation
+- Leverage Supabase generated types: `import type { Database } from '@/types/supabase'`
 
 ### React Components
 - Use functional components with hooks
 - Prefer composition over inheritance
-- Use React.memo for expensive components
-- Extract custom hooks for reusable logic
-- Follow the component structure: imports → types → component → exports
+- Use `React.memo` for expensive components
+- Extract custom hooks for reusable logic (`src/hooks/`)
+- Follow component structure: imports → types → component → exports
+- Default to Server Components, add `'use client'` only when needed
 
 ### File Organization
-- Components in `src/components/`
-- API routes in `src/app/api/`
-- Database schemas in `src/db/`
-- Utilities in `src/lib/`
-- Hooks in `src/hooks/`
+- **Pages/Routes**: `src/app/` (App Router structure)
+- **API Routes**: `src/app/api/`
+- **Components**: `src/components/`
+- **Server Components**: `src/components/server/` (if needed)
+- **Client Components**: `src/components/client/` (if needed)
+- **Database**: `src/db/` (Supabase client, types)
+- **Utilities**: `src/lib/`
+- **Hooks**: `src/hooks/`
+- **Types**: `src/types/`
+- **Schemas**: `src/lib/schemas/` (Zod schemas)
 
 ### Naming Conventions
-- Components: PascalCase (e.g., `StudyNotesViewer.tsx`)
-- Files: kebab-case for utilities, PascalCase for components
-- Functions: camelCase
-- Constants: UPPER_SNAKE_CASE
-- Types/Interfaces: PascalCase with descriptive names
+- **Components**: PascalCase (e.g., `BpmnDiagramViewer.tsx`)
+- **Files**: kebab-case for utilities, PascalCase for components
+- **Functions**: camelCase
+- **Constants**: UPPER_SNAKE_CASE
+- **Types/Interfaces**: PascalCase with descriptive names
+- **API Routes**: lowercase with hyphens (e.g., `create-diagram/route.ts`)
 
-### Database
-- Use Drizzle ORM for type-safe queries
-- Always use RLS (Row Level Security) policies
-- Prefer parameterized queries to prevent SQL injection
-- Use transactions for multi-step operations
+## Supabase Patterns
 
-### API Routes
-- Use Next.js App Router API routes
-- Return proper HTTP status codes
-- Include error handling with try-catch
-- Validate input with Zod schemas
-- Use server-only imports for server-side code
-
-### Performance
-- Use `Promise.all()` for parallel operations when possible
-- Implement proper loading states
-- Use React Suspense for code splitting
-- Optimize images and assets
-- Consider memoization for expensive computations
-
-### Security
-- Never expose API keys in client-side code
-- Validate all user inputs
-- Use environment variables for secrets
-- Implement proper authentication checks
-- Follow Supabase RLS best practices
-
-### Testing
-- Write unit tests for utilities and hooks
-- Test API routes with proper mocking
-- Use Jest and React Testing Library
-- Test error cases and edge cases
-
-## Common Patterns
-
-### Error Handling
+### Database Client Setup
 ```typescript
-try {
-  // operation
-} catch (error) {
-  console.error('Operation failed:', error)
-  return NextResponse.json(
-    { error: 'User-friendly message' },
-    { status: 500 }
+// src/lib/supabase/client.ts - Client-side (browser)
+import { createBrowserClient } from '@supabase/ssr'
+
+export function createClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  )
+}
+
+// src/lib/supabase/server.ts - Server-side
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+
+export async function createClient() {
+  const cookieStore = await cookies()
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options)
+          )
+        },
+      },
+    }
   )
 }
 ```
 
 ### Database Queries
 ```typescript
-const result = await db
-  .select()
-  .from(table)
-  .where(eq(table.column, value))
+// Always use type-safe queries with Supabase generated types
+import { createClient } from '@/lib/supabase/server'
+import type { Database } from '@/types/supabase'
+
+type Tables = Database['public']['Tables']
+type Diagram = Tables['diagrams']['Row']
+
+export async function getDiagram(id: string): Promise<Diagram | null> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('diagrams')
+    .select('*')
+    .eq('id', id)
+    .single()
+  
+  if (error) throw error
+  return data
+}
 ```
 
-### API Route Structure
+### Row Level Security (RLS)
+- Always enable RLS on tables
+- Create policies for user access control
+- Test RLS policies in development
+- Use service role key only in server-side admin operations
+
+### Authentication
 ```typescript
-export async function POST(request: Request) {
+// Server Component - Get user
+import { createClient } from '@/lib/supabase/server'
+
+export default async function Page() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  
+  if (!user) {
+    redirect('/login')
+  }
+  
+  return <div>Welcome {user.email}</div>
+}
+```
+
+## Vercel AI SDK Patterns
+
+### Streaming AI Responses
+```typescript
+// src/app/api/chat/route.ts
+import { streamText } from 'ai'
+import { openai } from '@ai-sdk/openai'
+
+export async function POST(req: Request) {
+  const { messages } = await req.json()
+  
+  const result = streamText({
+    model: openai('gpt-4'),
+    messages,
+    system: 'You are a helpful business analyst assistant.',
+  })
+  
+  return result.toDataStreamResponse()
+}
+```
+
+### Client-Side Chat Component
+```typescript
+'use client'
+import { useChat } from 'ai/react'
+
+export default function ChatInterface() {
+  const { messages, input, handleInputChange, handleSubmit } = useChat({
+    api: '/api/chat',
+  })
+  
+  return (
+    <div>
+      {messages.map(m => (
+        <div key={m.id}>{m.role}: {m.content}</div>
+      ))}
+      <form onSubmit={handleSubmit}>
+        <input value={input} onChange={handleInputChange} />
+        <button type="submit">Send</button>
+      </form>
+    </div>
+  )
+}
+```
+
+### AI Tool Calling (for BPMN generation)
+```typescript
+import { tool } from 'ai'
+import { z } from 'zod'
+
+const generateBpmnTool = tool({
+  description: 'Generate BPMN diagram XML from process description',
+  parameters: z.object({
+    processName: z.string(),
+    steps: z.array(z.string()),
+  }),
+  execute: async ({ processName, steps }) => {
+    // Generate BPMN XML
+    return { bpmnXml: '...' }
+  },
+})
+```
+
+## Tanstack Query Patterns
+
+### Query Setup
+```typescript
+// src/lib/react-query/provider.tsx
+'use client'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60 * 1000, // 1 minute
+      refetchOnWindowFocus: false,
+    },
+  },
+})
+
+export function ReactQueryProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      {children}
+    </QueryClientProvider>
+  )
+}
+```
+
+### Using Queries
+```typescript
+'use client'
+import { useQuery } from '@tanstack/react-query'
+
+export function DiagramList() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['diagrams'],
+    queryFn: async () => {
+      const res = await fetch('/api/diagrams')
+      return res.json()
+    },
+  })
+  
+  if (isLoading) return <div>Loading...</div>
+  if (error) return <div>Error: {error.message}</div>
+  
+  return <div>{/* Render diagrams */}</div>
+}
+```
+
+### Mutations
+```typescript
+'use client'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+
+export function CreateDiagramButton() {
+  const queryClient = useQueryClient()
+  
+  const mutation = useMutation({
+    mutationFn: async (data: DiagramData) => {
+      const res = await fetch('/api/diagrams', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      })
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['diagrams'] })
+    },
+  })
+  
+  return (
+    <button onClick={() => mutation.mutate(diagramData)}>
+      Create Diagram
+    </button>
+  )
+}
+```
+
+## Material UI Patterns
+
+### Theme Setup
+```typescript
+// src/lib/mui/theme.ts
+'use client'
+import { createTheme } from '@mui/material/styles'
+
+export const theme = createTheme({
+  palette: {
+    mode: 'light', // or 'dark'
+    primary: {
+      main: '#1976d2',
+    },
+  },
+})
+
+// src/app/layout.tsx
+import { ThemeProvider } from '@mui/material/styles'
+import { theme } from '@/lib/mui/theme'
+
+export default function RootLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <html>
+      <body>
+        <ThemeProvider theme={theme}>
+          {children}
+        </ThemeProvider>
+      </body>
+    </html>
+  )
+}
+```
+
+### Component Usage
+```typescript
+'use client'
+import { Button, TextField, Box } from '@mui/material'
+
+export function MyComponent() {
+  return (
+    <Box sx={{ p: 2 }}>
+      <TextField label="Name" variant="outlined" />
+      <Button variant="contained" color="primary">
+        Submit
+      </Button>
+    </Box>
+  )
+}
+```
+
+## BPMN.js Integration
+
+### BPMN Viewer Component
+```typescript
+'use client'
+import { useEffect, useRef } from 'react'
+import BpmnViewer from 'bpmn-js/lib/NavigatedViewer'
+
+export function BpmnDiagramViewer({ xml }: { xml: string }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const viewerRef = useRef<BpmnViewer | null>(null)
+  
+  useEffect(() => {
+    if (!containerRef.current) return
+    
+    const viewer = new BpmnViewer({
+      container: containerRef.current,
+    })
+    
+    viewerRef.current = viewer
+    
+    viewer.importXML(xml).catch((err: Error) => {
+      console.error('Error rendering BPMN:', err)
+    })
+    
+    return () => {
+      viewer.destroy()
+    }
+  }, [xml])
+  
+  return <div ref={containerRef} style={{ height: '100vh' }} />
+}
+```
+
+### BPMN Modeler Component
+```typescript
+'use client'
+import { useEffect, useRef } from 'react'
+import BpmnModeler from 'bpmn-js/lib/Modeler'
+
+export function BpmnDiagramModeler({ 
+  initialXml, 
+  onSave 
+}: { 
+  initialXml?: string
+  onSave: (xml: string) => void 
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const modelerRef = useRef<BpmnModeler | null>(null)
+  
+  useEffect(() => {
+    if (!containerRef.current) return
+    
+    const modeler = new BpmnModeler({
+      container: containerRef.current,
+    })
+    
+    modelerRef.current = modeler
+    
+    if (initialXml) {
+      modeler.importXML(initialXml)
+    }
+    
+    return () => {
+      modeler.destroy()
+    }
+  }, [initialXml])
+  
+  const handleSave = async () => {
+    if (!modelerRef.current) return
+    const { xml } = await modelerRef.current.saveXML({ format: true })
+    onSave(xml)
+  }
+  
+  return (
+    <div>
+      <button onClick={handleSave}>Save</button>
+      <div ref={containerRef} style={{ height: '100vh' }} />
+    </div>
+  )
+}
+```
+
+## Orval API Client Patterns
+
+### Orval Configuration
+```typescript
+// orval.config.ts
+import { defineConfig } from 'orval'
+
+export default defineConfig({
+  baCopilot: {
+    input: {
+      target: './openapi.yaml', // Your OpenAPI spec
+    },
+    output: {
+      mode: 'tags-split',
+      target: 'src/lib/api',
+      schemas: 'src/lib/api/models',
+      client: 'react-query',
+      mock: true, // Enable MSW mocks
+    },
+  },
+})
+```
+
+### Using Generated API Client
+```typescript
+'use client'
+import { useGetDiagrams } from '@/lib/api'
+import { useQuery } from '@tanstack/react-query'
+
+export function DiagramList() {
+  const { data, isLoading } = useGetDiagrams()
+  
+  // Orval generates hooks that work with Tanstack Query
+  return <div>{/* Render diagrams */}</div>
+}
+```
+
+## File Upload Patterns
+
+### File Upload Handler
+```typescript
+// src/app/api/upload/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { writeFile } from 'fs/promises'
+import { join } from 'path'
+
+export async function POST(request: NextRequest) {
+  const formData = await request.formData()
+  const file = formData.get('file') as File
+  
+  if (!file) {
+    return NextResponse.json({ error: 'No file' }, { status: 400 })
+  }
+  
+  const bytes = await file.arrayBuffer()
+  const buffer = Buffer.from(bytes)
+  
+  const path = join(process.cwd(), 'uploads', file.name)
+  await writeFile(path, buffer)
+  
+  return NextResponse.json({ success: true, path })
+}
+```
+
+### Client-Side Upload
+```typescript
+'use client'
+import { useState } from 'react'
+import { Button } from '@mui/material'
+
+export function FileUpload() {
+  const [file, setFile] = useState<File | null>(null)
+  
+  const handleUpload = async () => {
+    if (!file) return
+    
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    const res = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    })
+    
+    const data = await res.json()
+    console.log('Uploaded:', data)
+  }
+  
+  return (
+    <div>
+      <input
+        type="file"
+        onChange={(e) => setFile(e.target.files?.[0] || null)}
+      />
+      <Button onClick={handleUpload}>Upload</Button>
+    </div>
+  )
+}
+```
+
+## API Routes Best Practices
+
+### Structure
+```typescript
+// src/app/api/example/route.ts
+import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
+import { createClient } from '@/lib/supabase/server'
+
+const schema = z.object({
+  name: z.string().min(1),
+})
+
+export async function POST(request: NextRequest) {
   try {
-    // Validate input
-    // Perform operation
-    // Return success response
+    // 1. Authenticate
+    const supabase = await createClient()
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+    
+    // 2. Validate input
+    const body = await request.json()
+    const validated = schema.parse(body)
+    
+    // 3. Perform operation
+    // ... your logic here
+    
+    // 4. Return response
+    return NextResponse.json({ success: true })
   } catch (error) {
-    // Handle error
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Validation failed', details: error.errors },
+        { status: 400 }
+      )
+    }
+    
+    console.error('API error:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
   }
 }
 ```
 
-## Project-Specific Notes
+## Error Handling
+
+### Server Components
+```typescript
+// src/app/diagrams/[id]/error.tsx
+'use client'
+export default function Error({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string }
+  reset: () => void
+}) {
+  return (
+    <div>
+      <h2>Something went wrong!</h2>
+      <button onClick={() => reset()}>Try again</button>
+    </div>
+  )
+}
+```
+
+### Client Components
+```typescript
+'use client'
+import { useState } from 'react'
+
+export function ComponentWithErrorHandling() {
+  const [error, setError] = useState<Error | null>(null)
+  
+  const handleAction = async () => {
+    try {
+      // ... operation
+    } catch (err) {
+      setError(err instanceof Error ? err : new Error('Unknown error'))
+    }
+  }
+  
+  if (error) {
+    return <div>Error: {error.message}</div>
+  }
+  
+  return <div>{/* Component content */}</div>
+}
+```
+
+## Performance Optimization
+
+### Server Components (Default)
+- Use Server Components by default (no 'use client')
+- Fetch data directly in Server Components
+- Use `async/await` directly in Server Components
+
+### Code Splitting
+```typescript
+// Dynamic imports for large components
+import dynamic from 'next/dynamic'
+
+const BpmnViewer = dynamic(() => import('@/components/BpmnViewer'), {
+  loading: () => <div>Loading diagram...</div>,
+  ssr: false, // If component uses browser-only APIs
+})
+```
+
+### Image Optimization
+```typescript
+import Image from 'next/image'
+
+export default function MyPage() {
+  return (
+    <Image
+      src="/diagram.png"
+      alt="Diagram"
+      width={800}
+      height={600}
+      priority // For above-the-fold images
+    />
+  )
+}
+```
+
+## Security Best Practices
+
+### Environment Variables
+- Never expose secrets in client-side code
+- Use `NEXT_PUBLIC_` prefix only for public variables
+- Store secrets in `.env.local` (gitignored)
+- Use Supabase RLS for database security
+
+### Input Validation
+- Always validate with Zod schemas
+- Sanitize user inputs
+- Use parameterized queries (Supabase handles this)
 
 ### Authentication
-- Uses Better Auth with custom implementation
-- Supports WebAuthn MFA (device PIN/biometric)
-- Session management via Supabase
+- Check authentication in API routes
+- Use Supabase session management
+- Implement proper error handling for auth failures
 
-### AI Features
-- OpenAI GPT-4o for study notes generation
-- Vector embeddings for semantic search
-- Diagram analysis with Vision API
+## Testing Patterns
 
-### Real-time Features
-- Supabase Realtime for multiplayer rooms
-- Live progress tracking
-- Real-time score updates
+### Unit Tests (Jest)
+```typescript
+// src/lib/utils/__tests__/example.test.ts
+import { describe, it, expect } from '@jest/globals'
 
-### File Processing
-- PDF text extraction with pdfjs-dist
-- Image extraction from PDFs
-- Parallel processing recommended for performance
+describe('example utility', () => {
+  it('should work correctly', () => {
+    expect(true).toBe(true)
+  })
+})
+```
+
+### API Route Tests
+```typescript
+// src/app/api/__tests__/example.test.ts
+import { POST } from '../example/route'
+import { NextRequest } from 'next/server'
+
+describe('POST /api/example', () => {
+  it('should handle requests', async () => {
+    const req = new NextRequest('http://localhost/api/example', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'test' }),
+    })
+    
+    const res = await POST(req)
+    expect(res.status).toBe(200)
+  })
+})
+```
+
+### MSW (Mock Service Worker) with Orval
+- Orval generates MSW mocks automatically
+- Use for testing API calls without real backend
+
+## Common Patterns
+
+### Loading States
+```typescript
+// src/app/diagrams/[id]/loading.tsx
+export default function Loading() {
+  return <div>Loading diagram...</div>
+}
+```
+
+### Not Found
+```typescript
+// src/app/diagrams/[id]/not-found.tsx
+export default function NotFound() {
+  return <div>Diagram not found</div>
+}
+```
+
+### Redirects
+```typescript
+import { redirect } from 'next/navigation'
+
+export default async function Page() {
+  const user = await getUser()
+  if (!user) {
+    redirect('/login')
+  }
+  return <div>Content</div>
+}
+```
+
+## BA Copilot Specific Patterns
+
+### BPMN Generation from AI
+```typescript
+// When AI generates BPMN, validate XML before rendering
+import { validateBPMN } from '@/lib/bpmn/validator'
+
+const bpmnXml = await generateBPMNFromAI(description)
+const isValid = await validateBPMN(bpmnXml)
+
+if (!isValid) {
+  // Handle invalid BPMN
+}
+```
+
+### Document Processing
+```typescript
+// Process uploaded documents (PDF, etc.)
+import { extractTextFromPDF } from '@/lib/document-processor'
+
+export async function processDocument(file: File) {
+  const text = await extractTextFromPDF(file)
+  // Use text for AI context
+  return text
+}
+```
+
+### Iterative Diagram Editing
+- Support both AI suggestions and manual edits
+- Track diagram versions
+- Allow undo/redo functionality
+- Save diagram state to Supabase
 
 ## When Making Changes
 
-1. **Check existing patterns** - Look for similar implementations
-2. **Maintain consistency** - Follow established code style
-3. **Update types** - Keep TypeScript types in sync
-4. **Test thoroughly** - Verify changes work as expected
-5. **Update documentation** - Keep docs current if needed
+1. **Verify App Router compatibility** - Ensure all Next.js patterns are for App Router, not Pages Router
+2. **Check existing patterns** - Look for similar implementations in the codebase
+3. **Maintain consistency** - Follow established code style
+4. **Update types** - Keep TypeScript types in sync with Supabase schema
+5. **Test thoroughly** - Verify changes work as expected
+6. **Remember app directory** - Always use `src/app/`, never create `app/`
 
-## Avoid
+## Build Verification & Commit Practices
 
-- ❌ Using `any` type
-- ❌ Client-side API key exposure
-- ❌ Skipping input validation
-- ❌ Ignoring TypeScript errors
-- ❌ Breaking existing functionality
-- ❌ Hardcoding values that should be configurable
+### Build Verification (CRITICAL)
 
+**After making significant changes, ALWAYS run a build before pushing:**
+
+1. **When to run build:**
+   - After adding new API routes
+   - After modifying TypeScript types or interfaces
+   - After changing Next.js configuration
+   - After adding new dependencies
+   - After refactoring multiple files
+   - After fixing TypeScript errors
+   - Before any push to main/develop branch
+
+2. **Build command:**
+   ```bash
+   npm run build
+   # or
+   pnpm build
+   ```
+
+3. **What to check:**
+   - ✅ Build completes without errors
+   - ✅ No TypeScript compilation errors
+   - ✅ No missing imports or dependencies
+   - ✅ All routes compile successfully
+   - ✅ No runtime errors in build output
+
+4. **If build fails:**
+   - **DO NOT push** until build succeeds
+   - Fix all TypeScript errors
+   - Fix all import issues
+   - Resolve all missing dependencies
+   - Re-run build until it passes
+
+5. **Build verification checklist:**
+   ```
+   [ ] Run `npm run build`
+   [ ] Verify no compilation errors
+   [ ] Check for TypeScript errors
+   [ ] Verify all routes compile
+   [ ] Test critical paths if possible
+   [ ] Only then proceed to commit/push
+   ```
+
+### Commit Best Practices
+
+**Commit small, logical changes frequently:**
+
+1. **Commit size:**
+   - ✅ **Small commits** - One feature, one fix, or one logical change per commit
+   - ❌ **Large commits** - Avoid committing multiple unrelated changes together
+   - ❌ **Monolithic commits** - Don't wait until end of day to commit everything
+
+2. **Commit frequency:**
+   - Commit after completing a single logical unit of work
+   - Commit after fixing a bug
+   - Commit after adding a feature
+   - Commit after refactoring a specific area
+   - Commit after passing build verification
+
+3. **Commit message format:**
+   ```
+   type(scope): brief description
+
+   - Use conventional commit types: feat, fix, refactor, docs, style, test, chore
+   - Keep first line under 72 characters
+   - Add detailed description if needed (separated by blank line)
+   - Reference issues/tickets if applicable
+   ```
+
+4. **Good commit examples:**
+   ```
+   feat(bpmn): add diagram viewer component
+   fix(api): resolve authentication error in diagram route
+   refactor(types): update BPMN schema types
+   docs(readme): add setup instructions
+   ```
+
+5. **Bad commit examples:**
+   ```
+   ❌ "fixed stuff"
+   ❌ "updates"
+   ❌ "WIP - lots of changes"
+   ❌ "feat: added bpmn viewer, fixed auth, updated types, refactored api"
+   ```
+
+6. **Commit workflow:**
+   ```
+   1. Make changes to one logical unit
+   2. Test the changes locally
+   3. Run build verification (npm run build)
+   4. Stage only related files (git add specific files)
+   5. Commit with descriptive message
+   6. Repeat for next logical unit
+   7. Push when ready (after multiple small commits)
+   ```
+
+7. **What to commit together:**
+   - ✅ Related files for a single feature
+   - ✅ A component and its types
+   - ✅ An API route and its schema
+   - ✅ Tests and the code they test
+
+8. **What to commit separately:**
+   - ❌ Multiple unrelated features
+   - ❌ Bug fixes mixed with new features
+   - ❌ Refactoring mixed with new code
+   - ❌ Configuration changes mixed with feature code
+
+9. **Before pushing:**
+   - Ensure all commits have passed build verification
+   - Review commit history: `git log --oneline`
+   - Make sure commits tell a clear story
+   - Consider squashing if you have many tiny commits (use interactive rebase)
+
+10. **Commit checklist:**
+    ```
+    [ ] Changes are logically grouped
+    [ ] Build passes (npm run build)
+    [ ] Commit message follows convention
+    [ ] Only related files are staged
+    [ ] Ready to push (or continue working)
+    ```
+
+### Workflow Summary
+
+**Ideal workflow:**
+1. Make small, focused changes
+2. Test locally
+3. Run build verification
+4. Commit with clear message
+5. Repeat for next change
+6. Push when ready (after several small commits)
+
+**Remember:**
+- 🚨 **Never push without running build first** (after significant changes)
+- 📝 **Commit often, push when ready**
+- 🎯 **One logical change per commit**
+- ✅ **Build must pass before pushing**
+
+## Critical Reminders
+
+- ❌ **NEVER create `app/` directory** - Always use `src/app/`
+- ❌ **NEVER use Pages Router patterns** - Always verify App Router compatibility
+- ❌ **NEVER expose API keys** - Use environment variables
+- ❌ **NEVER skip input validation** - Always use Zod schemas
+- ❌ **NEVER ignore TypeScript errors** - Fix or properly type them
+- ❌ **NEVER use `any` type** - Use `unknown` or proper types
+- ✅ **ALWAYS use Server Components by default** - Add `'use client'` only when needed
+- ✅ **ALWAYS validate user input** - Use Zod schemas
+- ✅ **ALWAYS handle errors gracefully** - Provide user-friendly messages
+- ✅ **ALWAYS use type-safe Supabase queries** - Leverage generated types
+
+## Educational Notes
+
+### When I'm New to Next.js Concepts
+
+If you encounter a Next.js concept you're unfamiliar with:
+1. **Ask for explanation** - I'll explain how it works in App Router
+2. **See examples** - I'll provide working examples
+3. **Understand the why** - I'll explain the reasoning behind patterns
+4. **Practice safely** - I'll help you implement with proper error handling
+
+### Common Next.js App Router Gotchas
+
+1. **Params are Promises** - In App Router, `params` is a Promise, must await
+2. **Server vs Client** - Default is Server Component, add `'use client'` for interactivity
+3. **No getServerSideProps** - Use Server Components or Route Handlers instead
+4. **No getStaticProps** - Use `generateStaticParams` for static generation
+5. **Metadata API** - Use `metadata` export instead of `<Head>`
+
+## Questions to Ask
+
+When implementing features, consider:
+- Is this a Server Component or Client Component?
+- Do I need to fetch data? (Use Server Component)
+- Do I need interactivity? (Use Client Component)
+- Should this be an API route or Server Component?
+- Is the data user-specific? (Check authentication)
+- Do I need real-time updates? (Consider Supabase Realtime)

@@ -130,22 +130,39 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames, hideActions 
 
   // Generate detailed content for outline items based on the topic
   const generateOutlineDetails = (outlineItem: string, index: number) => {
-    const topic = notes.title.toLowerCase()
+    if (!outlineItem) return { description: "", keyPoints: [], examples: [], relatedDiagrams: [] }
+    const topic = notes?.title?.toLowerCase() || ""
     
     // Find related concepts and diagrams
-    const relatedConcepts = concepts.filter(concept => 
-      concept.heading.toLowerCase().includes(outlineItem.toLowerCase().split(' ')[0]) ||
-      outlineItem.toLowerCase().includes(concept.heading.toLowerCase().split(' ')[0]) ||
-      concept.heading.toLowerCase().includes(outlineItem.toLowerCase()) ||
-      outlineItem.toLowerCase().includes(concept.heading.toLowerCase())
-    )
+    const relatedConcepts = concepts.filter(concept => {
+      if (!concept?.heading || !outlineItem) return false
+      const conceptHeading = concept.heading.toLowerCase()
+      const outlineLower = outlineItem.toLowerCase()
+      const outlineFirstWord = outlineLower.split(' ')[0]
+      const conceptFirstWord = conceptHeading.split(' ')[0]
+      
+      return (
+        conceptHeading.includes(outlineFirstWord) ||
+        outlineLower.includes(conceptFirstWord) ||
+        conceptHeading.includes(outlineLower) ||
+        outlineLower.includes(conceptHeading)
+      )
+    })
     
-    const relatedDiagrams = diagrams.filter(diagram =>
-      diagram.title.toLowerCase().includes(outlineItem.toLowerCase().split(' ')[0]) ||
-      outlineItem.toLowerCase().includes(diagram.title.toLowerCase().split(' ')[0]) ||
-      diagram.title.toLowerCase().includes(outlineItem.toLowerCase()) ||
-      outlineItem.toLowerCase().includes(diagram.title.toLowerCase())
-    )
+    const relatedDiagrams = diagrams.filter(diagram => {
+      if (!diagram?.title || !outlineItem) return false
+      const diagramTitle = diagram.title.toLowerCase()
+      const outlineLower = outlineItem.toLowerCase()
+      const outlineFirstWord = outlineLower.split(' ')[0]
+      const diagramFirstWord = diagramTitle.split(' ')[0]
+      
+      return (
+        diagramTitle.includes(outlineFirstWord) ||
+        outlineLower.includes(diagramFirstWord) ||
+        diagramTitle.includes(outlineLower) ||
+        outlineLower.includes(diagramTitle)
+      )
+    })
 
     // Extract actual content from related concepts
     let description = ""
@@ -182,11 +199,17 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames, hideActions 
       }
     } else {
       // Fallback: search for any concept that might be related
-      const allBullets = concepts.flatMap(c => c.bullets || [])
-      const matchingBullets = allBullets.filter(bullet => 
-        bullet.toLowerCase().includes(outlineItem.toLowerCase().split(' ')[0]) ||
-        outlineItem.toLowerCase().split(' ').some(word => bullet.toLowerCase().includes(word))
-      )
+      const allBullets = concepts.flatMap(c => c.bullets || []).filter(bullet => bullet && typeof bullet === 'string')
+      const outlineLower = outlineItem.toLowerCase()
+      const outlineWords = outlineLower.split(' ')
+      const matchingBullets = allBullets.filter(bullet => {
+        if (!bullet) return false
+        const bulletLower = bullet.toLowerCase()
+        return (
+          bulletLower.includes(outlineWords[0]) ||
+          outlineWords.some(word => bulletLower.includes(word))
+        )
+      })
       
       if (matchingBullets.length > 0) {
         description = matchingBullets.slice(0, 2).join(' ')
@@ -200,11 +223,17 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames, hideActions 
     
     // If no examples found, try to extract from all concepts
     if (examples.length === 0) {
-      const allExamples = concepts.flatMap(c => c.examples || [])
-      const matchingExamples = allExamples.filter(example =>
-        example.toLowerCase().includes(outlineItem.toLowerCase().split(' ')[0]) ||
-        outlineItem.toLowerCase().split(' ').some(word => example.toLowerCase().includes(word))
-      )
+      const allExamples = concepts.flatMap(c => c.examples || []).filter(example => example && typeof example === 'string')
+      const outlineLower = outlineItem.toLowerCase()
+      const outlineWords = outlineLower.split(' ')
+      const matchingExamples = allExamples.filter(example => {
+        if (!example) return false
+        const exampleLower = example.toLowerCase()
+        return (
+          exampleLower.includes(outlineWords[0]) ||
+          outlineWords.some(word => exampleLower.includes(word))
+        )
+      })
       examples = matchingExamples.slice(0, 3)
     }
 
@@ -361,7 +390,7 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames, hideActions 
                           )}
                           
                           {/* Related Concepts */}
-                          {details.relatedConcepts.length > 0 && (
+                          {details.relatedConcepts && details.relatedConcepts.length > 0 && (
                             <div>
                               <h4 className="text-sm font-black text-white mb-2">Related Concepts</h4>
                               <div className="flex flex-wrap gap-2">
@@ -375,7 +404,7 @@ export function StudyNotesViewer({ notes, onStartBattle, fileNames, hideActions 
                           )}
                           
                           {/* Related Diagrams */}
-                          {details.relatedDiagrams.length > 0 && (
+                          {details.relatedDiagrams && details.relatedDiagrams.length > 0 && (
                             <div>
                               <h4 className="text-sm font-black text-white mb-2">Related Diagrams</h4>
                               <div className="flex flex-wrap gap-2">

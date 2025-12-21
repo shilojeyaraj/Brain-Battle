@@ -5,7 +5,7 @@ import { useParams, useSearchParams, useRouter } from "next/navigation"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { ArrowLeft, Clock, Target, Trophy, Zap, AlertTriangle, EyeOff, X, Star, TrendingUp, FileText, Image, CheckCircle } from "lucide-react"
+import { ArrowLeft, Clock, Target, Trophy, Zap, AlertTriangle, EyeOff, X, Star, TrendingUp, FileText, Image, CheckCircle, Loader2 } from "lucide-react"
 import Link from "next/link"
 import { useAntiCheat, CheatEvent } from "@/hooks/use-anti-cheat"
 import { calculateXP, getXPExplanation, checkLevelUp } from "@/lib/xp-calculator"
@@ -971,9 +971,17 @@ export default function BattlePage() {
             <div className="flex justify-end">
               <Button
                 onClick={handleNext}
-                className="bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg px-8 py-3 cartoon-border cartoon-shadow cartoon-hover"
+                disabled={isLastQuestion && isSubmittingResults}
+                className="bg-primary hover:bg-primary/90 text-primary-foreground font-black text-lg px-8 py-3 cartoon-border cartoon-shadow cartoon-hover disabled:opacity-70"
               >
-                {!isLastQuestion ? "Next Question" : "Finish Quiz"}
+                {isLastQuestion && isSubmittingResults ? (
+                  <>
+                    <Loader2 className="h-5 w-5 mr-2 animate-spin" strokeWidth={3} />
+                    Finishing...
+                  </>
+                ) : (
+                  !isLastQuestion ? "Next Question" : "Finish Quiz"
+                )}
               </Button>
             </div>
           )}
