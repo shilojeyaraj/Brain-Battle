@@ -6,7 +6,7 @@
  */
 export function distillContent(
   fileContents: string[],
-  maxLength = 8000
+  maxLength = 6000 // Reduced default from 8000 for faster processing
 ): string {
   const joined = fileContents.join("\n")
   if (!joined) return ""

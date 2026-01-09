@@ -1095,35 +1095,28 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
     ]
     const distilledContent = await getOrSetDistillation(
       distillKeyParts,
-      () => distillContent(fileContents, 8000)
+      () => distillContent(fileContents, 6000) // Reduced from 8000 for faster processing
     )
 
+    // Streamlined system prompt
     const systemPrompt = `${rules}
 
-TASK: Generate study notes as JSON matching notesSchema. Never invent facts; use only provided content. Cite pages. Keep outputs concise and schema-valid.
-`
+Generate study notes as JSON matching notesSchema. Use only provided content. Cite pages.`
 
-    const userPrompt = `DOCUMENT SNAPSHOT (distilled, capped 8k chars):
+    // Compact user prompt
+    const userPrompt = `DOCUMENT:
 ${distilledContent || '[no text extracted]'}
 
 FILES: ${fileNames.join(', ') || 'uploaded files'}
-TOTAL CHARS: ${fileContents.join('').length}
+${instructions ? `INSTRUCTIONS: ${instructions}` : ''}
+${extractedImages.length > 0 ? `IMAGES: ${extractedImages.length} (reference by page)` : ''}
+${contextInstructions ? `CONTEXT: ${contextInstructions}` : ''}
 
-STUDY INSTRUCTIONS: ${instructions || 'Use the document content to create comprehensive study notes. If no topic, infer from content.'}
-${fileContents.length > 1 ? 'Multiple documents: keep examples/formulas tied to the correct source (use page/file names).' : ''}
-
-IMAGES: ${extractedImages.length} extracted images${extractedImages.length ? ' (reference by page; image data available separately)' : ' (none)'}
-
-CONTEXT: ${contextInstructions || '[none]'}
-
-REQUIREMENTS:
-- Use only the provided content; cite (p. N) or sections.
-- Outline items must be document-specific (titles/examples/formulas), not generic.
-- Extract every formula with exact notation and variable meanings.
-- Extract every concept/key term with page refs.
-- Describe diagrams if present; include page refs.
-- Practice questions must reference document specifics (formulas/examples/diagrams).
-- Return valid JSON only, matching notesSchema.`
+Generate notesSchema JSON:
+- Extract ALL formulas with exact notation
+- Outline items must be document-specific (headings/examples/formulas)
+- Include page refs for facts
+- Return valid JSON only`
 
     // Log prompt details after they're created
     if (process.env.NODE_ENV === 'development') {
