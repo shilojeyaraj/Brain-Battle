@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from "next/server"
-import { notesSchema } from "@/lib/schemas/notes-schema"
-import { createClient } from "@/lib/supabase/server"
 import { createAdminClient } from "@/lib/supabase/server-admin"
 // NOTE: For robustness we avoid pdf-extract-image fallbacks in this route.
 // All PDF parsing should go through the unified extractor, which applies
@@ -12,7 +10,7 @@ import {
   enrichWithYouTubeVideos, 
   generateEmbeddingsForNotes 
 } from "@/lib/utils/parallel-enrichment"
-import { notesGenerationSchema, validateFile } from "@/lib/validation/schemas"
+import { validateFile } from "@/lib/validation/schemas"
 import { sanitizeError, createSafeErrorResponse } from "@/lib/utils/error-sanitizer"
 import { createAIClient } from "@/lib/ai/client-factory"
 import { extractTextFromDocument } from "@/lib/document-text-extractor"
@@ -153,25 +151,20 @@ export async function POST(req: NextRequest) {
   // This must happen before pdf-parse or pdfjs-dist are imported/used
   initializeBrowserPolyfills()
 
-  // MEMORY ARCHITECTURE: Initialize session tracking
   const sessionStartTime = Date.now()
   const sessionId = randomUUID()
   const { ProgressLogger } = await import('@/lib/domain-memory/progress-logger')
   const { FeatureFlags } = await import('@/lib/config/feature-flags')
   const errorsEncountered: string[] = []
   let totalTokensUsed = 0
+  const t = (label: string) => console.log(`⏱️ [NOTES] ${label}: ${Date.now() - sessionStartTime}ms`)
 
-  if (process.env.NODE_ENV === 'development') {
-    console.log("🚀 [NOTES API] Starting notes generation request...")
-    if (FeatureFlags.DEBUG_MEMORY) {
-      console.log(`  📊 [MEMORY] Session ID: ${sessionId}`)
-      console.log(`  📊 [MEMORY] Enabled features:`, Object.entries(FeatureFlags).filter(([_, v]) => v).map(([k]) => k))
-    }
-  }
+  console.log("🚀 [NOTES API] Starting notes generation...")
   try {
     // SECURITY: Get userId from session cookie, not form data
     const { getUserIdFromRequest } = await import('@/lib/auth/session-cookies')
     const userId = await getUserIdFromRequest(req)
+    t('auth')
     
     if (!userId) {
       return NextResponse.json(
@@ -569,10 +562,7 @@ export async function POST(req: NextRequest) {
       }
     }
     
-    const fileProcessingTime = Date.now() - fileProcessingStart
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`\n⏱️ [NOTES API] File processing completed in ${fileProcessingTime}ms (parallel processing)`)
-    }
+    t('file-extraction')
     
     // CRITICAL: Validate that we have actual document content before proceeding
     if (!hasValidContent || fileContents.length === 0 || fileContents.every(content => content.trim().length < 100)) {
@@ -587,148 +577,95 @@ export async function POST(req: NextRequest) {
     const totalContentLength = fileContents.join('').length
     console.log(`  ✅ [NOTES API] Successfully extracted ${totalContentLength} total characters from ${fileContents.length} files`)
     
-    console.log(`\n📊 [NOTES API] File processing summary:`)
-    console.log(`  - Files received: ${files.length}`)
-    console.log(`  - Unique files processed: ${uniqueFiles.length}`)
-    if (duplicateFiles.length > 0) {
-      console.log(`  - Duplicate files skipped: ${duplicateFiles.length} (${duplicateFiles.join(', ')})`)
-    }
-    console.log(`  - File contents extracted: ${fileContents.length}`)
-    console.log(`  - Images extracted: ${extractedImages.length}`)
-    console.log(`  - Total content length: ${totalContentLength} characters`)
-
-    // 2b) Track documents in database for auditing and reuse
-    if (documentMetadata.length > 0) {
-      console.log(`\n📝 [NOTES API] Starting document tracking for ${documentMetadata.length} file(s)...`)
-      console.log(`  User ID: ${userId}`)
-      
-      // CRITICAL: First verify the user exists in public.users table
-      // The documents table has a FK to public.users, not auth.users
-      const adminClient = createAdminClient()
-      
-      // Check if user exists in public.users
-      const { data: existingUser, error: userCheckError } = await adminClient
-        .from('users')
-        .select('id')
-        .eq('id', userId)
-        .single()
-      
-      if (userCheckError || !existingUser) {
-        console.warn(`  ⚠️ [NOTES API] User ${userId} not found in public.users table, attempting to create...`)
-        // User doesn't exist - this will cause FK violations
-        // Try to create the user first
-        try {
-          const { ensureUserExists } = await import('@/lib/utils/ensure-user-exists')
-          const userCreated = await ensureUserExists(userId)
-          if (userCreated) {
-            console.log(`  ✅ [NOTES API] User ${userId} created/verified in public.users table`)
-          } else {
-            console.error(`  ❌ [NOTES API] Failed to create user ${userId} - document tracking will fail`)
-          }
-        } catch (err) {
-          console.error(`  ❌ [NOTES API] Error ensuring user exists:`, err)
-        }
-      } else {
-        console.log(`  ✅ [NOTES API] User ${userId} exists in public.users table`)
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`\n📊 [NOTES API] File processing summary:`)
+      console.log(`  - Files received: ${files.length}`)
+      console.log(`  - Unique files processed: ${uniqueFiles.length}`)
+      if (duplicateFiles.length > 0) {
+        console.log(`  - Duplicate files skipped: ${duplicateFiles.length} (${duplicateFiles.join(', ')})`)
       }
-      
-      const payloadStoragePath = '' // placeholder; actual storage path not available in notes flow
-      const payloadFileUrl = '' // placeholder; actual storage URL not available in notes flow
-      // User check done above - we've already ensured user exists
-      for (const meta of documentMetadata) {
-        console.log(`  📄 Processing: ${meta.fileName} (hash: ${meta.contentHash ? meta.contentHash.substring(0, 16) + '...' : 'MISSING'})`)
-        if (!meta.contentHash) {
-          console.warn(`  ⚠️ [NOTES API] Skipping document upsert for ${meta.fileName} (missing content hash)`)
-          continue
-        }
+      console.log(`  - File contents extracted: ${fileContents.length}`)
+      console.log(`  - Images extracted: ${extractedImages.length}`)
+      console.log(`  - Total content length: ${totalContentLength} characters`)
+    }
 
-        const payload = {
-          user_id: userId,
-          original_name: meta.fileName,
-          filename: meta.fileName, // satisfy not-null filename column (legacy schema)
-          storage_path: payloadStoragePath ?? '', // best-effort placeholder
-          file_url: payloadFileUrl ?? '', // best-effort placeholder
-          uploaded_by: userId, // legacy schema compatibility
-          file_type: meta.fileType || 'application/octet-stream',
-          file_size: meta.fileSize || 0,
-          content_hash: meta.contentHash
-        }
-        // Use upsert to handle duplicates, but ensure created_at is preserved for first upload
-        // If document already exists, we still want to count it for the month it was first created
-        const { data: docRow, error: docError } = await adminClient
-          .from('documents')
-          .upsert(payload, { 
-            onConflict: 'user_id,content_hash',
-            // Don't update created_at if document already exists (preserve original upload date)
-            ignoreDuplicates: false
-          })
-          .select('id, original_name, created_at')
+    // 2a) CACHE HIT: Check if notes already exist for this exact document+params combo
+    const primaryHash = documentMetadata[0]?.contentHash
+    if (primaryHash) {
+      try {
+        const instructionsHash = createHash('sha256')
+          .update(JSON.stringify({ topic, difficulty, instructions, studyContext: studyContext, fileNames }))
+          .digest('hex')
+        const adminClient = createAdminClient()
+        const { data: cached } = await adminClient
+          .from('study_notes_cache')
+          .select('notes_json')
+          .eq('user_id', userId)
+          .eq('document_id', primaryHash)
+          .eq('instructions_hash', instructionsHash)
           .maybeSingle()
-
-        if (docError) {
-          console.error(`  ❌ [NOTES API] Failed to upsert document row for ${meta.fileName}:`, docError)
-          console.error(`     Error details:`, {
-            code: docError.code,
-            message: docError.message,
-            details: docError.details,
-            hint: docError.hint
+        if (cached?.notes_json) {
+          const cacheTime = Date.now() - sessionStartTime
+          console.log(`⚡ [NOTES API] Cache hit! Returning cached notes in ${cacheTime}ms (skipped AI call)`)
+          return NextResponse.json({
+            success: true,
+            notes: cached.notes_json,
+            cached: true,
+            processedFiles: fileNames.length,
+            fileNames,
+            fileContents: fileContents.length,
           })
-          console.error(`     Payload used:`, {
-            user_id: payload.user_id,
-            original_name: payload.original_name,
-            content_hash: payload.content_hash ? `${payload.content_hash.substring(0, 16)}...` : 'MISSING',
-            file_size: payload.file_size
-          })
-          errorsEncountered.push(`Document upsert failed for ${meta.fileName}: ${docError.message}`)
-        } else if (docRow?.id) {
-          documentIds.push(docRow.id)
-          console.log(`  ✅ [NOTES API] Document tracked: ${meta.fileName} (id=${docRow.id}, created_at=${docRow.created_at})`)
-        } else {
-          console.warn(`  ⚠️ [NOTES API] Document upsert succeeded but no ID returned for ${meta.fileName}`)
-          console.warn(`     This might indicate the document already exists (upsert updated existing row)`)
-          // Try to fetch the document by content_hash as fallback
-          try {
-            const { data: existingDoc, error: fetchError } = await adminClient
-              .from('documents')
-              .select('id, created_at')
-              .eq('user_id', userId)
-              .eq('content_hash', meta.contentHash)
-              .maybeSingle()
-            if (existingDoc?.id) {
-              documentIds.push(existingDoc.id)
-              console.log(`  ✅ [NOTES API] Found existing document ID: ${existingDoc.id} (created_at=${existingDoc.created_at})`)
-            } else if (fetchError) {
-              console.error(`  ❌ [NOTES API] Failed to fetch document by hash:`, fetchError)
-            } else {
-              console.warn(`  ⚠️ [NOTES API] Document not found by hash either - this is unusual`)
-            }
-          } catch (fetchError) {
-            console.error(`  ❌ [NOTES API] Exception fetching document by hash:`, fetchError)
-          }
         }
+      } catch (cacheErr) {
+        console.warn('⚠️ [NOTES API] Cache lookup failed (non-critical):', cacheErr)
       }
-      console.log(`\n✅ [NOTES API] Document tracking complete. Total document IDs collected: ${documentIds.length}`)
-      if (documentIds.length === 0 && documentMetadata.length > 0) {
-        console.warn(`  ⚠️ [NOTES API] WARNING: No document IDs were collected despite processing ${documentMetadata.length} file(s)!`)
-        console.warn(`     This may indicate all documents already existed (upsert updated instead of inserted)`)
-        console.warn(`     Or there were errors during insertion. Check logs above for details.`)
-      }
-    } else {
-      console.log(`\n⚠️ [NOTES API] No document metadata to track (documentMetadata.length = ${documentMetadata.length})`)
     }
 
-    // 3) Use semantic search to understand the content better (optional)
-    // Note: Semantic search requires userId and searches stored documents.
-    // Since we're processing new documents, we'll skip this for now.
-    // If you want to search previously uploaded documents, you can add userId to the request.
-    console.log("🔍 [NOTES API] Skipping semantic search (processing new documents)")
-    let relevantChunks: any[] = []
-    
-    // Semantic search is optional and only useful if searching previously uploaded documents
-    // For new document processing, we'll proceed with the document content directly
+    // 2b) Track documents in database (non-blocking - runs in background while AI call proceeds)
+    const documentTrackingPromise = (async () => {
+      if (documentMetadata.length === 0) return
+      try {
+        const adminClient = createAdminClient()
+        const { data: existingUser, error: userCheckError } = await adminClient
+          .from('users').select('id').eq('id', userId).single()
+        if (userCheckError || !existingUser) {
+          const { ensureUserExists } = await import('@/lib/utils/ensure-user-exists')
+          await ensureUserExists(userId)
+        }
+        for (const meta of documentMetadata) {
+          if (!meta.contentHash) continue
+          const payload = {
+            user_id: userId,
+            original_name: meta.fileName,
+            filename: meta.fileName,
+            storage_path: '',
+            file_url: '',
+            uploaded_by: userId,
+            file_type: meta.fileType || 'application/octet-stream',
+            file_size: meta.fileSize || 0,
+            content_hash: meta.contentHash
+          }
+          const { data: docRow, error: docError } = await adminClient
+            .from('documents')
+            .upsert(payload, { onConflict: 'user_id,content_hash', ignoreDuplicates: false })
+            .select('id').maybeSingle()
+          if (!docError && docRow?.id) {
+            documentIds.push(docRow.id)
+          } else if (docError) {
+            errorsEncountered.push(`Document upsert failed for ${meta.fileName}: ${docError.message}`)
+          } else {
+            const { data: existing } = await adminClient
+              .from('documents').select('id')
+              .eq('user_id', userId).eq('content_hash', meta.contentHash).maybeSingle()
+            if (existing?.id) documentIds.push(existing.id)
+          }
+        }
+      } catch (err) {
+        console.error('⚠️ [NOTES API] Document tracking error (non-critical):', err)
+      }
+    })()
 
-    // 4) Analyze content complexity and education level
-    console.log("🔍 [NOTES API] Analyzing content complexity and education level...")
+    // 3) Analyze content complexity and education level
     
     // Build study context instructions
     let contextInstructions = ""
@@ -758,269 +695,7 @@ export async function POST(req: NextRequest) {
       studyTopic = `Study materials from uploaded documents: ${firstLines}...`
     }
 
-    // Build topic instruction - if topic is provided, use it; otherwise instruct AI to determine from content
-    const topicInstruction = studyTopic && studyTopic !== `Content from uploaded documents: ${fileNames.join(', ')}`
-      ? `STUDY TOPIC: ${studyTopic}`
-      : `STUDY TOPIC: Analyze the uploaded documents and determine the subject matter from their content. Extract the main topic, theme, or subject from the document text itself.`
     
-    // MEMORY ARCHITECTURE: Context Compilation (optional, behind feature flag)
-    let compiledFileContents = fileContents
-    if (FeatureFlags.CONTEXT_COMPILATION) {
-      const { ContextCompiler } = await import('@/lib/context/context-compiler')
-      try {
-        compiledFileContents = fileContents.map((content, index) => {
-          const compiled = ContextCompiler.compileForNotesGeneration(
-            content,
-            topic || studyTopic || '',
-            { maxTokens: 15000 }
-          )
-          if (FeatureFlags.DEBUG_MEMORY) {
-            const originalTokens = Math.ceil(content.length / 4)
-            const compiledTokens = Math.ceil(compiled.length / 4)
-            const reduction = ((1 - compiledTokens / originalTokens) * 100).toFixed(1)
-            console.log(`  📊 [CONTEXT COMPILER] File ${index + 1}: ${originalTokens} -> ${compiledTokens} tokens (${reduction}% reduction)`)
-          }
-          return compiled
-        })
-      } catch (compileError) {
-        // Fail-safe: use original content if compilation fails
-        console.warn('[NOTES API] Context compilation failed, using original content:', compileError)
-        errorsEncountered.push(`Context compilation failed: ${compileError instanceof Error ? compileError.message : 'Unknown error'}`)
-      }
-    }
-
-    // MEMORY ARCHITECTURE: Retrieve patterns (optional, behind feature flag)
-    let retrievedPatterns: any[] = []
-    if (FeatureFlags.PATTERN_MEMORY) {
-      try {
-        const { PatternMemory } = await import('@/lib/memory/pattern-memory')
-        const documentTypes = fileNames.map(f => f.split('.').pop() || 'unknown')
-        retrievedPatterns = await PatternMemory.retrievePatterns(
-          'formula_extraction',
-          {
-            document_types: documentTypes,
-            subject: topic || studyTopic || 'general',
-          },
-          3 // Limit to 3 most relevant patterns
-        )
-        if (retrievedPatterns.length > 0 && FeatureFlags.DEBUG_MEMORY) {
-          console.log(`  📊 [PATTERN MEMORY] Retrieved ${retrievedPatterns.length} patterns for formula extraction`)
-        }
-      } catch (patternError) {
-        // Fail silently - pattern retrieval is optional
-        if (FeatureFlags.DEBUG_MEMORY) {
-          console.warn('[NOTES API] Pattern retrieval failed (non-critical):', patternError)
-        }
-      }
-    }
-
-    const legacyUserPrompt = `Generate comprehensive study notes based on the ACTUAL CONTENT from these specific documents:
-
-${topicInstruction}
-DIFFICULTY: ${difficulty || 'medium'}
-STUDY INSTRUCTIONS: ${instructions || 'Analyze the uploaded documents and create comprehensive study notes based on their actual content. Extract key concepts, terms, and topics from the documents themselves. Determine the subject matter from the document content if no specific topic was provided.'}
-
-⚠️ CRITICAL REQUIREMENT: You MUST extract and use ONLY the ACTUAL content from these documents. 
-- If the document is about chemistry, create chemistry notes
-- If the document is about algorithms, create algorithm notes  
-- If the document is about biology, create biology notes
-- DO NOT generate generic content or content from other topics
-- Every fact, example, and definition must come directly from the document text below
-- If the document content is about "${fileNames[0] || 'the uploaded file'}", your notes MUST be about that topic
-
-${retrievedPatterns.length > 0 ? `
-PATTERNS FROM PAST RUNS (learn from these):
-${retrievedPatterns.map((p, i) => `${i + 1}. ${p.pattern_data?.approach || p.pattern_data?.learning || 'Pattern'} (${p.outcome})`).join('\n')}
-` : ''}
-
-DOCUMENT CONTENT (EXTRACT THE SPECIFIC INFORMATION FROM THESE - THIS IS THE ACTUAL CONTENT):
-${compiledFileContents.map((content, index) => `--- DOCUMENT ${index + 1}: ${fileNames[index] || `File ${index + 1}`} (${content.length} characters) ---\n${content}\n`).join('\n\n')}
-
-VALIDATION: The document content above contains ${fileContents.join('').length} total characters. You MUST base all notes on this actual content, not on the topic name or generic knowledge.
-
-⚠️ CRITICAL EXTRACTION REQUIREMENTS FOR THIS DOCUMENT - DO NOT SKIP ANY:
-
-1. **FORMULAS (MANDATORY - EXTRACT EVERY SINGLE ONE)**: 
-   Scan the ENTIRE document character by character for ALL formulas, equations, and mathematical expressions. Look for:
-   
-   **Mathematical Operators & Symbols**:
-   - Basic operators: =, +, -, ×, ÷, /, ^, ², ³
-   - Advanced operators: √, ∛, log, ln, lg, ∫, Σ, ∏, lim, ∂, ∇
-   - Comparison operators: <, >, ≤, ≥, ≠, ≈, ≡
-   - Set operators: ∈, ∉, ∪, ∩, ⊂, ⊆, ∅
-   - Logic operators: ∧, ∨, ¬, →, ↔
-   
-   **Notation Types**:
-   - Subscripts: A₀, x₁, H₂O, C₆H₁₂O₆, T(n), f(x)
-   - Superscripts: x², x³, e⁻ˣ, 10⁻³, Aᵀ, xⁿ
-   - Greek letters: α, β, γ, δ, ε, θ, λ, μ, π, ρ, σ, τ, φ, ω, Δ, Σ, Ω, etc.
-   - Special symbols: ∞, ±, ∓, ∑, ∏, ∫, ∂, ∇, ∠, °, %, etc.
-   - Vectors and matrices: **v**, **A**, |x|, ||x||
-   
-   **Formula Categories** (extract ALL types):
-   - Mathematical formulas: algebra, calculus, geometry, trigonometry, statistics, probability
-   - Scientific formulas: physics (mechanics, thermodynamics, electromagnetism), chemistry (stoichiometry, kinetics), biology (growth, decay)
-   - Engineering formulas: stress/strain, fluid dynamics, heat transfer, electrical circuits
-   - Algorithmic formulas: time complexity O(n), space complexity, recurrence relations T(n) = ...
-   - Conversion formulas: unit conversions, coordinate transformations, scaling factors
-   - Definition formulas: mathematical definitions, scientific laws, physical constants
-   - Test/measurement formulas: standardized calculations, experimental formulas, test procedures
-   - Percentage/ratio formulas: percentages, ratios, proportions, rates
-   - Statistical formulas: mean, variance, standard deviation, correlation, regression
-   - Any equation that expresses a relationship between variables
-   
-   **Extraction Requirements**:
-   - Extract from: main text, examples, worked problems, diagrams, captions, side notes, footnotes, tables, charts
-   - Preserve exact notation: subscripts, superscripts, Greek letters, special symbols, formatting
-   - Include variable definitions when provided
-   - Include example calculations if shown
-   - If a formula appears multiple times, include it with each page reference
-   - Include derived formulas, conversion formulas, and formulas used in worked examples
-   - **COUNT**: Before finishing, count how many formulas you found in the document and ensure ALL are in the formulas array
-
-2. **OUTLINE**: Create outline items that are SPECIFIC to this document - MUST be identifiable to THIS document only:
-   - Use EXACT slide titles, section headings, and chapter titles from the document
-   - Include specific formulas, calculations, or examples in outline items when mentioned
-   - Include specific tests, procedures, methods, or algorithms mentioned
-   - Include specific concepts, definitions, or examples from the document
-   - Add page references to each outline item: "Specific Content (p. XX)"
-   - Make each item so specific that it could ONLY come from this document
-   - BAD (REJECT): "Definition and importance of [topic]" (too generic, could apply to any document)
-   - BAD (REJECT): "Understanding [topic] concepts" (too generic)
-   - BAD (REJECT): "[Topic] and its significance" (too generic)
-   - GOOD: Include specific formulas, examples, calculations, procedures, or unique content from the document
-   - GOOD: Reference specific examples, worked problems, or case studies shown
-   - GOOD: Include specific terminology, notation, or methods unique to this document
-   - GOOD: Add page references and make items identifiable to specific slides/sections
-
-3. **CONCEPTS**: Extract EVERY concept mentioned - do not skip any:
-   - Main concepts from headings, titles, and slide titles
-   - Concepts from examples and worked problems (include specific examples with values/calculations)
-   - Concepts shown in diagrams (describe what diagrams show in detail)
-   - Related concepts and connections
-   - Do not skip "minor" concepts - if it's mentioned, include it
-   - Extract concepts relevant to the document's subject matter (mathematics, science, engineering, computer science, etc.)
-   - For each concept, include: heading, detailed bullets with specific examples/formulas from the document, examples with actual values, connections to other concepts, page references
-
-4. **DIAGRAMS**: Reference ALL diagrams, figures, charts, and illustrations:
-   - Describe what each diagram shows
-   - Include page references
-   - Link diagrams to relevant concepts
-   - Extract formulas or data shown in diagrams
-
-${relevantChunks.length > 0 ? `\nSEMANTIC SEARCH RESULTS (for additional context):
-${relevantChunks.map((chunk, index) => `Chunk ${index + 1}: ${chunk.content}`).join('\n\n')}\n` : ''}
-
-${extractedImages.length > 0 ? `\nEXTRACTED IMAGES FROM DOCUMENTS: ${extractedImages.length} images were extracted from the PDF documents.
-
-IMPORTANT: These images contain diagrams, figures, charts, and illustrations from the original documents. When creating study notes and quiz questions:
-- Reference these images with their page numbers: (p. XX)
-- Ask questions about the content visible in these images
-- Use the images to create visual learning questions
-- Include image descriptions and captions in your study materials
-- Describe what each diagram shows and how it supports the concept
-
-${extractedImages.map((img, idx) => `Image ${idx + 1} (Page ${img.page}${img.width && img.height ? `, ${img.width}x${img.height}px` : ''}):
-[Base64 encoded image data available - use this to reference visual content from the document]
-`).join('\n')}\n` : ''}${contextInstructions}
-
-CONTENT EXTRACTION REQUIREMENTS:
-
-1. EXTRACT SPECIFIC INFORMATION WITH CITATIONS:
-   - Pull out the exact key terms, definitions, and concepts from the documents
-   - Quote definitions exactly as they appear: "exact definition text" (p. XX)
-   - Extract specific examples, case studies, and data mentioned in the documents with page refs
-   - Identify the actual structure and organization of the content
-   - Note any specific formulas, equations, or technical details provided (with page refs)
-   - Extract any specific learning objectives or goals mentioned
-   - If no study instructions are provided, analyze the documents to determine the main subject area, key topics, and educational level
-
-2. DOCUMENT-SPECIFIC QUESTION CREATION:
-   - Create questions that test understanding of the ACTUAL content in these documents
-   - Include questions about specific examples, data, or concepts mentioned (with page refs)
-   - Reference specific sections, chapters, or topics from the documents
-   - Extract specific facts, figures, or details for factual questions
-   - Create application questions based on the specific examples given in the documents
-   - Use the exact examples/traces/arrays shown in the documents for practice questions
-
-3. CONTENT-SPECIFIC RESOURCES:
-   - Find resources that directly relate to the specific topics covered in these documents
-   - Include resources that explain the same concepts using similar terminology
-   - Prioritize resources that cover the same examples or case studies mentioned
-   - Ensure resources match the specific subject matter and level of these documents
-
-4. ACCURATE COMPLEXITY ANALYSIS:
-   - Base education level on the actual vocabulary and concepts used in these documents (cite examples with page refs)
-   - Identify prerequisite knowledge based on what's actually mentioned or implied (with page refs)
-   - Match difficulty level to the actual content complexity in these documents
-   - Explain your reasoning for complexity assessment with references to document content
-
-5. DOCUMENT-SPECIFIC STUDY MATERIALS:
-   - **OUTLINE REQUIREMENTS (CRITICAL)**:
-     * Create outline items that are SPECIFIC to the actual content, not generic
-     * Use exact terminology, formulas, and concepts from the documents
-     * Include specific formulas in outline items when relevant (e.g., "Engineering stress (S = F/A₀) vs True stress (σ = F/A)")
-     * Reference specific examples, tests, or procedures mentioned (e.g., "Brinell Hardness Test: BHN = 2F/(πD[D-√(D²-Dᵢ²)])")
-     * Include page references in outline items: "Concept Name (p. XX)"
-     * BAD: "Definition and importance of stress and strain" (too generic)
-     * GOOD: "Engineering stress (S = F/A₀) and strain (e = Δl/l₀) definitions and measurement via tensile testing (p. 1)"
-     * BAD: "Understanding tensile strength concepts" (too generic)
-     * GOOD: "Tensile strength, modulus of resilience, and tensile toughness calculations with worked examples (p. 3)"
-     * Extract outline from: slide titles, section headings, chapter titles, and document structure
-     * Each outline item should be specific enough that someone could identify which slide/section it refers to
-   - **CONCEPT EXTRACTION (EXTRACT ALL CONCEPTS)**:
-     * Extract EVERY concept mentioned in the documents, not just main ones
-     * Include concepts from: definitions, examples, diagrams, side notes, captions, and worked problems
-     * Extract related concepts and connections between concepts
-     * Include concepts shown visually in diagrams (describe what diagrams show)
-     * For each concept: provide heading, detailed bullets with specific information, examples from the document, connections to other concepts, and page references
-     * Do not skip "minor" concepts - if it's in the document, include it
-   - Extract key terms and definitions as they appear in the documents (with quotations and page refs)
-   - Use the specific examples and explanations provided in the documents
-   - Create study tips based on the actual content and learning objectives
-   - Identify misconceptions based on the specific subject matter covered
-     - **EXTRACT ALL FORMULAS**: Identify and extract EVERY formula, equation, and mathematical expression
-     * Mathematical formulas (algebra, calculus, geometry, statistics, etc.)
-     * Scientific formulas (physics, chemistry, biology, engineering, etc.)
-     * Algorithmic formulas (time complexity, space complexity, recurrence relations, etc.)
-     * Conversion formulas (unit conversions, coordinate transformations, etc.)
-     * Definition formulas (mathematical definitions, scientific laws, etc.)
-     * Test/measurement formulas (standardized tests, experimental calculations, etc.)
-     * Percentage/ratio formulas, proportions, rates
-     * Any formula with mathematical notation, subscripts, superscripts, Greek letters, special symbols
-     * For each formula: extract name, exact formula text (preserve notation), description, ALL variables, page reference, and examples
-
-6. AUTOMATIC DOCUMENT ANALYSIS (when no instructions provided):
-   - Analyze the document titles, headers, and content to determine the main subject
-   - Identify the educational level based on vocabulary and concept complexity
-   - Extract the key learning objectives from the document structure
-   - Determine the appropriate difficulty level based on content complexity
-   - Create a meaningful title that reflects the actual document content
-
-CITATION FORMAT:
-- Use (p. N) for single page references
-- Use (pp. N–M) for multi-page references
-- Use (Section X) or (Chapter Y) if page numbers aren't available
-- Include citations in: key_terms definitions, concept bullets, examples, practice questions, complexity analysis
-
-ANTI-PATTERNS TO AVOID:
-- ❌ "Key point 1: Important aspect of [topic]"
-- ✅ "Bubble sort compares adjacent elements and swaps if out of order (p. 9)"
-- ❌ "Detailed explanation of [concept]"
-- ✅ "The algorithm uses two nested loops: outer loop runs n-1 times, inner loop runs n-i-1 times (p. 11)"
-- ❌ "Real-world application of [topic]"
-- ✅ "Example trace: [29, 10, 14, 37, 13] after pass 1 becomes [10, 14, 29, 13, 37] (p. 12)"
-- ❌ Outline: "Definition and importance of [topic]"
-- ✅ Outline: Include specific formulas, examples, calculations, or procedures from the document with page references
-- ❌ Outline: "Understanding [topic] concepts"
-- ✅ Outline: Reference specific content, formulas, examples, or methods unique to this document with page references
-- ❌ Missing formula: Document shows a formula but it's not in formulas array
-- ✅ Extract ALL formulas: Include every formula found with exact notation, variables, page reference, and example calculation if shown
-- ❌ Generic concept: "[Topic] is important in [field]"
-- ✅ Specific concept: Include detailed information with specific formulas, examples, calculations, or procedures from the document with page references
-
-REMEMBER: Every piece of content must be directly derived from the actual document content provided above. Extract specific information, examples, and details from these documents rather than generating generic educational content. If information is not in the document, omit it—do not invent.`
-
     // Start diagram analysis early (in parallel with notes generation)
     // Only run if user has Pro subscription and images were extracted
     const diagramAnalysisStart = Date.now()
@@ -1039,11 +714,9 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
               instructions: instructions,
               studyContext: studyContext,
               extractedImages: extractedImages,
-              relevantChunks: relevantChunks,
+              relevantChunks: [],
               metadata: {
-                contentExtraction: {
-                  // We don't have key_terms yet, but diagram analyzer can work without them
-                }
+                contentExtraction: {}
               }
             })
             
@@ -1064,18 +737,15 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
         })()
       : Promise.resolve([])
     
-    // Use Moonshot for study notes generation
+    // Use Moonshot for study notes generation (non-thinking model for speed)
     const aiProvider = 'moonshot' as const
     
     if (process.env.NODE_ENV === 'development') {
       console.log(`\n🤖 [NOTES API] Preparing AI API call...`)
       console.log(`  - Provider: Moonshot (Kimi K2)`)
-      console.log(`  - Model: ${process.env.MOONSHOT_MODEL || 'kimi-k2-thinking'}`)
-      console.log(`  - Temperature: 0.2 (very low for maximum document fidelity)`)
+      console.log(`  - Model: ${process.env.MOONSHOT_MODEL || 'moonshotai/kimi-k2'}`)
+      console.log(`  - Temperature: 0.2`)
       console.log(`  - Total document content: ${fileContents.join('').length} characters`)
-      console.log(`  - Using JSON schema: StudyNotes`)
-      console.log(`  ⚠️ CRITICAL: Must extract ALL formulas, make outline content-specific, and include ALL concepts`)
-      console.log(`  🚀 Diagram analysis running in parallel with notes generation`)
     }
     
     const notesGenerationStart = Date.now()
@@ -1095,7 +765,7 @@ REMEMBER: Every piece of content must be directly derived from the actual docume
     ]
     const distilledContent = await getOrSetDistillation(
       distillKeyParts,
-      () => distillContent(fileContents, 6000) // Reduced from 8000 for faster processing
+      () => distillContent(fileContents, 4000)
     )
 
     // Streamlined system prompt
@@ -1133,10 +803,10 @@ Generate notesSchema JSON:
     ]
 
     const response = await aiClient.chatCompletions(messages, {
-      model: process.env.MOONSHOT_MODEL || 'kimi-k2-thinking',
+      model: process.env.MOONSHOT_MODEL || 'moonshotai/kimi-k2',
       temperature: 0.2,
       responseFormat: 'json_object',
-      maxTokens: 16000, // Reduced for leaner completions; schema + distillation keeps size manageable
+      maxTokens: 12000,
     })
 
     content = response.content
@@ -1149,10 +819,8 @@ Generate notesSchema JSON:
     }
     // Provider is always 'moonshot' since we're using Moonshot client
 
-    console.log(`✅ [NOTES API] Moonshot (Kimi K2) API call successful`)
-    console.log(`  - Response ID: ${responseId}`)
-    console.log(`  - Model used: ${modelUsed}`)
-    console.log(`  - Usage: ${JSON.stringify(usage)}`)
+    t('ai-call')
+    console.log(`✅ [NOTES API] AI call done. Model: ${modelUsed}, Tokens: ${JSON.stringify(usage)}`)
 
     if (!content) {
       console.log(`❌ [NOTES API] No content in Moonshot response`)
@@ -1324,20 +992,17 @@ Generate notesSchema JSON:
           difficulty: difficulty,
           instructions: instructions,
           studyContext: studyContext,
-          extractedImages: extractedImages,
-          relevantChunks: relevantChunks,
-          metadata: {
-            contentExtraction: {
-              key_terms: notesData.key_terms || [],
-            }
-          }
+              extractedImages: extractedImages,
+              relevantChunks: [],
+              metadata: {
+                contentExtraction: {
+                  key_terms: notesData.key_terms || [],
+                }
+              }
         })
         
         if (diagramResult.success && diagramResult.data?.diagrams) {
           analyzedDiagrams = diagramResult.data.diagrams
-          if (process.env.NODE_ENV === 'development') {
-            console.log(`✅ [NOTES API] Analyzed ${analyzedDiagrams.length} diagrams (fallback)`)
-          }
           
           // Ensure image_data_b64 is preserved from extracted images
           // Match analyzed diagrams with extracted images by page number
@@ -1410,267 +1075,110 @@ Generate notesSchema JSON:
       throw new Error('Notes generation returned empty content. Please retry with a clearer document.')
     }
 
-    // 5) Parallel enrichment: diagrams, videos, and embeddings
-    // Run all enrichment operations in parallel for maximum speed
-    const enrichmentStart = Date.now()
-    console.log(`\n🚀 [NOTES API] Starting parallel enrichment operations...`)
-    
-    // Prepare data for parallel operations
+    // 5) Assemble initial notes (diagrams from AI + diagram analysis that ran in parallel)
+    const baseNotes = { ...notesData, diagrams: analyzedDiagrams }
+
     const topicForVideos = notesData.title || studyTopic || fileNames.join(", ")
-    let baseNotes = { ...notesData, diagrams: analyzedDiagrams }
-    
-    // Log diagram status before enrichment
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`  📊 [NOTES API] Diagram status before enrichment:`)
-      analyzedDiagrams.forEach((diagram: any, idx: number) => {
-        console.log(`    - Diagram ${idx + 1}: "${diagram.title}"`)
-        console.log(`      Source: ${diagram.source}, Page: ${diagram.page || 'N/A'}`)
-        console.log(`      Has image_data_b64: ${!!diagram.image_data_b64}`)
-        console.log(`      Has image_url: ${!!diagram.image_url}`)
-      })
-    }
-    
-    // Run all enrichment operations in parallel
-    const [enrichedDiagrams, videoEnrichmentResult, embeddingResult] = await Promise.allSettled([
-      // 5a) Enrich diagrams with web images (parallel processing)
-      enrichDiagramsWithWebImages(analyzedDiagrams).catch((error) => {
-        console.error(`  ❌ [NOTES API] Diagram enrichment error:`, error)
-        return analyzedDiagrams // Return original diagrams on error
-      }),
-      
-      // 5b) Enrich with YouTube videos (includes search and validation)
-      enrichWithYouTubeVideos(
-        baseNotes,
-        topicForVideos,
-        fileNames
-      ).catch((error) => {
-        console.error(`  ❌ [NOTES API] Video enrichment error:`, error)
-        return { videos: baseNotes.resources?.videos || [] } // Return existing videos on error
-      }),
-      
-      // 5c) Generate embeddings (non-blocking, can fail without affecting notes)
-      generateEmbeddingsForNotes(
-        fileContents,
-        fileNames,
-        userId || 'temp-user' // Fallback for safety
-      ).catch((error) => {
-        console.error(`  ❌ [NOTES API] Embedding generation error:`, error)
-        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' }
-      })
-    ])
-    
-    const enrichmentTime = Date.now() - enrichmentStart
-    if (process.env.NODE_ENV === 'development') {
-      console.log(`  ⏱️ [NOTES API] Parallel enrichment completed in ${enrichmentTime}ms`)
-    }
-    
-    // Process enrichment results
-    let enrichedNotes = baseNotes
-    
-    // Process diagram enrichment result
-    if (enrichedDiagrams.status === 'fulfilled') {
-      enrichedNotes = { ...enrichedNotes, diagrams: enrichedDiagrams.value }
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`✅ [NOTES API] Diagram enrichment completed`)
-        console.log(`  📊 [NOTES API] Final diagram count: ${enrichedNotes.diagrams.length}`)
-      }
-    } else {
-      console.error(`  ❌ [NOTES API] Diagram enrichment failed:`, enrichedDiagrams.reason)
-      // Keep original diagrams
-    }
-    
-    // Process video enrichment result
-    if (videoEnrichmentResult.status === 'fulfilled') {
-      enrichedNotes = {
-        ...enrichedNotes,
-        resources: {
-          ...enrichedNotes.resources,
-          videos: videoEnrichmentResult.value.videos,
-        },
-      }
-      if (process.env.NODE_ENV === 'development') {
-        console.log(`✅ [NOTES API] Video enrichment completed`)
-        console.log(`  📹 [NOTES API] Total videos: ${videoEnrichmentResult.value.videos.length}`)
-      }
-    } else {
-      console.error(`  ❌ [NOTES API] Video enrichment failed:`, videoEnrichmentResult.reason)
-      // Keep existing videos if any
-    }
-    
-    // Process embedding result (non-blocking, just log)
-    if (embeddingResult.status === 'fulfilled') {
-      if (embeddingResult.value.success) {
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`✅ [NOTES API] Embeddings generated successfully`)
-          if (embeddingResult.value.success && 'result' in embeddingResult.value && embeddingResult.value.result) {
-            console.log(`  - Chunks processed: ${embeddingResult.value.result.chunksProcessed}`)
-            console.log(`  - Subject tags: ${embeddingResult.value.result.metadata?.subjectTags?.join(', ') || 'None'}`)
-            console.log(`  - Course topics: ${embeddingResult.value.result.metadata?.courseTopics?.join(', ') || 'None'}`)
-            console.log(`  - Difficulty: ${embeddingResult.value.result.metadata?.difficultyLevel || 'Unknown'}`)
-          }
-        }
-      } else {
-        if (process.env.NODE_ENV === 'development') {
-          console.log(`⚠️ [NOTES API] Embedding generation failed: ${embeddingResult.value.error || 'Unknown error'}`)
-        }
-      }
-    } else {
-      console.error(`  ❌ [NOTES API] Embedding generation failed:`, embeddingResult.reason)
-    }
 
-    console.log(`\n🎉 [NOTES API] Notes generation completed successfully!`)
-    console.log(`📊 [NOTES API] Final summary:`)
-    console.log(`  - Files processed: ${fileNames.length}`)
-    console.log(`  - Images extracted: ${extractedImages.length}`)
-    console.log(`  - Notes generated: ${enrichedNotes.title}`)
-    console.log(`  - Outline points: ${enrichedNotes.outline?.length || 0}`)
-    console.log(`  - Key terms: ${enrichedNotes.key_terms?.length || 0}`)
-    console.log(`  - Concepts: ${enrichedNotes.concepts?.length || 0}`)
-    console.log(`  - Diagrams: ${enrichedNotes.diagrams?.length || 0}`)
-    console.log(`  - Quiz questions: ${enrichedNotes.quiz?.length || 0}`)
-
-    // 🚀 OPTIMIZATION: Save notes to database asynchronously (non-blocking)
-    // This doesn't delay the response - saves 100-500ms
+    // Save notes to DB (need noteId for the response & redirect)
     let noteId: string | null = null
-    
-    // Start the save operation but don't block the response
-    const savePromise = (async () => {
-      try {
-        const supabase = createAdminClient()
-        const { data: savedNote, error: saveError } = await supabase
-          .from('user_study_notes')
-          .insert({
-            user_id: userId,
-            title: enrichedNotes.title,
-            subject: enrichedNotes.subject,
-            notes_json: enrichedNotes,
-            file_names: fileNames,
-          })
-          .select('id')
-          .single()
-
-        if (saveError) {
-          console.error('⚠️ [NOTES API] Failed to save notes to database:', saveError)
-          return null
-        } else if (savedNote) {
-          const id = savedNote.id
-          console.log(`✅ [NOTES API] Notes saved to database with ID: ${id}`)
-          return id
-        }
-        return null
-      } catch (dbError: any) {
-        console.error('⚠️ [NOTES API] Database save error:', dbError)
-        return null
-      }
-    })()
-    
-    // Try to get result quickly (100ms timeout), but don't block
     try {
-      const timeoutPromise = new Promise<string | null>((resolve) => 
-        setTimeout(() => resolve(null), 100)
-      )
-      noteId = await Promise.race([savePromise, timeoutPromise])
-    } catch (error) {
-      // If race fails, continue without noteId - save will complete in background
-      console.warn('⚠️ [NOTES API] Database save timeout, continuing in background')
-    }
-    
-    // Continue saving in background even if we didn't get the ID
-    savePromise.then((id) => {
-      if (id && !noteId) {
-        console.log(`✅ [NOTES API] Notes saved to database (background) with ID: ${id}`)
-      }
-    }).catch((dbError: any) => {
-      console.error('⚠️ [NOTES API] Background database save error:', dbError)
-    })
-
-    // Persist study_notes_cache for reuse (best-effort) only if we have a document_id
-    if (documentIds[0]) {
-      try {
-        const adminClient = createAdminClient()
-        const instructionsHash = createHash('sha256')
-          .update(JSON.stringify({
-            topic,
-            difficulty,
-            instructions,
-            studyContext,
-            fileNames,
-          }))
-          .digest('hex')
-        
-        const primaryDocumentId = documentIds[0]
-        const cachePayload = {
+      const supabase = createAdminClient()
+      const { data: savedNote, error: saveError } = await supabase
+        .from('user_study_notes')
+        .insert({
           user_id: userId,
-          document_id: primaryDocumentId,
-          topic: topic || null,
-          education_level: studyContext?.educationLevel || null,
-          content_focus: studyContext?.contentFocus || null,
-          instructions_hash: instructionsHash,
-          notes_json: enrichedNotes
-        }
-        
-        // Attempt upsert; fallback to insert if unique constraint is missing (42P10)
-        const { error: cacheError } = await adminClient
-          .from('study_notes_cache')
-          .upsert(cachePayload, { onConflict: 'user_id,document_id,instructions_hash' })
-        
-        if (cacheError) {
-          if ((cacheError as any)?.code === '42P10') {
-            console.warn('⚠️ [NOTES API] study_notes_cache upsert failed (missing unique constraint); retrying with insert')
-            const { error: insertError } = await adminClient
-              .from('study_notes_cache')
-              .insert(cachePayload)
-            if (insertError) {
-              console.error('❌ [NOTES API] Failed to insert study_notes_cache:', insertError)
-            } else {
-              console.log('✅ [NOTES API] Cached notes in study_notes_cache (insert fallback)')
-            }
-          } else {
-            console.error('⚠️ [NOTES API] Failed to upsert study_notes_cache:', cacheError)
-          }
-        } else {
-          console.log('✅ [NOTES API] Cached notes in study_notes_cache')
-        }
-      } catch (cacheErr) {
-        console.error('⚠️ [NOTES API] Exception while caching notes:', cacheErr)
+          title: baseNotes.title,
+          subject: baseNotes.subject,
+          notes_json: baseNotes,
+          file_names: fileNames,
+        })
+        .select('id')
+        .single()
+      if (!saveError && savedNote) {
+        noteId = savedNote.id
       }
-    } else {
-      console.warn(`⚠️ [NOTES API] Skipping study_notes_cache insert (no document_id available)`)
-      console.warn(`   documentIds array length: ${documentIds.length}`)
-      console.warn(`   documentMetadata length: ${documentMetadata.length}`)
-      if (documentMetadata.length > 0) {
-        console.warn(`   This may indicate documents were not properly inserted into the database`)
+    } catch (dbErr) {
+      console.error('⚠️ [NOTES API] Database save error:', dbErr)
+    }
+
+    const totalTime = Date.now() - sessionStartTime
+    console.log(`✅ [NOTES API] Notes ready in ${totalTime}ms (AI: ${Date.now() - notesGenerationStart}ms)`)
+
+    // 6) Fire-and-forget: enrichment, cache, embeddings, logging
+    // These run AFTER the response is sent so the user isn't waiting
+    const enrichmentCleanup = async () => {
+      try {
+        const [enrichedDiagrams, videoResult, _embeddingResult] = await Promise.allSettled([
+          enrichDiagramsWithWebImages(analyzedDiagrams).catch(() => analyzedDiagrams),
+          enrichWithYouTubeVideos(baseNotes, topicForVideos, fileNames).catch(() => ({ videos: [] })),
+          generateEmbeddingsForNotes(fileContents, fileNames, userId).catch(() => ({ success: false })),
+        ])
+
+        const enrichedNotes = { ...baseNotes }
+        if (enrichedDiagrams.status === 'fulfilled') {
+          enrichedNotes.diagrams = enrichedDiagrams.value
+        }
+        if (videoResult.status === 'fulfilled') {
+          enrichedNotes.resources = { ...enrichedNotes.resources, videos: videoResult.value.videos }
+        }
+
+        // Update the saved note with enriched data
+        if (noteId) {
+          const supabase = createAdminClient()
+          await supabase.from('user_study_notes').update({ notes_json: enrichedNotes }).eq('id', noteId)
+        }
+
+        // Persist cache (wait for document tracking to finish first)
+        await documentTrackingPromise
+        if (documentIds[0]) {
+          const instructionsHash = createHash('sha256')
+            .update(JSON.stringify({ topic, difficulty, instructions, studyContext: studyContext, fileNames }))
+            .digest('hex')
+          const adminClient = createAdminClient()
+          await adminClient.from('study_notes_cache').upsert({
+            user_id: userId,
+            document_id: documentIds[0],
+            topic: topic || null,
+            education_level: studyContext?.educationLevel || null,
+            content_focus: studyContext?.contentFocus || null,
+            instructions_hash: instructionsHash,
+            notes_json: enrichedNotes,
+          }, { onConflict: 'user_id,document_id,instructions_hash' }).then(({ error }) => {
+            if (error) console.warn('⚠️ [NOTES API] Cache write failed:', error.message)
+          })
+        }
+
+        // Progress logging
+        ProgressLogger.logGeneration({
+          session_id: sessionId,
+          task_type: 'study_notes',
+          timestamp: new Date().toISOString(),
+          user_id: userId,
+          document_types: fileNames.map(f => f.split('.').pop() || 'unknown'),
+          features_worked_on: FeatureFlags.FEATURE_BACKLOG ? ['notes_generation'] : [],
+          key_learnings: errorsEncountered.length === 0 ? ['Generation completed successfully'] : [],
+          errors_encountered: errorsEncountered,
+          tokens_used: totalTokensUsed,
+          processing_time_ms: Date.now() - sessionStartTime,
+          notes_quality_metrics: ProgressLogger.extractQualityMetrics(enrichedNotes),
+        }).catch(() => {})
+      } catch (err) {
+        console.error('⚠️ [NOTES API] Background enrichment error:', err)
       }
     }
 
-    // MEMORY ARCHITECTURE: Log progress (non-blocking, doesn't affect response)
-    const processingTime = Date.now() - sessionStartTime
-    const qualityMetrics = ProgressLogger.extractQualityMetrics(enrichedNotes)
-    
-    ProgressLogger.logGeneration({
-      session_id: sessionId,
-      task_type: 'study_notes',
-      timestamp: new Date().toISOString(),
-      user_id: userId,
-      document_types: fileNames.map(f => f.split('.').pop() || 'unknown'),
-      features_worked_on: FeatureFlags.FEATURE_BACKLOG ? ['notes_generation'] : [],
-      key_learnings: errorsEncountered.length === 0 ? ['Generation completed successfully'] : [],
-      errors_encountered: errorsEncountered,
-      tokens_used: totalTokensUsed,
-      processing_time_ms: processingTime,
-      notes_quality_metrics: qualityMetrics,
-    }).catch(() => {
-      // Fail silently - logging is non-critical
-    })
+    // Don't await - let it run after response is sent
+    enrichmentCleanup().catch(() => {})
 
     return NextResponse.json({ 
       success: true, 
-      noteId: noteId, // May be null if save is still in progress
-      notes: enrichedNotes,
+      noteId,
+      notes: baseNotes,
       extractedImages: extractedImages.length,
       processedFiles: fileNames.length,
-      fileNames: fileNames,
-      fileContents: fileContents.length
+      fileNames,
+      fileContents: fileContents.length,
     })
 
   } catch (error) {

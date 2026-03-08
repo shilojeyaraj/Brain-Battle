@@ -49,7 +49,7 @@ export class OpenRouterClient implements AIClient {
     // - moonshotai/kimi-k2 (131K context) - Standard version
     // - moonshotai/kimi-k2:free (32K context) - Free tier
     // - moonshotai/kimi-linear-48b-a3b-instruct (1M context) - Largest context
-    this.defaultModel = process.env.OPENROUTER_MODEL || process.env.MOONSHOT_MODEL || 'moonshotai/kimi-k2-thinking'
+    this.defaultModel = process.env.OPENROUTER_MODEL || process.env.MOONSHOT_MODEL || 'moonshotai/kimi-k2'
     
     if (process.env.NODE_ENV === 'development') {
       console.log('✅ [OPENROUTER] Client initialized with API key (length: ' + trimmedKey.length + ' characters)')
@@ -129,16 +129,7 @@ export class OpenRouterClient implements AIClient {
           response_format: options.responseFormat ? { type: options.responseFormat } : undefined,
         }
         
-        // OpenRouter/Moonshot models support up to 32,000 max_tokens for output
-        // For notes generation, we need more tokens to ensure complete JSON responses
-        if (options.responseFormat === 'json_object') {
-          requestOptions.max_tokens = options.maxTokens || 32000 // Increase for complete JSON responses
-        } else {
-          requestOptions.max_tokens = options.maxTokens || 16000
-        }
-        if (options.maxTokens) {
-          requestOptions.max_tokens = Math.min(options.maxTokens, 32000)
-        }
+        requestOptions.max_tokens = Math.min(options.maxTokens || 16000, 32000)
         
         if (attempt > 0 && process.env.NODE_ENV === 'development') {
           console.log(`🔄 [OPENROUTER] Retry attempt ${attempt}/${maxRetries}...`)
