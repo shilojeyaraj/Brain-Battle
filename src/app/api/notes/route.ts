@@ -390,41 +390,49 @@ export async function POST(req: NextRequest) {
         }
         
         try {
-          // Use pdf-parse - simple API, works on Vercel without any worker configuration
           const { extractPDFText } = await import('@/lib/pdf-parser')
           const pdfData = await extractPDFText(buffer)
-          
           textContent = pdfData.text || ''
-          
-          // Only extract images if user has Pro subscription (uses expensive GPT-4o Vision API)
-          if (canAnalyzeImages) {
+
+          // Fallback: if pdf-parse returned very little text, try pdfjs-dist
+          // This handles scanned PDFs and slides where pdf-parse struggles
+          if (textContent.trim().length < 100) {
+            console.warn(`  ⚠️ [NOTES API] pdf-parse returned only ${textContent.length} chars for ${file.name}, trying pdfjs-dist fallback...`)
             try {
-              // Use the unified extractor to get both text and images in one pass
               const { extractPDFTextAndImages } = await import('@/lib/pdf-unified-extractor')
               const pdfContent = await extractPDFTextAndImages(buffer, file.name)
-              textContent = pdfContent.text || textContent // Use unified text if available
+              if (pdfContent.text && pdfContent.text.trim().length > textContent.trim().length) {
+                textContent = pdfContent.text
+                console.log(`  ✅ [NOTES API] pdfjs-dist fallback recovered ${textContent.length} chars`)
+              }
+              if (canAnalyzeImages) {
+                images = pdfContent.images || []
+              }
+            } catch (fallbackErr) {
+              console.warn(`  ⚠️ [NOTES API] pdfjs-dist fallback also failed:`, fallbackErr)
+            }
+          } else if (canAnalyzeImages) {
+            // Pro users: also extract images via unified extractor
+            try {
+              const { extractPDFTextAndImages } = await import('@/lib/pdf-unified-extractor')
+              const pdfContent = await extractPDFTextAndImages(buffer, file.name)
+              textContent = pdfContent.text || textContent
               images = pdfContent.images || []
-              
-              if (process.env.NODE_ENV === 'development' && images.length > 0) {
-                console.log(`  🖼️ [NOTES API] Extracted ${images.length} images from ${file.name}`)
-              }
             } catch (imageError) {
-              // If image extraction fails, continue with text-only (non-blocking)
-              if (process.env.NODE_ENV === 'development') {
-                console.warn(`  ⚠️ [NOTES API] Image extraction failed for ${file.name}, continuing with text only:`, imageError)
-              }
+              console.warn(`  ⚠️ [NOTES API] Image extraction failed for ${file.name}, continuing with text only`)
               images = []
             }
-          } else {
-            images = [] // Free tier: no image extraction
           }
-          
+
           if (process.env.NODE_ENV === 'development') {
             console.log(`  ✅ [NOTES API] Extracted ${textContent.length} characters from ${file.name} (${pdfData.pages} pages)`)
           }
           
-          if (!textContent || textContent.trim().length < 100) {
-            throw new Error(`PDF parsing returned insufficient content (${textContent.length} characters).`)
+          if (!textContent || textContent.trim().length < 50) {
+            throw new Error(
+              `This PDF appears to be image-based or scanned (only ${textContent.length} characters of text found). ` +
+              `Please try a text-based PDF, or use OCR software to convert the scanned PDF to searchable text first.`
+            )
           }
         } catch (pdfError) {
           throw new Error(`Failed to parse PDF "${file.name}". Error: ${pdfError instanceof Error ? pdfError.message : String(pdfError)}`)
@@ -528,7 +536,7 @@ export async function POST(req: NextRequest) {
         if (textContent && textContent.trim().length > 0) {
           fileContents.push(textContent)
           fileNames.push(fileName)
-          if (textContent.trim().length >= 100) {
+          if (textContent.trim().length >= 50) {
             hasValidContent = true
           }
         }
@@ -565,7 +573,7 @@ export async function POST(req: NextRequest) {
     t('file-extraction')
     
     // CRITICAL: Validate that we have actual document content before proceeding
-    if (!hasValidContent || fileContents.length === 0 || fileContents.every(content => content.trim().length < 100)) {
+    if (!hasValidContent || fileContents.length === 0 || fileContents.every(content => content.trim().length < 50)) {
       const totalContent = fileContents.join('').trim().length
       console.error(`  ❌ [NOTES API] CRITICAL: No valid content extracted from documents. Total content length: ${totalContent} characters`)
       return NextResponse.json({ 
