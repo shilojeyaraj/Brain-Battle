@@ -119,15 +119,15 @@ export async function getPdfjsLib() {
  * and ensure compatibility with production deployments.
  */
 export const SERVERLESS_PDF_OPTIONS = {
-  useSystemFonts: true, // Use system fonts instead of embedded fonts (faster, no file access)
-  verbosity: 0, // Minimal logging (reduces output in production)
-  isEvalSupported: false, // Disable eval for security
-  useWorkerFetch: false, // Disable worker fetch in serverless (no file system access)
-  disableAutoFetch: true, // Disable auto-fetching of resources (prevents network calls)
-  disableStream: false, // Keep stream enabled for better performance with large PDFs
-  disableWorker: true, // HARD DISABLE the worker so pdfjs skips workerSrc checks entirely
-  // Note: We still set GlobalWorkerOptions.workerSrc = '' as a belt-and-suspenders,
-  // but disableWorker=true avoids the fake-worker check that throws when workerSrc is unset.
+  useSystemFonts: true,
+  verbosity: 0,
+  isEvalSupported: false,
+  useWorkerFetch: false,
+  disableAutoFetch: true,
+  disableStream: true,
+  disableRange: true,
+  disableFontFace: true,
+  disableWorker: true,
 }
 
 /**

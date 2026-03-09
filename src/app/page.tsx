@@ -49,15 +49,15 @@ const container = {
   show: {
     opacity: 1,
     transition: {
-      staggerChildren: 0.1,
-      delayChildren: 0.2,
+      staggerChildren: 0.08,
+      delayChildren: 0.1,
     },
   },
 }
 
 const item = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.5 } },
+  hidden: { opacity: 0, y: 16 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" } },
 }
 
 // 🚀 OPTIMIZATION: Memoize common animation variants
@@ -68,10 +68,10 @@ const fadeInUp = {
 }
 
 const fadeInUpViewport = {
-  initial: { opacity: 0, y: 20 },
+  initial: { opacity: 0, y: 16 },
   whileInView: { opacity: 1, y: 0 },
-  viewport: { once: true },
-  transition: { duration: 0.5 }
+  viewport: { once: true, margin: "-50px" },
+  transition: { duration: 0.4, ease: "easeOut" }
 }
 
 const features = [
@@ -192,11 +192,11 @@ const FeatureCard = memo(function FeatureCard({ feature, index }: { feature: typ
       viewport={{ once: true }}
       transition={{ duration: 0.5, delay: index * 0.1 }}
       whileHover={{
-        y: -8,
+        y: -6,
         transition: {
-          type: "spring",
-          stiffness: 100,
-          damping: 10,
+          type: "tween",
+          ease: "easeOut",
+          duration: 0.2,
         },
       }}
       className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-6 border-4 border-slate-600/50 hover:border-blue-400/50 transition-colors cursor-pointer"
@@ -432,10 +432,10 @@ export default function HomePage() {
       <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-blue-980 to-slate-900">
       {/* Animated Background Elements */}
         <div className="absolute inset-0 overflow-hidden">
-          <div className="absolute -top-32 -right-32 w-96 h-96 bg-blue-500/15 rounded-full blur-3xl animate-float" />
+          <div className="absolute -top-32 -right-32 w-96 h-96 bg-blue-500/15 rounded-full blur-2xl animate-float" style={{ willChange: 'transform' }} />
           <div
-            className="absolute -bottom-32 -left-32 w-96 h-96 bg-orange-500/12 rounded-full blur-3xl animate-float"
-            style={{ animationDelay: "1s" }}
+            className="absolute -bottom-32 -left-32 w-96 h-96 bg-orange-500/12 rounded-full blur-2xl animate-float"
+            style={{ animationDelay: "3.5s", willChange: 'transform' }}
           />
           <div
             className="absolute inset-0 opacity-[0.12] mix-blend-overlay"
@@ -458,7 +458,7 @@ export default function HomePage() {
       {/* Content */}
       <div className="relative z-10">
         {/* Header */}
-        <header className="fixed top-0 left-0 right-0 z-[100] flex items-center justify-between pl-4 pr-6 py-6 md:pl-6 md:pr-8 lg:pl-8 lg:pr-12 border-b-4 border-slate-700/50 bg-gradient-to-br from-slate-950/98 via-blue-980/98 to-slate-900/98 backdrop-blur-md shadow-lg">
+        <header className="fixed top-0 left-0 right-0 z-[100] flex items-center justify-between pl-3 pr-4 py-4 sm:py-5 md:pl-6 md:pr-8 md:py-6 lg:pl-8 lg:pr-12 border-b-4 border-slate-700/50 bg-gradient-to-br from-slate-950/98 via-blue-980/98 to-slate-900/98 backdrop-blur-md shadow-lg">
           <motion.div
             className="flex items-center gap-3"
             initial={{ opacity: 0, scale: 0.9 }}
@@ -479,7 +479,7 @@ export default function HomePage() {
             </button>
           </motion.div>
           <motion.div
-            className="flex items-center gap-6"
+            className="flex items-center gap-2 sm:gap-4 md:gap-6"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.5, delay: 0.2 }}
@@ -512,7 +512,7 @@ export default function HomePage() {
               </a>
             </nav>
             <Button
-              className="border-4 border-blue-400 text-blue-300 hover:bg-blue-500/20 bg-transparent font-bold text-sm h-10"
+              className="border-2 sm:border-4 border-blue-400 text-blue-300 hover:bg-blue-500/20 bg-transparent font-bold text-xs sm:text-sm h-8 sm:h-10 px-3 sm:px-4"
               loading={loadingButton === 'login'}
               loadingText="Loading..."
               onClick={async () => {
@@ -529,7 +529,7 @@ export default function HomePage() {
               Sign In
             </Button>
             <Button
-              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold border-2 border-blue-400 h-10 text-sm"
+              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold border-2 border-blue-400 h-8 sm:h-10 text-xs sm:text-sm px-3 sm:px-4"
               loading={loadingButton === 'signup'}
               loadingText="Loading..."
               onClick={async () => {
@@ -549,7 +549,7 @@ export default function HomePage() {
         </header>
 
         {/* Hero Section */}
-        <main className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_400px] items-start justify-between min-h-[calc(100vh-80px)] pl-4 pr-6 md:pl-6 md:pr-8 lg:pl-8 lg:pr-12 pt-32 py-20 relative gap-10 max-w-7xl ml-0 mr-auto">
+        <main className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_400px] items-start justify-between min-h-[calc(100vh-80px)] pl-3 pr-4 sm:pl-4 sm:pr-6 md:pl-6 md:pr-8 lg:pl-8 lg:pr-12 pt-24 sm:pt-28 md:pt-32 pb-16 md:py-20 relative gap-8 md:gap-10 max-w-7xl ml-0 mr-auto">
           <motion.div className="max-w-2xl md:max-w-3xl text-left md:text-left" variants={container} initial="hidden" animate="show">
             {/* Badge */}
             <motion.div
@@ -561,10 +561,10 @@ export default function HomePage() {
             </motion.div>
 
             {/* Main Headline */}
-            <motion.h1 variants={item} className="text-4xl md:text-5xl lg:text-5xl font-black mb-6 leading-tight text-balance">
+            <motion.h1 variants={item} className="text-3xl sm:text-4xl md:text-5xl lg:text-5xl font-black mb-5 sm:mb-6 leading-tight text-balance">
               <span className="text-white inline-block">Upload a PDF.</span>
               <br />
-              <span className="bg-gradient-to-r from-blue-300 to-orange-300 bg-clip-text text-transparent inline-block text-3xl md:text-4xl lg:text-5xl">
+              <span className="bg-gradient-to-r from-blue-300 to-orange-300 bg-clip-text text-transparent inline-block text-2xl sm:text-3xl md:text-4xl lg:text-5xl">
                 Quiz-ready in 60 seconds.
               </span>
             </motion.h1>
@@ -572,24 +572,24 @@ export default function HomePage() {
             {/* Description */}
             <motion.p
               variants={item}
-              className="text-lg md:text-xl text-blue-100/80 mb-12 max-w-2xl leading-relaxed"
+              className="text-base sm:text-lg md:text-xl text-blue-100/80 mb-8 sm:mb-12 max-w-2xl leading-relaxed"
             >
               AI builds the quiz, friends join with a code, and XP tracks who’s winning. No manual flashcards, no waiting.
             </motion.p>
 
             {/* CTA Buttons */}
-            <motion.div variants={item} className="flex flex-col sm:flex-row gap-4 justify-start items-start">
-              <Link href="/signup">
+            <motion.div variants={item} className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-start items-stretch sm:items-start">
+              <Link href="/signup" className="w-full sm:w-auto">
                 <Button
-                  className="bg-blue-500 hover:bg-blue-600 text-white text-lg h-14 px-8 font-black border-2 border-blue-400 shadow-lg shadow-blue-900/50"
+                  className="w-full sm:w-auto bg-blue-500 hover:bg-blue-600 text-white text-base sm:text-lg h-11 sm:h-14 px-6 sm:px-8 font-black border-2 border-blue-400 shadow-lg shadow-blue-900/50"
                 >
-                  <Lightning className="w-5 h-5 mr-2" weight="fill" />
+                  <Lightning className="w-4 h-4 sm:w-5 sm:h-5 mr-2" weight="fill" />
                   Start free
                 </Button>
               </Link>
               <Button
                 onClick={scrollToHowItWorks}
-                className="border-2 border-orange-300 text-orange-200 hover:bg-orange-500/10 text-lg h-14 px-8 bg-transparent font-black"
+                className="border-2 border-orange-300 text-orange-200 hover:bg-orange-500/10 text-base sm:text-lg h-11 sm:h-14 px-6 sm:px-8 bg-transparent font-black"
               >
                 See how it works
               </Button>

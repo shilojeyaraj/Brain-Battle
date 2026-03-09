@@ -390,19 +390,36 @@ export async function POST(req: NextRequest) {
         }
         
         try {
-          const { extractPDFText } = await import('@/lib/pdf-parser')
-          const pdfData = await extractPDFText(buffer)
-          textContent = pdfData.text || ''
+          let pdfPages = 0
+          let usedFallback = false
 
-          // Fallback: if pdf-parse returned very little text, try pdfjs-dist
-          // This handles scanned PDFs and slides where pdf-parse struggles
-          if (textContent.trim().length < 100) {
-            console.warn(`  ⚠️ [NOTES API] pdf-parse returned only ${textContent.length} chars for ${file.name}, trying pdfjs-dist fallback...`)
+          try {
+            const { extractPDFText } = await import('@/lib/pdf-parser')
+            const pdfData = await extractPDFText(buffer)
+            textContent = pdfData.text || ''
+            pdfPages = pdfData.pages || 0
+          } catch (primaryErr: any) {
+            const errMsg = String(primaryErr?.message || primaryErr || '')
+            const isMmapOrEnv = errMsg.includes('mmap') || errMsg.includes('ENOMEM') || errMsg.includes('worker') || errMsg.includes('Cannot find')
+            if (isMmapOrEnv) {
+              console.warn(`  ⚠️ [NOTES API] pdf-parse threw environment error for ${file.name}: ${errMsg.substring(0, 120)}, falling back to pdfjs-dist`)
+            } else {
+              console.warn(`  ⚠️ [NOTES API] pdf-parse failed for ${file.name}: ${errMsg.substring(0, 120)}, falling back to pdfjs-dist`)
+            }
+            textContent = ''
+          }
+
+          const needsFallback = textContent.trim().length < 100
+          if (needsFallback) {
+            if (textContent.trim().length > 0) {
+              console.warn(`  ⚠️ [NOTES API] pdf-parse returned only ${textContent.length} chars for ${file.name}, trying pdfjs-dist fallback...`)
+            }
             try {
               const { extractPDFTextAndImages } = await import('@/lib/pdf-unified-extractor')
               const pdfContent = await extractPDFTextAndImages(buffer, file.name)
               if (pdfContent.text && pdfContent.text.trim().length > textContent.trim().length) {
                 textContent = pdfContent.text
+                usedFallback = true
                 console.log(`  ✅ [NOTES API] pdfjs-dist fallback recovered ${textContent.length} chars`)
               }
               if (canAnalyzeImages) {
@@ -412,7 +429,6 @@ export async function POST(req: NextRequest) {
               console.warn(`  ⚠️ [NOTES API] pdfjs-dist fallback also failed:`, fallbackErr)
             }
           } else if (canAnalyzeImages) {
-            // Pro users: also extract images via unified extractor
             try {
               const { extractPDFTextAndImages } = await import('@/lib/pdf-unified-extractor')
               const pdfContent = await extractPDFTextAndImages(buffer, file.name)
@@ -425,7 +441,7 @@ export async function POST(req: NextRequest) {
           }
 
           if (process.env.NODE_ENV === 'development') {
-            console.log(`  ✅ [NOTES API] Extracted ${textContent.length} characters from ${file.name} (${pdfData.pages} pages)`)
+            console.log(`  ✅ [NOTES API] Extracted ${textContent.length} characters from ${file.name} (${pdfPages} pages)${usedFallback ? ' [pdfjs-dist fallback]' : ''}`)
           }
           
           if (!textContent || textContent.trim().length < 50) {
@@ -773,28 +789,52 @@ export async function POST(req: NextRequest) {
     ]
     const distilledContent = await getOrSetDistillation(
       distillKeyParts,
-      () => distillContent(fileContents, 4000)
+      () => distillContent(fileContents, 6000)
     )
 
-    // Streamlined system prompt
     const systemPrompt = `${rules}
 
-Generate study notes as JSON matching notesSchema. Use only provided content. Cite pages.`
+You are a study notes generator. Output valid JSON matching the notesSchema structure exactly.
+Use ONLY the provided document content. Cite pages with (p. N). Never invent facts.`
 
-    // Compact user prompt
-    const userPrompt = `DOCUMENT:
+    const userPrompt = `DOCUMENT CONTENT:
 ${distilledContent || '[no text extracted]'}
 
 FILES: ${fileNames.join(', ') || 'uploaded files'}
+DIFFICULTY: ${difficulty || 'medium'}
 ${instructions ? `INSTRUCTIONS: ${instructions}` : ''}
-${extractedImages.length > 0 ? `IMAGES: ${extractedImages.length} (reference by page)` : ''}
-${contextInstructions ? `CONTEXT: ${contextInstructions}` : ''}
+${extractedImages.length > 0 ? `IMAGES: ${extractedImages.length} extracted (reference by page number)` : ''}
+${contextInstructions ? `STUDY CONTEXT: ${contextInstructions}` : ''}
 
-Generate notesSchema JSON:
-- Extract ALL formulas with exact notation
-- Outline items must be document-specific (headings/examples/formulas)
-- Include page refs for facts
-- Return valid JSON only`
+Generate comprehensive study notes as JSON with ALL of these sections:
+
+1. METADATA: title, subject, education_level, difficulty_level, complexity_analysis (vocabulary_level, concept_sophistication, prerequisite_knowledge[], reasoning_level)
+
+2. OUTLINE (5-10 items): Use EXACT headings/formulas/examples from the document, not generic summaries. Each item must be specific enough to identify which page/section it refers to. Include page refs.
+   BAD: "Introduction to the topic"
+   GOOD: "SR Latch truth table and characteristic equation Q+ = S + R'Q (p. 3)"
+
+3. KEY_TERMS (8-12): Extract specific terms with precise definitions from the document. Include importance level.
+
+4. CONCEPTS (4-8): Each with heading, detailed bullets (3-5 per concept), real examples from the document, and connections to other concepts. Be thorough and specific.
+
+5. FORMULAS (extract ALL): Every equation/formula with name, exact notation, description, variable definitions, page reference, and example calculation if shown.
+
+6. DIAGRAMS (3-8): Describe diagrams/figures from the document. Include title, caption, page number, and search keywords for web enrichment.
+
+7. PRACTICE_QUESTIONS (8-15): Mix of multiple_choice, open_ended, true_false, fill_blank. Each must reference specific content from the document. Include answer, explanation, difficulty, and topic.
+
+8. RESOURCES: links (5-10), videos (3-5), simulations (2-4) - all relevant to the document's subject.
+
+9. STUDY_TIPS (5-8): Specific to this material, not generic advice.
+
+10. COMMON_MISCONCEPTIONS (3-5): Related to the document's subject matter.
+
+CRITICAL REQUIREMENTS:
+- Every section must be populated with document-specific content
+- All formulas must use exact notation from the document
+- Practice questions must test actual content, not generic knowledge
+- Return valid JSON only, no markdown wrapping`
 
     // Log prompt details after they're created
     if (process.env.NODE_ENV === 'development') {
@@ -812,9 +852,9 @@ Generate notesSchema JSON:
 
     const response = await aiClient.chatCompletions(messages, {
       model: process.env.MOONSHOT_MODEL || 'moonshotai/kimi-k2',
-      temperature: 0.2,
+      temperature: 0.3,
       responseFormat: 'json_object',
-      maxTokens: 12000,
+      maxTokens: 16000,
     })
 
     content = response.content

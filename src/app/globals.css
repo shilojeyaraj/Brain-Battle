@@ -251,10 +251,10 @@
 @keyframes float {
   0%,
   100% {
-    transform: translateY(50px);
+    transform: translateY(0px) translateZ(0);
   }
   50% {
-    transform: translateY(-50px);
+    transform: translateY(-18px) translateZ(0);
   }
 }
 
@@ -362,7 +362,10 @@ html {
 }
 
 .animate-float {
-  animation: float 3s ease-in-out infinite;
+  animation: float 7s ease-in-out infinite;
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }
 
 .animate-glow {
